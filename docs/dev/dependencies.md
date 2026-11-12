@@ -108,9 +108,24 @@ ctest --preset dev
 
 確認箇所: `build/deps/src/kio/src/core/{CMakeLists.txt,faviconscache.cpp,faviconscache_p.h,global.cpp}`。上流: https://invent.kde.org/frameworks/kio/-/tree/v6.31.0/src/core
 
+### KIMAP／KSMTPの構築とローカル検証
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildMailDependencies.cmake
+cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_MAIL=ON
+cmake --build --preset dev
+ctest --preset dev
+```
+
+KIMAP／KSMTP 26.08.3（CMakeパッケージ版6.8.3）は指定Qt/MSVCでDebug構築済みです。先に承認済みKIOパッチとSASL機構を構築してください。実行時はQt・依存prefix・native依存のbinをPATHに追加します。
+
+`mailtransport`はループバック限定の合成サーバーとダミー資格情報を使用します。PLAIN／LOGIN／XOAUTH2の通信、未広告のOAuth方式の拒否、STARTTLS非対応時の認証禁止を対象とし、認証成功ケースは明示的な非暗号化設定です。実サービス、TLSハンドシェイク・証明書検証、Google／MicrosoftのOAuth認可フローの検証ではありません。
+
+現在のSafe Shell内ではループバックTCP接続が拒否され、通信テストは未検証です（Pythonの最小接続でも`WinError 10013`）。テストはコンパイル済みですが、成功実績として扱わないでください。localhostが設定上許可されていても、この環境では接続できません。起動時の接続確認で早期に失敗させ、各ケースのタイムアウトを避けます。
+
 ### 認証方式の切替に注意
 
-KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。構築後、XOAUTH2を広告しないローカルサーバーへAUTHやトークンを送らないことを回帰テストします。
+KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。XOAUTH2を広告しないローカルサーバーへAUTHやトークンを送らない回帰テストを追加していますが、上記の環境制約により通信検証は未完了です。
 
 ## WindowsのSASLクライアント
 
@@ -135,4 +150,4 @@ MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してく�
 
 KMimeのライブラリソースにLGPL-2.0-or-later、KSMTPのライブラリソースにLGPL-2.1-or-laterとLGPL-2.0-or-laterを確認しています。CMakeのライセンスチェック引数だけで製品ライセンスを判定しないでください。
 
-全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。SASLの単体構築・機構ロードは確認済みですが、KIMAP/KSMTP本体の構築、TLS、実サービス認証、クリーン環境への配布は引き続き検証対象です。
+全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。SASLの単体構築・機構ロードとKIMAP/KSMTP本体の構築は確認済みですが、TLS、実サービス認証、クリーン環境への配布は引き続き検証対象です。

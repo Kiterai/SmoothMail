@@ -44,3 +44,5 @@
 - dumpbin /dependentsでKF6I18n.dllがQt6Cored/intl-8等、KF6Service.dllがQt6Cored/Qt6Xmld/ConfigCore/CoreAddons等を使用することを確認。これらのテストにKIOはリンクしていない。
 - パッチ適用KIO 6.31.0のDebug構築が成功（kio-build.log）。KIOのcompile_commands、ninja -t deps（kio-headers.log）、dumpbin /exports（kio-exports.log）にfaviconscache実装・ヘッダ・クラスエクスポートが含まれないことを確認。対象favicon関数は空文字を返す。原本のgit statusはクリーン。
 - KIOテストを有効にしたCTest全7ターゲット成功。パッチコピー保護のPythonテスト5件も成功。開発prefixにはGPL等のworker/補助実行ファイルがあるので、製品へ一括コピーしない。
+- BuildMailDependencies.cmakeでKIMAP/KSMTP 26.08.3（package 6.8.3）Debug構築成功（build/deps/mail-build.log）。SMOOTHMAIL_TEST_MAILは合成loopback向けの開発用テストで既定OFF。コンパイル成功だが通信は未検証。Safe Shell内では最小Python TCP接続もWinError 10013となり、localhost許可設定でも接続不可。既存7ターゲットは成功、mailtransportは当初90秒timeout。現在はinitでloopback確認し早期失敗する。サンドボックス外実行はしていない。
+- .gitattributesで*.patchをLF固定。KIOパッチのSHA256によるコピーキー・インストール済み通知照合がcheckoutの改行変換で変わらないようにする。

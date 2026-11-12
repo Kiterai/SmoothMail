@@ -13,6 +13,7 @@ option(SMOOTHMAIL_BUILD_MIME "Build the KMime mail parser" ON)
 option(SMOOTHMAIL_TEST_SASL "Test installed SASL client mechanisms" OFF)
 option(SMOOTHMAIL_TEST_KDE_BASE "Test installed KI18n and KService libraries (without KIO)" OFF)
 option(SMOOTHMAIL_TEST_KIO "Test the locally patched KIOCore library" OFF)
+option(SMOOTHMAIL_TEST_MAIL "Test KIMAP/KSMTP against synthetic loopback servers" OFF)
 
 function(smoothmail_target_defaults target)
     if(MSVC)
@@ -111,5 +112,23 @@ if(BUILD_TESTING)
         target_link_libraries(tst_kio PRIVATE Qt6::Test KF6::KIOCore)
         smoothmail_target_defaults(tst_kio)
         add_test(NAME kio COMMAND tst_kio)
+    endif()
+
+    if(SMOOTHMAIL_TEST_MAIL)
+        find_package(ECM 6.31 CONFIG REQUIRED)
+        list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+        find_package(Sasl2 REQUIRED)
+        find_package(KPim6IMAP 6.8.3 CONFIG REQUIRED)
+        find_package(KPim6SMTP 6.8.3 CONFIG REQUIRED)
+        set(SMOOTHMAIL_SASL_PLUGIN_DIR
+            "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install/${CMAKE_BUILD_TYPE}/bin/sasl2"
+            CACHE PATH "SASL mechanisms to test (never a global plugin path)")
+        add_executable(tst_mailtransport tests/tst_mailtransport.cpp tests/mailtestserver.h)
+        target_link_libraries(tst_mailtransport PRIVATE smoothmail_connection_policy Qt6::Test
+            KPim6::IMAP KPim6::SMTP KF6::I18n Sasl2::Sasl2)
+        smoothmail_target_defaults(tst_mailtransport)
+        add_test(NAME mailtransport COMMAND tst_mailtransport)
+        set_tests_properties(mailtransport PROPERTIES TIMEOUT 90
+            ENVIRONMENT "SMOOTHMAIL_TEST_SASL_PATH=${SMOOTHMAIL_SASL_PLUGIN_DIR}")
     endif()
 endif()
