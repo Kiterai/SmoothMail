@@ -51,4 +51,4 @@
 - Qt未導入のWindows環境でのTLS、Cyrus SASLおよびXOAUTH2機構の配布・探索・認証。
 - Google/Microsoftそれぞれのredirect URI登録、認証、更新、失効、秘密情報保存。長いトークンの保存と保存失敗も確認する。
 - 日本語MIME・添付名・フォルダ名、IMAPのUIDVALIDITY/UIDと既読・削除同期、30秒更新時のUI応答性。
-- 指定SDKとMSVCでアプリおよびKIMAP/KSMTP/KMime・必要な推移依存のDebug構築を確認済み。Qt SDK未導入のWindows Sandboxでは合成IMAP/SMTP、TLS証明書検証、SASL/XOAUTH2、模擬OAuthとOS秘密情報保存を検証済み。Googleの実認可・refresh・IMAP/SMTP XOAUTH2認証も成功済み。実メール操作、実Google tokenの永続化、Microsoft実認可、Release配布と全ライセンス監査は未完了。詳細は`docs/dev/implementation-status.md`、`docs/dev/dependencies.md`、`docs/dev/oauth.md`を参照し、実装と実サービス・製品配布の検証完了を区別する。
+- 指定SDKとMSVCでアプリおよびKIMAP/KSMTP/KMime・必要な推移依存のDebug構築を確認済み。Qt SDK未導入のWindows Sandboxでは合成IMAP/SMTP、TLS証明書検証、SASL/XOAUTH2、模擬OAuthとOS秘密情報保存を検証済み。Googleの実認可・refresh・IMAP/SMTP XOAUTH2認証、自己宛メール送受信、日本語MIME、下書き保存/読戻し、専用OSストアへの実token保存と別プロセス復元/再認証も成功済み。通常GUIでの実アカウント追加から再起動までの一連操作、Microsoft実認可、Release配布と全ライセンス監査は未完了。詳細は`docs/dev/implementation-status.md`、`docs/dev/dependencies.md`、`docs/dev/oauth.md`を参照し、実装と実サービス・製品配布の検証完了を区別する。

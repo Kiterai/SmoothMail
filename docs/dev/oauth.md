@@ -38,6 +38,8 @@ smoothmail_google_probe.exe --client-id <Desktop appのclient ID> --email <テ�
 
 実メール操作も検証するときだけ、追加で`--self-mail-test`を指定します。このモードは**指定したGmailアカウント自身への日本語テストメール1通と下書き1件を作成**します。続いてINBOX/下書きフォルダを本体の`MailService::synchronize()`でメモリ内に読み込み、今回だけのUUID付き件名、UTF-8本文、送信元/宛先、Message-ID、UID/UIDVALIDITYを照合します。他のメールの内容も同期対象になりますが、内容や件名一覧はログやファイルに保存しません。送信/APPENDは自動再試行せず、読込みだけ最大6回まで再確認します。第三者への送信や削除は行わず、作成したテストメール・下書きはサーバーに残します。全体上限は10分です。実認証のみの許可とは分けて、メール操作・同期読込みの許可を得てから実行してください。
 
+`--credential-restart-test`は別の明示opt-inモードです。実認可/refresh/認証後、refresh grantを`SmoothMail-live-google-<UUID>`という専用QtKeychainサービスへプロトコル別に2件保存し、同じEXEの新規子プロセスを起動します。子は本体の`AuthenticationBroker`でストアから読込み、実Googleでrefreshしてローテーションを保存し、IMAP/SMTPを再認証します。子終了後、親が両テスト資格情報を削除します。子の引数には公開ID・ファイルパスだけを渡し、tokenを引数/標準入力/ファイルへ渡しません。通常のSmoothMailサービス/既存資格情報には触れず、メール操作もしません。強制終了等で削除できなかった場合は表示されたテスト名前空間を使って手動削除し、必要ならGoogle側でアプリの認可を取り消してください。`--self-mail-test`との同時使用は拒否します。
+
 Google Desktopアプリの登録JSONに`client_secret`が含まれる場合、トークン交換に必要になることがあります。ローカルの`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`に設定して起動してください。チャットやGit管理ファイルには貼り付けません。`invalid_client`等は既知のエラーコードだけを表示し、Googleの生の応答文をログへ出しません。
 
 手動プローブでは`--registration-file <ローカルJSONパス>`も使用できます。Google CloudからダウンロードしたDesktop app用JSONの`installed.client_id`が指定IDと一致することを確認し、`installed.client_secret`をメモリ内でだけ利用します。ファイル本文は出力・コピーしません。登録JSONはリポジトリ外へ保存してください。
@@ -47,6 +49,10 @@ Google Desktopアプリの登録JSONに`client_secret`が含まれる場合、�
 その後、利用者指定のローカルDesktop登録JSONを用いた実試験では、Googleでの認可コード交換・refreshが成功しました。ただしメール認証開始直後にウィンドウなしプローブが終了し、SMTP/IMAPの結果は未確認です。この実行のexit code 0だけをメール認証成功とは扱いません。KJobのQEventLoopLocker解放による自動終了を防ぐ設定と、明示的な最終結果がない終了を失敗とする保護を追加しました。`--self-test-lifecycle`は認証情報・ネットワーク・ブラウザを使わない回帰テストで、CTest対象です。
 
 **最新の再試験では実Google認証に成功しました。** 修正版プローブのログで`AUTHORIZATION_CODE_EXCHANGE_OK`、`REFRESH_OK`、`SMTP_XOAUTH2=OK`、`IMAP_XOAUTH2=OK`の全段階とexit code 0を確認しています（Safe Shell外・利用者の明示許可・ブラウザでの本人認可）。プローブはメール読出し・送信・下書き保存を行わず、tokenを永続化しません。そのため実メール操作や実Google tokenのOS保存・再起動復元の検証完了を意味しません。
+
+**実メール操作の後続試験も成功しました。** 別の明示許可と本人認可の下で`--self-mail-test`を実行し、SMTP自己宛送信・IMAP下書きAPPEND・INBOX日本語読み戻し・下書き日本語読み戻しがすべてOK、exit code 0でした。今回のテストメール1通と下書き1件はサーバーに残しています。外部宛先やメール削除は試していません。
+
+**実Google tokenのOS保存・別プロセス復元も成功しました。** さらに別の明示許可で`--credential-restart-test`を実行し、専用QtKeychain領域への2件の保存、新しい子プロセスの`AuthenticationBroker`によるIMAP/SMTP grant読込み・refresh・保存、両プロトコルの実XOAUTH2再認証を確認しました。最後は`KEYCHAIN_TEST_CLEANUP=OK`、`CREDENTIAL_RESTART_TEST=OK`、exit code 0で、テスト資格情報は削除済みです。これは本体の認証・保存処理を用いた専用プローブであり、通常GUIのアカウント追加/DB設定の保存/ウィンドウを伴う再起動操作を通した試験とは区別します。
 
 ### Googleで403 access_deniedになる場合
 

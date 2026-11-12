@@ -1,6 +1,7 @@
 #include "core/account.h"
 #include "mail/mailservice.h"
 #include "mail/oauthclient.h"
+#include "google_credential_probe.h"
 
 #include <QCommandLineParser>
 #include <QDesktopServices>
@@ -12,6 +13,7 @@
 #include <QTimer>
 #include <QUuid>
 #include <iostream>
+#include <memory>
 
 // Opt-in live probe: uses the actual production OAuthClient and MailService.
 // Default: authentication only. --self-mail-test explicitly enables one
@@ -39,6 +41,10 @@ int main(int argc, char **argv)
     parser.addOption({QStringLiteral("registration-file"), QStringLiteral("Local downloaded Google Desktop client JSON; contents are never printed."), QStringLiteral("path")});
     parser.addOption({QStringLiteral("self-test-lifecycle"), QStringLiteral("Offline lifecycle regression; no browser, credentials or network.")});
     parser.addOption({QStringLiteral("self-mail-test"), QStringLiteral("Send ONE UTF-8 test mail to this same account, append ONE draft, and synchronize INBOX/drafts to verify both. Does not delete mail or print contents.")});
+    parser.addOption({QStringLiteral("credential-restart-test"), QStringLiteral("Temporarily store Google refresh grants in an isolated OS keychain service, restore/refresh/authenticate in a new child process, then remove test entries. No mail operations.")});
+    parser.addOption({QStringLiteral("credential-child"), QStringLiteral("Internal child of the credential restart test; no browser or mail operations.")});
+    parser.addOption({QStringLiteral("account-id"), QStringLiteral("Internal isolated credential test account ID."), QStringLiteral("id")});
+    parser.addOption({QStringLiteral("keychain-service"), QStringLiteral("Internal isolated credential test service."), QStringLiteral("service")});
     parser.process(app);
     if (parser.isSet(QStringLiteral("self-test-lifecycle"))) {
         bool completed = false;
@@ -52,6 +58,14 @@ int main(int argc, char **argv)
     }
     const auto clientId = parser.value(QStringLiteral("client-id"));
     const auto email = parser.value(QStringLiteral("email"));
+    const bool credentialTest = parser.isSet(QStringLiteral("credential-restart-test"));
+    const bool credentialChild = parser.isSet(QStringLiteral("credential-child"));
+    if ((parser.isSet(QStringLiteral("self-mail-test")) && (credentialTest || credentialChild))
+        || (credentialTest && credentialChild)
+        || ((credentialTest || credentialChild) && !parser.isSet(QStringLiteral("registration-file")))) {
+        std::cerr << "SETUP_REQUIRED: choose only one live test mode; credential tests require a local registration JSON.\n";
+        return 2;
+    }
     if (!clientId.endsWith(QStringLiteral(".apps.googleusercontent.com")) || !email.endsWith(QStringLiteral("@gmail.com"))) {
         std::cerr << "SETUP_REQUIRED: specify --client-id and --email for the Google test account.\n";
         return 2;
@@ -70,12 +84,26 @@ int main(int argc, char **argv)
         }
         secret = installed.value("client_secret").toString();
     }
+    const auto makeAccount = [&](const QString &id) -> smoothmail::Account {
+        return {id, email,
+            {QStringLiteral("smtp.gmail.com"), 465, email, smoothmail::AuthenticationMode::OAuth2,
+             smoothmail::EncryptionMode::ImplicitTls, QStringLiteral("google"), clientId},
+            {QStringLiteral("imap.gmail.com"), 993, email, smoothmail::AuthenticationMode::OAuth2,
+             smoothmail::EncryptionMode::ImplicitTls, QStringLiteral("google"), clientId}};
+    };
+    if (credentialChild) {
+        return runGoogleCredentialChild(app, makeAccount(parser.value(QStringLiteral("account-id"))),
+            parser.value(QStringLiteral("keychain-service")), qEnvironmentVariable("SMOOTHMAIL_SASL_PATH",
+                QCoreApplication::applicationDirPath() + QStringLiteral("/sasl2")), secret);
+    }
     smoothmail::OAuthClient authorization, refresh;
     smoothmail::MailService mail(qEnvironmentVariable("SMOOTHMAIL_SASL_PATH",
         QCoreApplication::applicationDirPath() + QStringLiteral("/sasl2")));
     const bool selfMailTest = parser.isSet(QStringLiteral("self-mail-test"));
     smoothmail::Account account;
     QString accessToken;
+    QString latestRefreshToken;
+    std::unique_ptr<GoogleCredentialRestartProbe> credentialRestart;
     smoothmail::ComposeData selfMessage, draftMessage;
     QString draftFolder;
     enum class Stage { Authentication, Send, AppendDraft, ReadInbox, ReadDraft };
@@ -106,12 +134,9 @@ int main(int argc, char **argv)
     QObject::connect(&refresh, &smoothmail::OAuthClient::tokensReady, &app,
         [&](const smoothmail::OAuthTokens &tokens) {
             std::cout << "REFRESH_OK\nMAIL_AUTH_CHECK_START" << std::endl;
-            account = {QUuid::createUuid().toString(QUuid::WithoutBraces), email,
-                {QStringLiteral("smtp.gmail.com"), 465, email, smoothmail::AuthenticationMode::OAuth2,
-                 smoothmail::EncryptionMode::ImplicitTls, QStringLiteral("google"), clientId},
-                {QStringLiteral("imap.gmail.com"), 993, email, smoothmail::AuthenticationMode::OAuth2,
-                 smoothmail::EncryptionMode::ImplicitTls, QStringLiteral("google"), clientId}};
+            account = makeAccount(QUuid::createUuid().toString(QUuid::WithoutBraces));
             if (selfMailTest) accessToken = tokens.accessToken;
+            if (credentialTest) latestRefreshToken = tokens.refreshToken;
             mail.test(account, tokens.accessToken, tokens.accessToken);
         });
     QObject::connect(&mail, &smoothmail::MailService::finished, &app,
@@ -120,6 +145,13 @@ int main(int argc, char **argv)
             std::cout << "SMTP_XOAUTH2=" << (smtpError.isEmpty() ? "OK" : "FAILED")
                       << "\nIMAP_XOAUTH2=" << (imapError.isEmpty() ? "OK" : "FAILED") << std::endl;
             if (!smtpError.isEmpty() || !imapError.isEmpty()) { finish(1); return; }
+            if (credentialTest) {
+                credentialRestart = std::make_unique<GoogleCredentialRestartProbe>(account,
+                    parser.value(QStringLiteral("registration-file")), [&](bool ok) { finish(ok ? 0 : 1); });
+                credentialRestart->start(latestRefreshToken);
+                latestRefreshToken.clear();
+                return;
+            }
             if (!selfMailTest) { finish(0); return; }
             const auto runId = QUuid::createUuid().toString(QUuid::WithoutBraces);
             std::cout << "SELF_MAIL_TEST_RUN_ID=" << runId.toLatin1().constData() << std::endl;
@@ -198,12 +230,15 @@ int main(int argc, char **argv)
                 finish(0);
             }
         });
-    QTimer::singleShot((selfMailTest ? 10 : 7) * 60 * 1000, &app, [&] {
+    QTimer::singleShot((selfMailTest || credentialTest ? 10 : 7) * 60 * 1000, &app, [&] {
         std::cout << "PROBE_TIMEOUT" << std::endl;
+        if (credentialRestart && credentialRestart->started()) { credentialRestart->cancel(); return; }
         finish(1);
     });
     QTimer::singleShot(0, &app, [&] {
-        std::cout << (selfMailTest
+        std::cout << (credentialTest
+            ? "Starting Google credential restart test: temporary isolated OS credential entries, child-process restore/refresh/authentication, then cleanup. No mail operations."
+            : selfMailTest
             ? "Starting live self-mail test: ONE self-addressed send, ONE draft append, INBOX/drafts read in memory. No content logging, token persistence or deletion."
             : "Starting live OAuth probe. No mail will be read or sent.") << std::endl;
         authorization.authorize(QStringLiteral("google"), clientId, email, secret);

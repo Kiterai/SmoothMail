@@ -102,8 +102,9 @@ smoothmail_target_defaults(smoothmail)
 
 option(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE "Build opt-in live Google OAuth/authentication probe (never a CTest test)" OFF)
 if(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE)
-    add_executable(smoothmail_google_probe tests/manual/google_oauth_probe.cpp)
-    target_link_libraries(smoothmail_google_probe PRIVATE smoothmail_transport smoothmail_oauth Qt6::Gui)
+    add_executable(smoothmail_google_probe tests/manual/google_oauth_probe.cpp
+        tests/manual/google_credential_probe.cpp tests/manual/google_credential_probe.h)
+    target_link_libraries(smoothmail_google_probe PRIVATE smoothmail_transport smoothmail_oauth smoothmail_auth Qt6::Gui)
     smoothmail_target_defaults(smoothmail_google_probe)
 endif()
 
