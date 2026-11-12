@@ -8,7 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 # Qt is supplied by the developer. Do not fetch or install a second SDK.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Sql)
+find_package(Qt6Keychain CONFIG REQUIRED)
 option(SMOOTHMAIL_BUILD_MIME "Build the KMime mail parser" ON)
 option(SMOOTHMAIL_TEST_SASL "Test installed SASL client mechanisms" OFF)
 option(SMOOTHMAIL_TEST_KDE_BASE "Test installed KI18n and KService libraries (without KIO)" OFF)
@@ -27,6 +28,14 @@ add_library(smoothmail_connection_policy STATIC src/mail/connectionpolicy.cpp sr
 target_include_directories(smoothmail_connection_policy PUBLIC src)
 target_link_libraries(smoothmail_connection_policy PUBLIC Qt6::Core)
 smoothmail_target_defaults(smoothmail_connection_policy)
+
+add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
+    src/storage/accountrepository.cpp src/storage/accountrepository.h
+    src/storage/credentialstore.cpp src/storage/credentialstore.h)
+target_include_directories(smoothmail_storage PUBLIC src)
+target_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy Qt6::Core
+    PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain)
+smoothmail_target_defaults(smoothmail_storage)
 
 if(SMOOTHMAIL_BUILD_MIME)
     find_package(KF6Mime 6.31 CONFIG REQUIRED)
@@ -56,6 +65,12 @@ smoothmail_target_defaults(smoothmail)
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    foreach(name IN ITEMS accountrepository credentialstore)
+        add_executable(tst_${name} tests/tst_${name}.cpp)
+        target_link_libraries(tst_${name} PRIVATE smoothmail_storage Qt6::Test)
+        smoothmail_target_defaults(tst_${name})
+        add_test(NAME ${name} COMMAND tst_${name})
+    endforeach()
     add_executable(tst_connectionpolicy tests/tst_connectionpolicy.cpp)
     target_link_libraries(tst_connectionpolicy PRIVATE smoothmail_connection_policy Qt6::Test)
     smoothmail_target_defaults(tst_connectionpolicy)

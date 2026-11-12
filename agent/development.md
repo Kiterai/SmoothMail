@@ -19,6 +19,7 @@
 ## 次の作業
 
 - QtKeychain 0.15.0（ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7）をBuildKeychainDependencies.cmakeでDebug構築済み（keychain-build.log）。Qt6Keychain::Qt6Keychain。COPYING/keychain.hをライセンス情報として配置。秘密情報jobにはsetInsecureFallback(false)必須。実OS資格情報のテストはguestのみで行う。
+- Account/ServerSettingsは秘密情報を含まない値型。AccountRepositoryはQSQLITEを専用QThreadで作成/使用/破棄し、設定の検証/追加/再読込/並び順の原子的更新を提供。schema version>1は拒否、重複IDは上書きしない。CredentialStoreはQtKeychainの非同期read/write/remove、平文fallback=false、エラー文字列が空でも失敗扱い。ホストCTest9ターゲット成功（credentialstoreはopt-inなしでskip）。Windows SandboxでSMOOTHMAIL_TEST_KEYCHAIN=1の資格情報テスト4 passed（日本語/8192文字token/read/delete）とrepository5 passed。ログsandbox-mail-output/{credentialstore,accountrepository}-results.txt。ホストのOS資格情報は変更していない。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。
