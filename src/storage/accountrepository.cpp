@@ -1,5 +1,6 @@
 #include "accountrepository.h"
 #include "mail/mimeparser.h"
+#include "downloadfile.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -52,6 +53,7 @@ struct AccountRepository::State
                  QStringLiteral("CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, position INTEGER NOT NULL, config TEXT NOT NULL)"),
                  QStringLiteral("CREATE TABLE IF NOT EXISTS cache_folders (account TEXT NOT NULL,name TEXT NOT NULL,separator TEXT,flags BLOB,unread INTEGER NOT NULL,PRIMARY KEY(account,name))"),
                  QStringLiteral("CREATE TABLE IF NOT EXISTS cache_messages (account TEXT NOT NULL,folder TEXT NOT NULL,uidvalidity INTEGER NOT NULL,uid INTEGER NOT NULL,flags INTEGER NOT NULL,raw BLOB NOT NULL,PRIMARY KEY(account,folder,uidvalidity,uid))"),
+                 QStringLiteral("CREATE TABLE IF NOT EXISTS downloads (id TEXT PRIMARY KEY,account TEXT,folder TEXT,uidvalidity INTEGER,uid INTEGER,subject TEXT,path TEXT,size INTEGER,saved_at TEXT)"),
                  QStringLiteral("PRAGMA user_version=1")}) {
             if (!query.exec(sql)) {
                 error = query.lastError().text();
@@ -79,6 +81,8 @@ AccountRepository::AccountRepository(const QString &path, QObject *parent)
     qRegisterMetaType<QList<Account>>();
     qRegisterMetaType<QList<MailFolder>>();
     qRegisterMetaType<QList<MailRecord>>();
+    qRegisterMetaType<DownloadEntry>();
+    qRegisterMetaType<QList<DownloadEntry>>();
     m_worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
     m_thread.start();
@@ -267,6 +271,44 @@ void AccountRepository::loadCache(const QString &id)
             }
             emit cacheLoaded(id, folder.name, folders, messages);
         }
+    }, Qt::QueuedConnection);
+}
+void AccountRepository::saveAttachment(const MailRecord &message, const QString &partId, const QString &directory)
+{
+    QMetaObject::invokeMethod(m_worker, [this, message, partId, directory] {
+        if (!m_state->error.isEmpty()) { emit attachmentSaved({}, m_state->error); return; }
+        const auto extracted = MimeParser::extractAttachment(message.document.rawSource, partId);
+        if (!extracted.ok()) { emit attachmentSaved({}, extracted.error); return; }
+        emit attachmentStarted(extracted.fileName.isEmpty() ? QStringLiteral("添付ファイル") : extracted.fileName);
+        const auto file = saveDownloadFile(directory, extracted.fileName, extracted.data);
+        if (!file.error.isEmpty()) { emit attachmentSaved({}, file.error); return; }
+        const DownloadEntry entry{QUuid::createUuid().toString(QUuid::WithoutBraces), message.accountId, message.folder,
+            message.uidValidity, message.uid, message.document.subject, file.path, extracted.data.size(), QDateTime::currentDateTimeUtc()};
+        QSqlQuery query(m_state->db);
+        query.prepare(QStringLiteral("INSERT INTO downloads VALUES(?,?,?,?,?,?,?,?,?)"));
+        for (const auto &value : QVariantList{entry.id, entry.accountId, entry.folder, entry.uidValidity, entry.uid,
+                 entry.subject, entry.path, entry.size, entry.savedAt.toString(Qt::ISODateWithMs)}) query.addBindValue(value);
+        if (!query.exec()) {
+            emit attachmentSaved(entry, QStringLiteral("ファイルは保存しましたが履歴を保存できません: ") + query.lastError().text());
+            return;
+        }
+        emit attachmentSaved(entry, {});
+    }, Qt::QueuedConnection);
+}
+
+void AccountRepository::loadDownloadHistory()
+{
+    QMetaObject::invokeMethod(m_worker, [this] {
+        if (!m_state->error.isEmpty()) { emit failed(QStringLiteral("history"), m_state->error); return; }
+        QSqlQuery query(m_state->db);
+        if (!query.exec(QStringLiteral("SELECT id,account,folder,uidvalidity,uid,subject,path,size,saved_at FROM downloads ORDER BY saved_at DESC,id"))) {
+            emit failed(QStringLiteral("history"), query.lastError().text()); return;
+        }
+        QList<DownloadEntry> entries;
+        while (query.next()) entries.append({query.value(0).toString(), query.value(1).toString(), query.value(2).toString(),
+            query.value(3).toLongLong(), query.value(4).toLongLong(), query.value(5).toString(), query.value(6).toString(),
+            query.value(7).toLongLong(), QDateTime::fromString(query.value(8).toString(), Qt::ISODateWithMs)});
+        emit historyLoaded(entries);
     }, Qt::QueuedConnection);
 }
 } // namespace smoothmail

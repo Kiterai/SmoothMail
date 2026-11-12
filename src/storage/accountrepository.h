@@ -2,6 +2,7 @@
 
 #include "core/account.h"
 #include "core/mailrecord.h"
+#include "core/downloadentry.h"
 #include <QObject>
 #include <QThread>
 
@@ -20,6 +21,8 @@ public:
     void loadCache(const QString &accountId);
     void saveSnapshot(const QString &accountId, const QString &folder, const QList<MailFolder> &folders,
                       const QList<MailRecord> &messages);
+    void saveAttachment(const MailRecord &message, const QString &partId, const QString &directory);
+    void loadDownloadHistory();
 
 signals:
     void loaded(const QList<smoothmail::Account> &accounts);
@@ -29,6 +32,9 @@ signals:
                      const QList<smoothmail::MailRecord> &messages);
     void snapshotSaved(const QString &accountId, const QString &folder, const QList<smoothmail::MailFolder> &folders,
                        const QList<smoothmail::MailRecord> &messages);
+    void attachmentSaved(const smoothmail::DownloadEntry &entry, const QString &error);
+    void attachmentStarted(const QString &name);
+    void historyLoaded(const QList<smoothmail::DownloadEntry> &entries);
 
 private:
     struct State;

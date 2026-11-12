@@ -2,6 +2,7 @@
 #include "ui/mainwindow.h"
 #include "ui/accountdialog.h"
 #include "ui/composedialog.h"
+#include "ui/downloadhistorydialog.h"
 #include "storage/accountregistrar.h"
 #include "mail/mailservice.h"
 #include <QStatusBar>
@@ -10,6 +11,7 @@
 #include <QPlainTextEdit>
 #include <QTextDocument>
 #include <QMessageBox>
+#include <QStandardPaths>
 
 namespace smoothmail {
 ApplicationController::ApplicationController(MainWindow *window, const QString &path, const QString &plugins)
@@ -18,6 +20,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
       m_mail(new MailService(plugins, this))
 {
     window->enableAccountManagement(true);
+    window->enableHistory(true);
     connect(m_repository, &AccountRepository::loaded, this, [this](const QList<Account> &accounts) {
         QStringList existing;
         for (const auto &account : m_accounts) existing.append(account.id);
@@ -39,10 +42,11 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_current = {}; processNext();
         }
         if (operation.startsWith(QStringLiteral("cache:"))) m_window->statusBar()->showMessage(QStringLiteral("保存済みメールを読み込めません: ") + error);
-        if (operation == QStringLiteral("reorder")) {
-            auto *notice = new QMessageBox(QMessageBox::Warning, QStringLiteral("並び順を保存できません"), error, QMessageBox::Ok, m_window);
+        if (operation == QStringLiteral("reorder") || operation == QStringLiteral("history")) {
+            auto *notice = new QMessageBox(QMessageBox::Warning,
+                operation == QStringLiteral("reorder") ? QStringLiteral("並び順を保存できません") : QStringLiteral("履歴を読み込めません"), error, QMessageBox::Ok, m_window);
             notice->setTextFormat(Qt::PlainText); notice->setAttribute(Qt::WA_DeleteOnClose); notice->open();
-            m_repository->reload();
+            if (operation == QStringLiteral("reorder")) m_repository->reload();
         }
     });
     connect(m_repository, &AccountRepository::cacheLoaded, this,
@@ -56,6 +60,33 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_current = {}; processNext();
         });
     connect(window, &MainWindow::addAccountRequested, this, &ApplicationController::addAccount);
+    connect(window, &MainWindow::downloadRequested, this, [this](const MailRecord &message, const QString &partId) {
+        QString name = QStringLiteral("添付ファイル");
+        for (const auto &item : message.document.attachments) if (item.partId == partId && !item.fileName.isEmpty()) name = item.fileName;
+        m_window->statusBar()->showMessage(name + QStringLiteral(" をダウンロード中..."));
+        m_repository->saveAttachment(message, partId, QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
+    });
+    connect(m_repository, &AccountRepository::attachmentSaved, this, [this](const DownloadEntry &entry, const QString &error) {
+        m_window->statusBar()->showMessage(error.isEmpty() ? entry.path + QStringLiteral(" に保存しました") : error + (entry.path.isEmpty() ? QString{} : u'\n' + entry.path));
+        if (m_history) m_repository->loadDownloadHistory();
+    });
+    connect(m_repository, &AccountRepository::attachmentStarted, this, [this](const QString &name) {
+        m_window->statusBar()->showMessage(name + QStringLiteral(" をダウンロード中..."));
+    });
+    connect(window, &MainWindow::historyRequested, this, [this] {
+        if (!m_history) {
+            m_history = new DownloadHistoryDialog(m_window); m_history->setAttribute(Qt::WA_DeleteOnClose);
+            connect(m_history, &DownloadHistoryDialog::sourceRequested, this, [this](const DownloadEntry &entry) {
+                bool exists = false;
+                for (const auto &account : m_accounts) if (account.id == entry.accountId) exists = true;
+                if (!exists) { m_window->statusBar()->showMessage(QStringLiteral("元アカウントが見つかりません。")); return; }
+                m_window->revealMessage(entry.accountId, entry.folder, entry.uidValidity, entry.uid);
+                m_window->show(); m_window->raise();
+            });
+        }
+        m_history->show(); m_history->raise(); m_repository->loadDownloadHistory();
+    });
+    connect(m_repository, &AccountRepository::historyLoaded, this, [this](const QList<DownloadEntry> &entries) { if (m_history) m_history->setEntries(entries); });
     connect(window, &MainWindow::composeRequested, this, &ApplicationController::compose);
     connect(window, &MainWindow::accountOrderChanged, m_repository, &AccountRepository::reorder);
     connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *focus) {

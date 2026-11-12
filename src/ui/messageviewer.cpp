@@ -7,12 +7,15 @@
 #include <QPlainTextEdit>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QListWidget>
+#include <QStyle>
 
 namespace smoothmail {
 
 MessageViewer::MessageViewer(QWidget *parent)
     : QWidget(parent)
     , m_summary(new QLabel(this))
+    , m_attachments(new QListWidget(this))
     , m_headerToggle(new QToolButton(this))
     , m_headers(new QPlainTextEdit(this))
     , m_body(new SafeBodyView(this))
@@ -23,6 +26,15 @@ MessageViewer::MessageViewer(QWidget *parent)
     m_summary->setWordWrap(true);
     m_summary->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(m_summary);
+    m_attachments->setObjectName(QStringLiteral("messageAttachments"));
+    m_attachments->setViewMode(QListView::IconMode);
+    m_attachments->setFlow(QListView::LeftToRight);
+    m_attachments->setMaximumHeight(110);
+    m_attachments->setWrapping(true);
+    layout->addWidget(m_attachments);
+    connect(m_attachments, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        emit attachmentRequested(item->data(Qt::UserRole).toString());
+    });
 
     auto *separator = new QFrame(this);
     separator->setFrameShape(QFrame::HLine);
@@ -54,6 +66,14 @@ MessageViewer::MessageViewer(QWidget *parent)
 
 void MessageViewer::displayMessage(const MessageDocument &message)
 {
+    m_attachments->clear();
+    for (const auto &attachment : message.attachments) {
+        auto *item = new QListWidgetItem(style()->standardIcon(QStyle::SP_FileIcon),
+            attachment.fileName.isEmpty() ? QStringLiteral("添付ファイル") : attachment.fileName, m_attachments);
+        item->setData(Qt::UserRole, attachment.partId);
+        item->setToolTip(QStringLiteral("Downloadsへ保存"));
+    }
+    m_attachments->setVisible(!message.attachments.isEmpty());
     m_summary->setText(QStringLiteral("タイトル: %1\n差出人名: %2 差出人アドレス: %3\n宛先: %4")
                            .arg(message.subject, message.senderName, message.senderAddress,
                                 message.recipients.join(QStringLiteral(", "))));
@@ -73,6 +93,7 @@ void MessageViewer::displayMessage(const MessageDocument &message)
 void MessageViewer::clear()
 {
     m_summary->clear();
+    m_attachments->clear(); m_attachments->hide();
     m_headerToggle->setChecked(false);
     m_headerToggle->setArrowType(Qt::RightArrow);
     m_headerToggle->setEnabled(false);

@@ -10,6 +10,7 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QtTest>
+#include <QListWidget>
 
 namespace {
 
@@ -178,6 +179,23 @@ private slots:
         QVERIFY(headers->toPlainText().isEmpty());
         QVERIFY(summary->text().isEmpty());
         QCOMPARE(body->toPlainText(), QStringLiteral("表示するメールはありません。"));
+    }
+    void attachmentsEmitOnlyPartIdentifiers()
+    {
+        smoothmail::MessageViewer viewer;
+        smoothmail::MessageDocument document;
+        document.attachments.append({QStringLiteral("1.2"), QStringLiteral("<not-html>.txt"), QStringLiteral("text/plain")});
+        QSignalSpy requested(&viewer, &smoothmail::MessageViewer::attachmentRequested);
+        viewer.displayMessage(document);
+        auto *list = viewer.findChild<QListWidget *>(QStringLiteral("messageAttachments"));
+        QCOMPARE(list->count(), 1);
+        QCOMPARE(list->item(0)->text(), QStringLiteral("<not-html>.txt"));
+        list->itemClicked(list->item(0));
+        QCOMPARE(requested.size(), 1);
+        QCOMPARE(requested.first().first().toString(), QStringLiteral("1.2"));
+        viewer.clear();
+        QCOMPARE(list->count(), 0);
+        QVERIFY(list->isHidden());
     }
 };
 

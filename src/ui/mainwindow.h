@@ -31,6 +31,8 @@ public:
     QString selectedAccountId() const { return m_accountId; }
     std::optional<MailRecord> selectedMessage() const;
     void setEditingState(bool undoAvailable, bool redoAvailable);
+    void enableHistory(bool enabled);
+    void revealMessage(const QString &accountId, const QString &folder, qint64 uidValidity, qint64 uid);
 signals:
     void addAccountRequested();
     void refreshAllRequested();
@@ -38,6 +40,8 @@ signals:
     void composeRequested(bool reply);
     void undoRedoRequested(bool redo);
     void accountOrderChanged(const QStringList &accountIds);
+    void historyRequested();
+    void downloadRequested(const smoothmail::MailRecord &message, const QString &partId);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -65,6 +69,7 @@ private:
     bool m_rebuilding = false;
     QLabel *m_lastUpdated = nullptr;
     QDateTime m_lastSuccess;
+    qint64 m_revealUid = 0, m_revealValidity = 0;
     bool m_exiting = false;
 };
 

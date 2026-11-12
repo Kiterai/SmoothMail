@@ -8,6 +8,7 @@
 class QLabel;
 class QPlainTextEdit;
 class QToolButton;
+class QListWidget;
 
 namespace smoothmail {
 
@@ -24,9 +25,11 @@ public:
 
 signals:
     void externalLinkRequested(const QUrl &url);
+    void attachmentRequested(const QString &partId);
 
 private:
     QLabel *m_summary;
+    QListWidget *m_attachments;
     QToolButton *m_headerToggle;
     QPlainTextEdit *m_headers;
     SafeBodyView *m_body;

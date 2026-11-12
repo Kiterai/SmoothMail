@@ -21,3 +21,4 @@ struct MailRecord {
 }
 Q_DECLARE_METATYPE(QList<smoothmail::MailFolder>)
 Q_DECLARE_METATYPE(QList<smoothmail::MailRecord>)
+Q_DECLARE_METATYPE(smoothmail::MailRecord)

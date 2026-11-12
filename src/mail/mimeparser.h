@@ -11,6 +11,12 @@ struct MessageParseResult
 
     [[nodiscard]] bool ok() const { return error.isEmpty(); }
 };
+struct AttachmentResult {
+    QByteArray data;
+    QString fileName;
+    QString error;
+    bool ok() const { return error.isEmpty(); }
+};
 
 // Synchronous value adapter: invoke on a mail worker, not on the GUI thread.
 // No KMime object, transport session or credential escapes into the UI model.
@@ -22,6 +28,7 @@ public:
     static constexpr int MaxPartDepth = 32;
 
     [[nodiscard]] static MessageParseResult parse(const QByteArray &rawMessage);
+    [[nodiscard]] static AttachmentResult extractAttachment(const QByteArray &rawMessage, const QString &partId);
 };
 
 } // namespace smoothmail

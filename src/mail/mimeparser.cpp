@@ -107,4 +107,34 @@ MessageParseResult MimeParser::parse(const QByteArray &rawMessage)
     return {std::move(document), {}};
 }
 
+AttachmentResult MimeParser::extractAttachment(const QByteArray &raw, const QString &id)
+{
+    const auto parsed = parse(raw);
+    if (!parsed.ok()) return {{}, {}, parsed.error};
+    QString name;
+    bool attachment = false;
+    for (const auto &item : parsed.message.attachments) {
+        if (item.partId == id) { attachment = true; name = item.fileName; break; }
+    }
+    if (!attachment) return {{}, {}, QStringLiteral("添付ファイルが見つかりません。")};
+    KMime::Message message;
+    message.setContent(KMime::CRLFtoLF(raw)); message.parse();
+    const KMime::Content *part = &message;
+    const auto components = id.split(u'.');
+    if (components.isEmpty() || components.first() != QStringLiteral("1")) return {{}, {}, QStringLiteral("添付識別子が不正です。")};
+    for (qsizetype i = 1; i < components.size(); ++i) {
+        bool ok = false;
+        const auto index = components.at(i).toInt(&ok);
+        const auto children = part->contents();
+        if (!ok || index < 1 || index > int(children.size()) || QString::number(index) != components.at(i)) {
+            return {{}, {}, QStringLiteral("添付識別子が不正です。")};
+        }
+        part = children[size_t(index - 1)];
+    }
+    const auto encapsulated = part->bodyIsMessage() ? part->bodyAsMessage() : nullptr;
+    const auto data = encapsulated ? encapsulated->encodedContent(KMime::NewlineType::CRLF) : part->decodedBody();
+    if (data.size() > MaxRawBytes) return {{}, {}, QStringLiteral("添付データがサイズ上限を超えています。")};
+    return {data, name, {}};
+}
+
 } // namespace smoothmail

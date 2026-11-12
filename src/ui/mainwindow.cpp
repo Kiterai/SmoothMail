@@ -106,7 +106,8 @@ void MainWindow::createMenus()
             this, [this] { emit composeRequested(true); });
 
     auto *tools = menuBar()->addMenu(QStringLiteral("ツール"));
-    pendingAction(tools, QStringLiteral("ダウンロード履歴"), "downloadHistoryAction");
+    connect(pendingAction(tools, QStringLiteral("ダウンロード履歴"), "downloadHistoryAction"), &QAction::triggered,
+        this, &MainWindow::historyRequested);
     auto *settings = menuBar()->addMenu(QStringLiteral("設定"));
     auto *addAccount = pendingAction(settings, QStringLiteral("アカウントの追加"), "addAccountAction");
     connect(addAccount, &QAction::triggered, this, &MainWindow::addAccountRequested);
@@ -134,6 +135,7 @@ void MainWindow::createPanes()
         if (id.isEmpty()) return;
         m_accountId = id;
         m_folder = name;
+        m_revealUid = 0; m_revealValidity = 0;
         findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!name.isEmpty());
         rebuildMessages();
         emit refreshRequested(id, name);
@@ -169,6 +171,10 @@ void MainWindow::createPanes()
     viewer->setObjectName(QStringLiteral("messageViewer"));
     connect(viewer, &MessageViewer::externalLinkRequested, this, [](const QUrl &url) {
         QDesktopServices::openUrl(url);
+    });
+    connect(viewer, &MessageViewer::attachmentRequested, this, [this](const QString &partId) {
+        const auto message = selectedMessage();
+        if (message) emit downloadRequested(*message, partId);
     });
     connect(messages->selectionModel(), &QItemSelectionModel::currentChanged, this, [this, viewer](const QModelIndex &index) {
         const int record = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
@@ -225,6 +231,11 @@ void MainWindow::applySnapshot(const QString &id, const QString &folder, const Q
     if (remoteUpdate) m_lastSuccess = QDateTime::currentDateTime();
     rebuildFolders();
     if (visible) rebuildMessages();
+    if (visible && remoteUpdate && m_revealUid > 0) {
+        m_revealUid = 0;
+        statusBar()->showMessage(QStringLiteral("元メッセージが見つからないか、UIDVALIDITYが変更されています。"));
+        return;
+    }
     statusBar()->showMessage(remoteUpdate ? QStringLiteral("更新しました。") : QStringLiteral("保存済みメールを表示しています。"));
 }
 
@@ -349,10 +360,12 @@ void MainWindow::rebuildMessages()
         else m_messageModel->appendRow(rows.at(i));
     }
     m_messageModel->sort(6, Qt::DescendingOrder);
+    if (m_revealUid > 0) { previousUid = m_revealUid; previousValidity = m_revealValidity; previousAccount = m_accountId; previousFolder = m_folder; }
     for (qsizetype i = 0; i < m_visibleMessages.size(); ++i) {
         if (m_visibleMessages.at(i).uid == previousUid && m_visibleMessages.at(i).uidValidity == previousValidity
             && m_visibleMessages.at(i).accountId == previousAccount && m_visibleMessages.at(i).folder == previousFolder) {
             m_messageView->setCurrentIndex(rows.at(i).first()->index());
+            m_revealUid = 0;
             break;
         }
     }
@@ -363,6 +376,18 @@ void MainWindow::setEditingState(bool undoAvailable, bool redoAvailable)
 {
     findChild<QAction *>(QStringLiteral("undoAction"))->setEnabled(undoAvailable);
     findChild<QAction *>(QStringLiteral("redoAction"))->setEnabled(redoAvailable);
+}
+
+void MainWindow::enableHistory(bool enabled)
+{
+    findChild<QAction *>(QStringLiteral("downloadHistoryAction"))->setEnabled(enabled);
+}
+
+void MainWindow::revealMessage(const QString &id, const QString &folder, qint64 validity, qint64 uid)
+{
+    m_accountId = id; m_folder = folder; m_revealUid = uid; m_revealValidity = validity;
+    rebuildFolders(); rebuildMessages();
+    emit refreshRequested(id, folder);
 }
 
 void MainWindow::createTray()

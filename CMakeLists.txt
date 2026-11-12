@@ -44,6 +44,7 @@ add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
     src/storage/accountrepository.cpp src/storage/accountrepository.h
     src/storage/accountregistrar.cpp src/storage/accountregistrar.h
     src/storage/credentialstore.cpp src/storage/credentialstore.h)
+target_sources(smoothmail_storage PRIVATE src/storage/downloadfile.cpp src/storage/downloadfile.h)
 target_include_directories(smoothmail_storage PUBLIC src)
 target_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy Qt6::Core
     PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain smoothmail_mime)
@@ -69,6 +70,7 @@ if(SMOOTHMAIL_BUILD_MIME)
 endif()
 
 add_library(smoothmail_ui STATIC
+    src/ui/downloadhistorydialog.cpp src/ui/downloadhistorydialog.h
     src/ui/foldermodel.cpp src/ui/foldermodel.h
     src/ui/composedialog.cpp src/ui/composedialog.h
     src/ui/accountdialog.cpp src/ui/accountdialog.h

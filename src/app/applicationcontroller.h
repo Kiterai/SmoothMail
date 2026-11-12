@@ -13,6 +13,7 @@ class AccountRegistrar;
 class MailService;
 class AccountDialog;
 class ComposeDialog;
+class DownloadHistoryDialog;
 class ApplicationController final : public QObject
 {
     Q_OBJECT
@@ -28,6 +29,7 @@ private:
     QPointer<MainWindow> m_window;
     QPointer<AccountDialog> m_dialog;
     QPointer<ComposeDialog> m_compose;
+    QPointer<DownloadHistoryDialog> m_history;
     QPointer<QWidget> m_editor;
     bool m_submissionWaiting = false;
     AccountRepository *m_repository;

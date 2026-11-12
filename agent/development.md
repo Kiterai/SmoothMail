@@ -32,6 +32,8 @@
 - ComposeDialog/SMTP SendJob/IMAP AppendJobを接続済み。senderは選択アカウント固定、失敗時は入力保持、送信自動再試行なし。\DraftsのLIST flag優先、存在確認済みDrafts名をfallbackに使い、特定できなければ保存拒否（INBOXへ代用しない）。Sandbox connectiontester13 passed（送信BCC envelopeのみ/下書きBCC保持/下書きfolderなし拒否）。ホストCTest12ターゲット成功。
 - 前記sync timeoutの原因は完了signalのworker直接emitとm_busy解除のGUIqueued slotとのrace。QSignalSpy/即時observerが次の操作を開始するとbusyで落としていた。MailServiceの全完了通知を所有スレッドへ戻し、busy=falseを先に設定してからemitするよう修正。連続sync/send/draftテストで再現し修正後全成功。今後signal通知時には次操作を開始可能な状態を保証する。
 - FolderModelはトップレベルアカウントだけを並び替える専用MIME drag/dropを実装。QTreeViewによる二重source削除を避けるためdrag protocolはCopyAction、model内で移動する。並び順をrepository transactionへ接続し、失敗時は通知して再読込。mainwindow testでroot順/子へのdrop拒否/行数維持を確認。編集メニューはComposeDialogの最後の編集可能な入力欄へundo/redoを転送し、readonly/送信中/閉じた画面では無効。ホストCTest12ターゲット成功。
+- 添付カードからDownloadsへ保存しDB履歴に記録する処理をrepository workerに追加。MimeParserで添付partだけを検証してdecodedBody（message/rfc822はbodyAsMessage encodedContent）を抽出。保存名の制御/format文字・パス区切り・ADS・Windows予約device名を処理、NewOnlyで原子的に既存ファイルを非上書き。同名は連番。保存失敗は履歴なし、履歴失敗後は保存済みpathとエラーを報告。
+- DownloadHistoryDialogはsubject/date/absolutePath/SI bytesと右クリックの元メール/保存先を実装。source jumpはaccount/folder/UIDVALIDITY/UID照合、見つからなければ別メールを開かず状態表示。添付保存/ファイル名逸脱/同名非上書き/バイナリ/履歴はaccountrepository test、カードpartId通知はmessageviewer testで検証。ホストCTest12ターゲット成功。Downloadsへの実ホスト書込みや実ファイラー起動はしていない（テストはbuild配下）。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。
