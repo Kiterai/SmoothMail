@@ -5,6 +5,7 @@
 #include "core/mailrecord.h"
 #include <QHash>
 #include <QSet>
+#include <optional>
 
 class QCloseEvent;
 class QSystemTrayIcon;
@@ -27,10 +28,13 @@ public:
                        const QList<MailRecord> &messages, const QString &error, bool remoteUpdate = true);
     void setRefreshing(const QString &accountId, bool refreshing);
     QString selectedFolderFor(const QString &accountId) const { return m_accountId == accountId ? m_folder : QString{}; }
+    QString selectedAccountId() const { return m_accountId; }
+    std::optional<MailRecord> selectedMessage() const;
 signals:
     void addAccountRequested();
     void refreshAllRequested();
     void refreshRequested(const QString &accountId, const QString &folder);
+    void composeRequested(bool reply);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

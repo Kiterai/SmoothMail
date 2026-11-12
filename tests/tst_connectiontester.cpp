@@ -123,6 +123,7 @@ private slots:
         QSignalSpy result(&service, &MailService::synchronized);
         service.synchronize(account, QStringLiteral("dummy"));
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 45000);
+        QVERIFY(!service.busy()); // A completion observer can immediately start the next operation.
         QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString()));
         QCOMPARE(result.first().at(1).toString(), QStringLiteral("INBOX"));
         const auto folders = qvariant_cast<QList<MailFolder>>(result.first().at(2));
@@ -144,6 +145,43 @@ private slots:
         QCOMPARE(updated.size(), 1);
         QCOMPARE(updated.first().uidValidity, 20);
         QCOMPARE(updated.first().uid, 5);
+    }
+    void sendsAndSavesDraftWithoutLeakingBcc()
+    {
+        MailTestServer smtp(MailTestServer::Protocol::Smtp, {QStringLiteral("PLAIN")});
+        MailTestServer imap(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        imap.provideMailbox = true; imap.provideDraftFolder = true;
+        QVERIFY(smtp.listen()); QVERIFY(imap.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("test@example.com"),
+            {QStringLiteral("127.0.0.1"), smtp.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None},
+            {QStringLiteral("127.0.0.1"), imap.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+        QSignalSpy result(&service, &MailService::submissionFinished);
+        ComposeData draft;
+        draft.from = account.email; draft.to = QStringLiteral("recipient@example.test");
+        draft.bcc = QStringLiteral("hidden@example.test"); draft.subject = QStringLiteral("fixture send"); draft.body = QStringLiteral("dummy body");
+        service.submit(account, QStringLiteral("dummy"), draft, false);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 45000);
+        QVERIFY(!service.busy());
+        QVERIFY2(result.first().at(2).toString().isEmpty(), qPrintable(result.first().at(2).toString()));
+        QCOMPARE(smtp.deliveredMessages.size(), 1);
+        QVERIFY(!smtp.deliveredMessages.first().contains("hidden@example.test"));
+        QVERIFY(!smtp.deliveredMessages.first().toLower().contains("bcc:"));
+        bool hiddenInEnvelope = false;
+        for (const auto &recipient : smtp.envelopeRecipients) if (recipient.contains("hidden@example.test")) hiddenInEnvelope = true;
+        QVERIFY(hiddenInEnvelope);
+        result.clear();
+        service.submit(account, QStringLiteral("dummy"), draft, true);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 45000);
+        QVERIFY2(result.first().at(2).toString().isEmpty(), qPrintable(result.first().at(2).toString()));
+        QCOMPARE(imap.savedDrafts.size(), 1);
+        QVERIFY(imap.savedDrafts.first().contains("hidden@example.test"));
+        result.clear();
+        imap.provideDraftFolder = false;
+        service.submit(account, QStringLiteral("dummy"), draft, true);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 45000);
+        QVERIFY(!result.first().at(2).toString().isEmpty());
+        QCOMPARE(imap.savedDrafts.size(), 1); // Never silently append drafts to INBOX.
     }
 private:
     QSslConfiguration m_defaultSsl;

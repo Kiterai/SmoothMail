@@ -1,6 +1,7 @@
 #pragma once
 #include "core/messagedocument.h"
 #include "core/threading.h"
+#include <QMetaType>
 
 namespace smoothmail {
 struct ComposeData {
@@ -24,3 +25,4 @@ struct ComposedMessage {
 ComposeData replyDraft(const QString &from, const MessageDocument &parent);
 ComposedMessage composeMessage(const ComposeData &draft, bool saveAsDraft = false);
 } // namespace smoothmail
+Q_DECLARE_METATYPE(smoothmail::ComposeData)

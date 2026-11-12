@@ -1,4 +1,5 @@
 #include "ui/accountdialog.h"
+#include "ui/composedialog.h"
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QLabel>
@@ -6,6 +7,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QtTest>
+#include <QPlainTextEdit>
 
 using namespace smoothmail;
 class AccountDialogTest final : public QObject
@@ -47,6 +49,27 @@ private slots:
         auth->setCurrentIndex(auth->findData(int(AuthenticationMode::OAuth2)));
         QVERIFY(dialog.findChild<QLineEdit *>(QStringLiteral("SMTPPassword"))->text().isEmpty());
         QVERIFY(!dialog.findChild<QLineEdit *>(QStringLiteral("SMTPPassword"))->isEnabled());
+    }
+    void composePreservesInputOnFailure()
+    {
+        ComposeData data;
+        data.from = QStringLiteral("me@example.test"); data.to = QStringLiteral("to@example.test"); data.body = QStringLiteral("keep this body");
+        ComposeDialog dialog(data);
+        QVERIFY(dialog.findChild<QLineEdit *>(QStringLiteral("composeFrom"))->isReadOnly());
+        QSignalSpy submitted(&dialog, &ComposeDialog::submitRequested);
+        dialog.findChild<QPushButton *>(QStringLiteral("composeSend"))->click();
+        QCOMPARE(submitted.size(), 1);
+        QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("composeSend"))->isEnabled());
+        QVERIFY(dialog.findChild<QPlainTextEdit *>(QStringLiteral("composeBody"))->isReadOnly());
+        dialog.submissionFinished(false, QStringLiteral("network unavailable"));
+        QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("composeSend"))->isEnabled());
+        QVERIFY(!dialog.findChild<QPlainTextEdit *>(QStringLiteral("composeBody"))->isReadOnly());
+        QCOMPARE(dialog.draft().body, data.body);
+        dialog.findChild<QPushButton *>(QStringLiteral("composeSave"))->click();
+        QCOMPARE(submitted.size(), 2);
+        QVERIFY(submitted.last().at(1).toBool());
+        dialog.submissionFinished(true, {});
+        QCOMPARE(dialog.draft().body, data.body);
     }
 };
 QTEST_MAIN(AccountDialogTest)

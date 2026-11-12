@@ -69,6 +69,7 @@ if(SMOOTHMAIL_BUILD_MIME)
 endif()
 
 add_library(smoothmail_ui STATIC
+    src/ui/composedialog.cpp src/ui/composedialog.h
     src/ui/accountdialog.cpp src/ui/accountdialog.h
     src/core/messagedocument.h
     src/ui/mainwindow.cpp

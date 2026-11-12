@@ -8,8 +8,10 @@
 #include <KIMAP/SelectJob>
 #include <KIMAP/StatusJob>
 #include <KIMAP/FetchJob>
+#include <KIMAP/AppendJob>
 #include <KSMTP/LoginJob>
 #include <KSMTP/Session>
+#include <KSMTP/SendJob>
 #include <KLocalizedString>
 #include <QDir>
 #include <QElapsedTimer>
@@ -69,7 +71,8 @@ public:
     bool ignoreSslError(const KSslErrorUiData &) override { rejected = true; return false; }
 };
 
-QString testSmtp(const ServerSettings &settings, const QString &secret)
+QString testSmtp(const ServerSettings &settings, const QString &secret,
+                 const std::function<QString(KSmtp::Session &)> &work = {})
 {
     KSmtp::Session session(settings.host, settings.port);
     auto proxy = QSharedPointer<RejectCertificateErrors<KSmtp::SessionUiProxy>>::create();
@@ -120,6 +123,11 @@ QString testSmtp(const ServerSettings &settings, const QString &secret)
     const auto error = runJob(login);
     if (!error.isEmpty()) return error;
     if (session.state() != KSmtp::Session::Authenticated) return QStringLiteral("SMTP認証済み状態になりませんでした。");
+    if (work) {
+        const auto workError = work(session);
+        session.quit();
+        return workError;
+    }
     session.quit();
     return {};
 }
@@ -185,8 +193,6 @@ MailService::MailService(QString plugins, QObject *parent)
     qRegisterMetaType<QList<MailRecord>>();
     m_worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
-    connect(this, &MailService::finished, this, [this] { m_busy = false; });
-    connect(this, &MailService::synchronized, this, [this] { m_busy = false; });
     m_thread.start();
 }
 
@@ -202,13 +208,19 @@ void MailService::test(const Account &account, const QString &smtpSecret, const 
     if (m_busy) return;
     m_busy = true;
     QMetaObject::invokeMethod(m_worker, [this, account, smtpSecret, imapSecret] {
+        const auto deliver = [this](const QString &smtp, const QString &imap) {
+            QMetaObject::invokeMethod(this, [this, smtp, imap] {
+                m_busy = false;
+                emit finished(smtp, imap);
+            }, Qt::QueuedConnection);
+        };
         auto error = validateAccount(account);
         if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
-        if (!error.isEmpty()) { emit finished(error, error); return; }
+        if (!error.isEmpty()) { deliver(error, error); return; }
         const auto smtpError = testSmtp(account.smtp, smtpSecret);
         const auto imapError = m_thread.isInterruptionRequested() ? QStringLiteral("中断しました。")
                                                                : testImap(account.imap, imapSecret);
-        emit finished(smtpError, imapError);
+        deliver(smtpError, imapError);
     }, Qt::QueuedConnection);
 }
 
@@ -297,7 +309,66 @@ void MailService::synchronize(const Account &account, const QString &secret, con
         });
         // A failed snapshot must never replace previously displayed/cached mail.
         if (!error.isEmpty()) records.clear();
-        emit synchronized(account.id, selected, folders, records, error);
+        QMetaObject::invokeMethod(this, [this, account, selected, folders, records, error] {
+            m_busy = false;
+            emit synchronized(account.id, selected, folders, records, error);
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+}
+
+void MailService::submit(const Account &account, const QString &secret, const ComposeData &draft, bool saveAsDraft)
+{
+    if (m_busy) return;
+    m_busy = true;
+    QMetaObject::invokeMethod(m_worker, [this, account, secret, draft, saveAsDraft] {
+        auto error = validateAccount(account);
+        if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
+        if (draft.from != account.email) error = QStringLiteral("送信元が選択アカウントと一致しません。");
+        ComposedMessage message;
+        if (error.isEmpty()) { message = composeMessage(draft, saveAsDraft); error = message.error; }
+        if (error.isEmpty() && !saveAsDraft) {
+            error = testSmtp(account.smtp, secret, [&](KSmtp::Session &session) {
+                KSmtp::SendJob send(&session);
+                send.setFrom(message.from);
+                send.setTo(message.to); send.setCc(message.cc); send.setBcc(message.bcc);
+                send.setData(message.transportSource);
+                // Never retry automatically: a connection loss after DATA may
+                // occur after the server has already accepted the message.
+                return runJob(send);
+            });
+        } else if (error.isEmpty()) {
+            error = testImap(account.imap, secret, [&](KIMAP::Session &session) -> QString {
+                QString folder;
+                bool standardNameExists = false;
+                KIMAP::ListJob listing(&session);
+                listing.setOption(KIMAP::ListJob::IncludeUnsubscribed);
+                connect(&listing, &KIMAP::ListJob::mailBoxesReceived, &listing,
+                    [&](const QList<KIMAP::MailBoxDescriptor> &boxes, const QList<QList<QByteArray>> &flags) {
+                        for (qsizetype i = 0; i < boxes.size(); ++i) {
+                            bool selectable = true, drafts = false;
+                            for (const auto &flag : flags.value(i)) {
+                                if (flag.toUpper() == "\\NOSELECT") selectable = false;
+                                if (flag.toUpper() == "\\DRAFTS") drafts = true;
+                            }
+                            if (selectable && drafts && folder.isEmpty()) folder = boxes.at(i).name;
+                            if (selectable && boxes.at(i).name == QStringLiteral("Drafts")) standardNameExists = true;
+                        }
+                    });
+                auto jobError = runJob(listing);
+                if (!jobError.isEmpty()) return jobError;
+                if (folder.isEmpty() && standardNameExists) folder = QStringLiteral("Drafts");
+                if (folder.isEmpty()) return QStringLiteral("下書きフォルダを特定できませんでした。サーバの下書きフォルダ設定を確認してください。");
+                KIMAP::AppendJob append(&session);
+                append.setMailBox(folder);
+                append.setFlags({"\\Draft", "\\Seen"});
+                append.setContent(message.storageSource);
+                return runJob(append);
+            });
+        }
+        QMetaObject::invokeMethod(this, [this, account, saveAsDraft, error] {
+            m_busy = false;
+            emit submissionFinished(account.id, saveAsDraft, error);
+        }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);
 }
 } // namespace smoothmail

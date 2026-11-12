@@ -29,6 +29,8 @@
 - AccountRepositoryにfolder/messageキャッシュ追加。account/folder/UIDVALIDITY/UIDで保存し、snapshot単位のtransactionで旧UID・削除・フォルダ消失を反映。失敗はrollback。キャッシュMIME解析もDBworker内。起動時のreloadはGUIキューへ遅延させ、constructor直後のsignal購読前にloadedを失うraceを防止。
 - 既存+拡張ホストCTest11ターゲット成功。Sandbox connectiontester12 passed（メール2件/STATUS未読/本文/Reply-To/UIDVALIDITY変更後1件の取得）。最初の全体実行ではsyncが一度timeout、単独とその後の全体再実行は成功。testの待機上限は実jobの30秒を越える45秒へ変更。継続監視。persistent cache/GUI表示/失敗時表示保持はQt Testで検証済み。送信・下書き・添付保存・履歴・OAuth・アカウントdrag orderは未実装。
 - MessageComposerでUTF-8本文/件名、Date、一意Message-ID、返信ヘッダをKMimeで生成。transportSourceからBCCを除外し、storageSourceには下書き用BCCを保持。宛先空のdraftを許可し送信では拒否、制御文字/不正識別子のheader injection拒否。replyDraftはReply-To優先で全アドレスを初期化。tst_messagecomposer5 passed。UI/SMTP send/IMAP APPEND接続は次。
+- ComposeDialog/SMTP SendJob/IMAP AppendJobを接続済み。senderは選択アカウント固定、失敗時は入力保持、送信自動再試行なし。\DraftsのLIST flag優先、存在確認済みDrafts名をfallbackに使い、特定できなければ保存拒否（INBOXへ代用しない）。Sandbox connectiontester13 passed（送信BCC envelopeのみ/下書きBCC保持/下書きfolderなし拒否）。ホストCTest12ターゲット成功。
+- 前記sync timeoutの原因は完了signalのworker直接emitとm_busy解除のGUIqueued slotとのrace。QSignalSpy/即時observerが次の操作を開始するとbusyで落としていた。MailServiceの全完了通知を所有スレッドへ戻し、busy=falseを先に設定してからemitするよう修正。連続sync/send/draftテストで再現し修正後全成功。今後signal通知時には次操作を開始可能な状態を保証する。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

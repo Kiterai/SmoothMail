@@ -1,6 +1,7 @@
 #include "applicationcontroller.h"
 #include "ui/mainwindow.h"
 #include "ui/accountdialog.h"
+#include "ui/composedialog.h"
 #include "storage/accountregistrar.h"
 #include "mail/mailservice.h"
 #include <QStatusBar>
@@ -45,6 +46,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_current = {}; processNext();
         });
     connect(window, &MainWindow::addAccountRequested, this, &ApplicationController::addAccount);
+    connect(window, &MainWindow::composeRequested, this, &ApplicationController::compose);
     connect(window, &MainWindow::refreshRequested, this, &ApplicationController::refresh);
     connect(window, &MainWindow::refreshAllRequested, this, [this] {
         for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id));
@@ -68,6 +70,12 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
                 m_current = {}; processNext();
             }
         });
+    connect(m_mail, &MailService::submissionFinished, this, [this](const QString &id, bool savedAsDraft, const QString &error) {
+        m_submissionWaiting = false;
+        if (m_compose) m_compose->submissionFinished(savedAsDraft, error);
+        if (error.isEmpty()) refresh(id, m_window->selectedFolderFor(id));
+        processNext();
+    });
 }
 
 ApplicationController::~ApplicationController()
@@ -87,7 +95,7 @@ void ApplicationController::addAccount()
     connect(m_dialog, &AccountDialog::saveRequested, m_registrar, &AccountRegistrar::add);
     connect(m_dialog, &AccountDialog::testRequested, this,
         [this](const Account &account, const QString &smtp, const QString &imap) {
-            if (m_mail->busy() || !m_current.accountId.isEmpty()) {
+            if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting) {
                 m_dialog->testFinished(QStringLiteral("メール更新中です。更新完了後に再試行してください。"), {});
                 return;
             }
@@ -106,7 +114,7 @@ void ApplicationController::refresh(const QString &id, const QString &folder)
 
 void ApplicationController::processNext()
 {
-    if (m_mail->busy() || !m_current.accountId.isEmpty() || m_queue.isEmpty()) return;
+    if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting || m_queue.isEmpty()) return;
     m_current = m_queue.dequeue();
     Account account;
     for (const auto &candidate : m_accounts) if (candidate.id == m_current.accountId) account = candidate;
@@ -125,5 +133,42 @@ void ApplicationController::processNext()
             }
             guard->m_mail->synchronize(account, secret, guard->m_current.folder);
         });
+}
+
+void ApplicationController::compose(bool reply)
+{
+    if (m_compose) { m_compose->raise(); m_compose->activateWindow(); return; }
+    Account account;
+    for (const auto &candidate : m_accounts) if (candidate.id == m_window->selectedAccountId()) account = candidate;
+    if (account.id.isEmpty()) return;
+    ComposeData draft;
+    draft.from = account.email;
+    if (reply) {
+        const auto parent = m_window->selectedMessage();
+        if (!parent) return;
+        draft = replyDraft(account.email, parent->document);
+    }
+    m_compose = new ComposeDialog(draft, m_window);
+    m_compose->setAttribute(Qt::WA_DeleteOnClose);
+    connect(m_compose, &ComposeDialog::submitRequested, this, [this, account](const ComposeData &draft, bool saveAsDraft) {
+        if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting) {
+            m_compose->submissionFinished(saveAsDraft, QStringLiteral("メール更新中です。更新完了後に再試行してください。"));
+            return;
+        }
+        m_submissionWaiting = true;
+        const QPointer<ApplicationController> guard(this);
+        m_credentials->read(AccountRegistrar::secretKey(account.id, saveAsDraft ? QStringLiteral("imap") : QStringLiteral("smtp")),
+            [guard, account, draft, saveAsDraft](const QString &secret, const QString &error) {
+                if (!guard) return;
+                if (!error.isEmpty()) {
+                    guard->m_submissionWaiting = false;
+                    if (guard->m_compose) guard->m_compose->submissionFinished(saveAsDraft, error);
+                    guard->processNext();
+                    return;
+                }
+                guard->m_mail->submit(account, secret, draft, saveAsDraft);
+            });
+    });
+    m_compose->show();
 }
 } // namespace smoothmail

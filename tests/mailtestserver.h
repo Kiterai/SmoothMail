@@ -44,8 +44,31 @@ public:
                 greeting();
             }
             connect(m_socket, &QTcpSocket::readyRead, this, [this] {
-                while (m_socket && m_socket->canReadLine()) {
-                    const auto line = m_socket->readLine(1024 * 1024).trimmed();
+                while (m_socket && m_socket->bytesAvailable()) {
+                    if (m_appendRemaining >= 0) {
+                        const auto bytes = m_socket->read(qMin(m_appendRemaining, m_socket->bytesAvailable()));
+                        m_payload += bytes;
+                        m_appendRemaining -= bytes.size();
+                        if (!m_appendRemaining) {
+                            savedDrafts.append(m_payload); m_payload.clear(); m_appendRemaining = -1;
+                            write(m_tag + " OK appended");
+                        }
+                        continue;
+                    }
+                    if (!m_socket->canReadLine()) break;
+                    auto wire = m_socket->readLine(1024 * 1024);
+                    if (m_receivingData) {
+                        if (wire == ".\r\n") {
+                            deliveredMessages.append(m_payload); m_payload.clear(); m_receivingData = false;
+                            write("250 message accepted");
+                        } else {
+                            if (wire.startsWith("..")) wire.remove(0, 1);
+                            m_payload += wire;
+                        }
+                        continue;
+                    }
+                    const auto line = wire.trimmed();
+                    if (line.isEmpty()) continue;
                     commands.append(line);
                     handle(line);
                 }
@@ -66,6 +89,10 @@ public:
     bool provideMailbox = false;
     qint64 uidValidity = 10;
     QMap<qint64, QByteArray> messages;
+    bool provideDraftFolder = false;
+    QList<QByteArray> deliveredMessages;
+    QList<QByteArray> savedDrafts;
+    QList<QByteArray> envelopeRecipients;
 
     bool receivedAuthentication() const
     {
@@ -160,6 +187,7 @@ private:
             }
         } else if (provideMailbox && command == "LIST") {
             write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
+            if (provideDraftFolder) write("* LIST (\\Drafts) \"/\" \"Drafts\"");
             write(m_tag + " OK list completed");
         } else if (provideMailbox && command == "STATUS") {
             write("* STATUS \"INBOX\" (UNSEEN " + QByteArray::number(messages.size()) + ')');
@@ -184,6 +212,22 @@ private:
                 write(")");
             }
             write(m_tag + " OK fetch completed");
+        } else if (m_protocol == Protocol::Smtp && command == "MAIL") {
+            write("250 sender accepted");
+        } else if (m_protocol == Protocol::Smtp && command == "RCPT") {
+            envelopeRecipients.append(line);
+            write("250 recipient accepted");
+        } else if (m_protocol == Protocol::Smtp && command == "DATA") {
+            m_receivingData = true;
+            write("354 send message");
+        } else if (provideMailbox && command == "APPEND") {
+            auto literal = fields.last();
+            literal.remove(0, 1); literal.chop(1);
+            if (literal.endsWith('+')) literal.chop(1);
+            bool ok = false;
+            m_appendRemaining = literal.toLongLong(&ok);
+            if (!ok || m_appendRemaining <= 0) { m_appendRemaining = -1; write(m_tag + " BAD invalid literal"); }
+            else write("+ ready for literal");
         } else if (command == "QUIT" || command == "LOGOUT") {
             if (m_protocol == Protocol::Imap) {
                 write("* BYE localhost");
@@ -203,4 +247,7 @@ private:
     QPointer<QSslSocket> m_socket;
     QByteArray m_tag;
     int m_waitingFor = 0;
+    bool m_receivingData = false;
+    qint64 m_appendRemaining = -1;
+    QByteArray m_payload;
 };

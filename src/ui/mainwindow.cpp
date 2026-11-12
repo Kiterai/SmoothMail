@@ -97,8 +97,10 @@ void MainWindow::createMenus()
     poll->setInterval(30000);
     connect(automatic, &QAction::toggled, this, [poll](bool enabled) { if (enabled) poll->start(); else poll->stop(); });
     connect(poll, &QTimer::timeout, this, &MainWindow::refreshAllRequested);
-    pendingAction(mail, QStringLiteral("新規メール"), "composeAction");
-    pendingAction(mail, QStringLiteral("新規返信メール"), "replyAction");
+    connect(pendingAction(mail, QStringLiteral("新規メール"), "composeAction"), &QAction::triggered,
+            this, [this] { emit composeRequested(false); });
+    connect(pendingAction(mail, QStringLiteral("新規返信メール"), "replyAction"), &QAction::triggered,
+            this, [this] { emit composeRequested(true); });
 
     auto *tools = menuBar()->addMenu(QStringLiteral("ツール"));
     pendingAction(tools, QStringLiteral("ダウンロード履歴"), "downloadHistoryAction");
@@ -125,6 +127,7 @@ void MainWindow::createPanes()
         if (id.isEmpty()) return;
         m_accountId = id;
         m_folder = name;
+        findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!name.isEmpty());
         rebuildMessages();
         emit refreshRequested(id, name);
     });
@@ -162,6 +165,7 @@ void MainWindow::createPanes()
     });
     connect(messages->selectionModel(), &QItemSelectionModel::currentChanged, this, [this, viewer](const QModelIndex &index) {
         const int record = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
+        findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(index.isValid());
         if (!index.isValid() || record < 0 || record >= m_visibleMessages.size()) { viewer->clear(); return; }
         viewer->displayMessage(m_visibleMessages.at(record).document);
     });
@@ -210,10 +214,19 @@ void MainWindow::applySnapshot(const QString &id, const QString &folder, const Q
     m_mailCache[id][folder] = messages;
     const bool visible = m_accountId.isEmpty() || (m_accountId == id && (m_folder.isEmpty() || m_folder == folder));
     if (visible) { m_accountId = id; m_folder = folder; }
+    findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!m_accountId.isEmpty() && !m_folder.isEmpty());
     if (remoteUpdate) m_lastSuccess = QDateTime::currentDateTime();
     rebuildFolders();
     if (visible) rebuildMessages();
     statusBar()->showMessage(remoteUpdate ? QStringLiteral("更新しました。") : QStringLiteral("保存済みメールを表示しています。"));
+}
+
+std::optional<MailRecord> MainWindow::selectedMessage() const
+{
+    const auto index = m_messageView->currentIndex();
+    const int record = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
+    if (!index.isValid() || record < 0 || record >= m_visibleMessages.size()) return std::nullopt;
+    return m_visibleMessages.at(record);
 }
 
 void MainWindow::rebuildFolders()
