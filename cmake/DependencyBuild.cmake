@@ -57,7 +57,10 @@ endfunction()
 function(smoothmail_build_dependency dependency)
     smoothmail_fetch_dependency("${dependency}" source)
     set(binary "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/${dependency}")
+    smoothmail_build_dependency_source("${dependency}" "${source}" "${binary}" ${ARGN})
+endfunction()
 
+function(smoothmail_build_dependency_source dependency source binary)
     # Invoke directly so the prefix search list remains a single argument.
     execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${binary}" -G Ninja
         "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"

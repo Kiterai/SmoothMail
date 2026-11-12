@@ -42,11 +42,11 @@ class KioPatchTest(unittest.TestCase):
         return subprocess.run([GIT, *arguments], capture_output=True, text=True,
                               encoding="utf-8", errors="replace", check=True)
 
-    def prepare(self):
+    def prepare(self, *extra_arguments):
         return subprocess.run(
             [CMAKE, f"-DPRISTINE={self.pristine}", f"-DCOMMIT={self.commit}",
              f"-DPATCH={self.patch}", f"-DWORKSPACE={self.root / 'copies'}",
-             "-P", str(ROOT / "tests/cmake/prepare_kio_fixture.cmake")],
+             *extra_arguments, "-P", str(ROOT / "tests/cmake/prepare_kio_fixture.cmake")],
             capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
 
     def assert_prepared(self):
@@ -58,6 +58,15 @@ class KioPatchTest(unittest.TestCase):
         self.assert_prepared()
         self.assertEqual((self.pristine / "config.txt").read_text(), "before\n")
         self.assertEqual((self.copy / "config.txt").read_text(), "after\n")
+
+    def test_generic_dependency_uses_separate_copy(self):
+        self.assert_prepared()
+        for _ in range(2):
+            result = self.prepare("-DDEPENDENCY=kimap")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        other = self.copy.with_name(self.copy.name.replace("kio-", "kimap-", 1))
+        self.assertEqual((other / "config.txt").read_text(), "after\n")
+        self.assertEqual((self.pristine / "config.txt").read_text(), "before\n")
 
     def test_rejects_modified_tracked_file_without_overwriting(self):
         self.assert_prepared()
