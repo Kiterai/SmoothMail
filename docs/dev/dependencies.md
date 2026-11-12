@@ -45,7 +45,7 @@ MIME依存に加え、CoreAddons・KConfig・KCrash 6.31.0を構築します。Q
 
 KIMAP/KSMTPの要求はQt 6.9以降、Frameworks 6.25以降、CMake 3.29以降です。ただし今回選んだKMime/KCodecs 6.31.0はQt 6.10以降・CMake 3.30以降が必要です。
 
-KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加えてKService・Solid・KCrashが必要です。`KIOCORE_ONLY=ON`でも上流configureはKService/Solidを要求します。Solidにはビルド時のFlex/Bisonも必要です。これらの基礎依存は構築済みですが、KIO本体以降は下記ライセンス確認のため保留しています。
+KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加えてKService・Solid・KCrashが必要です。`KIOCORE_ONLY=ON`でも上流configureはKService/Solidを要求します。Solidにはビルド時のFlex/Bisonも必要です。これらの基礎依存は構築済みです。KIOCoreは下記の承認済み限定パッチを適用して構築します。
 
 ### gettextとビルド用ツール
 
@@ -87,11 +87,24 @@ ctest --preset dev
 
 KI18nによる英語フォールバックの引数・複数形処理、KServiceのメタデータ生成を確認します。サービスの実行・登録・デスクトップDBの検索は行いません。KIOをリンクするテストではありません。日本語翻訳カタログやクリーンPCへの配布は別途検証が必要です。
 
-### KIOCoreのライセンス上の保留事項
+### KIOCoreの暫定パッチとライセンス通知
 
 取得したKIO 6.31.0の`src/core/CMakeLists.txt`は`faviconscache.cpp`を無条件にライブラリへ組み込みます。同ファイルと`faviconscache_p.h`のSPDXは`GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL`であり、LGPLの選択肢は記載されていません。
 
-そのため、現在の「GPL-onlyの実行時依存を含めない」方針では、この構成のKIOCoreをアプリへ組み込みません。候補は、メールに不要なfavicon機能を取り除く限定パッチと、残るビルド対象・依存の再監査です。パッチ方針の承認と検証が終わるまでKIOCore/KIMAP/KSMTPの統合は保留します。ライセンス表記の書換えによって問題を解消した扱いにはしません。
+利用者の承認を得て、メールに不要なfavicon機能を除外する限定パッチを暫定適用しています。ライセンス表記は変更しません。変更内容・失われる機能・配布上の注意点は`THIRD_PARTY_NOTICES.md`と`patches/kio/README.md`に明記しています。残るビルド対象・依存の配布監査は未完了です。
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildKioDependencies.cmake
+cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_KIO=ON
+cmake --build --preset dev
+ctest --preset dev
+```
+
+原本は変更せず、`build/deps/patched-src`に独立コピーを作成して`git apply --check`後にパッチを適用します。コピーの予期しない変更は上書きせず拒否します。`python tests/test_kio_patch.py`で、その保護と再実行をネットワークなしでテストできます。
+
+指定Qt/MSVCでのKIOCore構築、favicon無効化・SSLエラー情報APIのテスト、対象実装・ヘッダがcompile commands／Ninja依存情報／DLLエクスポートに含まれないことを確認済みです。上流のライセンス文書・変更パッチ・変更通知はprefixの`share/licenses/kio`へ配置します。
+
+**この手順の開発用prefixにはKIO worker・補助実行ファイルも入ります。製品配布時にprefix全体を一括コピーしてはいけません。** 製品で必要なDLL・プラグインだけを特定し、各コード・生成物・推移依存の条件を別途確認します。
 
 確認箇所: `build/deps/src/kio/src/core/{CMakeLists.txt,faviconscache.cpp,faviconscache_p.h,global.cpp}`。上流: https://invent.kde.org/frameworks/kio/-/tree/v6.31.0/src/core
 
