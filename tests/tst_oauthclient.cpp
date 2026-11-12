@@ -1,0 +1,146 @@
+#include "mail/oauthclient.h"
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkProxy>
+#include <QTcpSocket>
+#include <QUrlQuery>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSignalSpy>
+#include <QtTest>
+#include <cstring>
+
+using namespace smoothmail;
+class FakeReply final : public QNetworkReply
+{
+public:
+    FakeReply(const QNetworkRequest &request, QByteArray body, int status, QObject *parent)
+        : QNetworkReply(parent), m_body(std::move(body))
+    {
+        setRequest(request); setUrl(request.url()); setOperation(QNetworkAccessManager::PostOperation);
+        setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
+        open(QIODevice::ReadOnly | QIODevice::Unbuffered);
+        QTimer::singleShot(0, this, [this] { setFinished(true); emit readyRead(); emit finished(); });
+    }
+    void abort() override { setFinished(true); }
+    qint64 bytesAvailable() const override { return m_body.size() - m_offset + QNetworkReply::bytesAvailable(); }
+protected:
+    qint64 readData(char *data, qint64 maximum) override
+    {
+        const auto count = qMin(maximum, m_body.size() - m_offset);
+        if (!count) return -1;
+        std::memcpy(data, m_body.constData() + m_offset, size_t(count)); m_offset += count; return count;
+    }
+private:
+    QByteArray m_body;
+    qint64 m_offset = 0;
+};
+class FakeNetwork final : public QNetworkAccessManager
+{
+public:
+    QJsonObject response{{"access_token", "dummy_access"}, {"refresh_token", "dummy_refresh"},
+        {"expires_in", 3600}, {"token_type", "Bearer"}, {"scope", "https://mail.google.com/"}};
+    int status = 200;
+    QList<QNetworkRequest> requests;
+    QList<QByteArray> bodies;
+protected:
+    QNetworkReply *createRequest(Operation, const QNetworkRequest &request, QIODevice *body) override
+    {
+        requests.append(request); bodies.append(body ? body->readAll() : QByteArray{});
+        return new FakeReply(request, QJsonDocument(response).toJson(QJsonDocument::Compact), status, this);
+    }
+};
+
+class OAuthClientTest final : public QObject
+{
+    Q_OBJECT
+    static void callback(const QUrl &redirect, const QByteArray &query)
+    {
+        QTcpSocket socket; socket.setProxy(QNetworkProxy::NoProxy);
+        socket.connectToHost(QHostAddress::LocalHost, quint16(redirect.port()));
+        QTRY_COMPARE_WITH_TIMEOUT(socket.state(), QAbstractSocket::ConnectedState, 3000);
+        socket.write("GET /?" + query + " HTTP/1.1\r\nHost: " + redirect.host().toLatin1() + ':'
+                     + QByteArray::number(redirect.port()) + "\r\n\r\n");
+        QTRY_COMPARE_WITH_TIMEOUT(socket.state(), QAbstractSocket::UnconnectedState, 3000);
+    }
+private slots:
+    void pkceAndGrantEncoding()
+    {
+        QCOMPARE(pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), QByteArray("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"));
+        QCOMPARE(refreshTokenFromGrant(refreshGrant(QStringLiteral("dummy-refresh"))), QStringLiteral("dummy-refresh"));
+        QVERIFY(refreshTokenFromGrant(QStringLiteral("ordinary-password")).isEmpty());
+        QVERIFY(refreshGrant(QStringLiteral("injected\r\ntoken")).isEmpty());
+    }
+    void authorizationChecksStateAndUsesPkce()
+    {
+        FakeNetwork network; OAuthClient client(nullptr, &network);
+        QSignalSpy url(&client, &OAuthClient::authorizationUrlReady);
+        QSignalSpy result(&client, &OAuthClient::tokensReady);
+        QSignalSpy errors(&client, &OAuthClient::failed);
+        client.authorize(QStringLiteral("google"), QStringLiteral("dummy-client"), QStringLiteral("test+tag@example.test"));
+        QCOMPARE(url.size(), 1);
+        const auto authorization = url.first().first().toUrl();
+        const QUrlQuery parameters(authorization);
+        QCOMPARE(authorization.host(), QStringLiteral("accounts.google.com"));
+        QCOMPARE(parameters.queryItemValue(QStringLiteral("code_challenge_method")), QStringLiteral("S256"));
+        const auto state = parameters.queryItemValue(QStringLiteral("state"));
+        QVERIFY(state.size() >= 43);
+        const QUrl redirect(parameters.queryItemValue(QStringLiteral("redirect_uri"), QUrl::FullyDecoded));
+        QCOMPARE(redirect.host(), QStringLiteral("127.0.0.1"));
+        callback(redirect, "state=wrong&code=dummy");
+        QCOMPARE(network.requests.size(), 0); QVERIFY(result.isEmpty()); QVERIFY(errors.isEmpty());
+        const auto encodedState = QUrl::toPercentEncoding(state);
+        callback(redirect, "state=" + encodedState + "&state=" + encodedState + "&code=dummy");
+        QCOMPARE(network.requests.size(), 0);
+        callback(redirect, "state=" + encodedState + "&code=dummy%2Bcode");
+        QTRY_COMPARE(result.size(), 1);
+        QVERIFY(errors.isEmpty());
+        QCOMPARE(network.requests.size(), 1);
+        QCOMPARE(network.requests.first().url(), QUrl(QStringLiteral("https://oauth2.googleapis.com/token")));
+        QCOMPARE(network.requests.first().attribute(QNetworkRequest::RedirectPolicyAttribute).toInt(), int(QNetworkRequest::ManualRedirectPolicy));
+        const QUrlQuery posted(QString::fromLatin1(network.bodies.first()));
+        const auto verifier = posted.queryItemValue(QStringLiteral("code_verifier"), QUrl::FullyDecoded).toLatin1();
+        QCOMPARE(QString::fromLatin1(pkceChallenge(verifier)), parameters.queryItemValue(QStringLiteral("code_challenge")));
+        QCOMPARE(posted.queryItemValue(QStringLiteral("code"), QUrl::FullyDecoded), QStringLiteral("dummy+code"));
+        const auto tokens = qvariant_cast<OAuthTokens>(result.first().first());
+        QCOMPARE(tokens.refreshToken, QStringLiteral("dummy_refresh"));
+        QVERIFY(tokens.expiresAt > QDateTime::currentDateTimeUtc());
+    }
+    void refreshRotationRevocationAndRedirectRejection()
+    {
+        FakeNetwork network; OAuthClient client(nullptr, &network);
+        QSignalSpy result(&client, &OAuthClient::tokensReady); QSignalSpy errors(&client, &OAuthClient::failed);
+        client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("old_refresh"));
+        QTRY_COMPARE(result.size(), 1);
+        QCOMPARE(qvariant_cast<OAuthTokens>(result.takeFirst().first()).refreshToken, QStringLiteral("dummy_refresh"));
+        network.response.remove("refresh_token");
+        client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("old_refresh"));
+        QTRY_COMPARE(result.size(), 1);
+        QCOMPARE(qvariant_cast<OAuthTokens>(result.takeFirst().first()).refreshToken, QStringLiteral("old_refresh"));
+        network.status = 400; network.response = {{"error", "invalid_grant"}};
+        client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("revoked"));
+        QTRY_COMPARE(errors.size(), 1); QVERIFY(result.isEmpty());
+        QVERIFY(errors.first().first().toString().contains(QStringLiteral("再認可")));
+        network.status = 302; network.response = {{"access_token", "must-not-accept"}};
+        client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("refresh"));
+        QTRY_COMPARE(errors.size(), 2); QVERIFY(result.isEmpty());
+    }
+    void microsoftAndCancellation()
+    {
+        FakeNetwork network; OAuthClient client(nullptr, &network);
+        QSignalSpy url(&client, &OAuthClient::authorizationUrlReady); QSignalSpy errors(&client, &OAuthClient::failed);
+        client.authorize(QStringLiteral("microsoft"), QStringLiteral("id"), {});
+        const auto authorization = url.first().first().toUrl();
+        QCOMPARE(authorization.host(), QStringLiteral("login.microsoftonline.com"));
+        const QUrlQuery parameters(authorization);
+        QVERIFY(parameters.queryItemValue(QStringLiteral("scope"), QUrl::FullyDecoded).contains(QStringLiteral("SMTP.Send")));
+        QCOMPARE(QUrl(parameters.queryItemValue(QStringLiteral("redirect_uri"), QUrl::FullyDecoded)).host(), QStringLiteral("localhost"));
+        const auto firstState = parameters.queryItemValue(QStringLiteral("state"));
+        client.cancel(); QCOMPARE(errors.size(), 1); QVERIFY(network.requests.isEmpty());
+        client.authorize(QStringLiteral("microsoft"), QStringLiteral("id"), {});
+        QVERIFY(QUrlQuery(url.last().first().toUrl()).queryItemValue(QStringLiteral("state")) != firstState);
+        client.cancel();
+    }
+};
+QTEST_GUILESS_MAIN(OAuthClientTest)
+#include "tst_oauthclient.moc"

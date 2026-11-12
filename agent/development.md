@@ -34,6 +34,7 @@
 - FolderModelはトップレベルアカウントだけを並び替える専用MIME drag/dropを実装。QTreeViewによる二重source削除を避けるためdrag protocolはCopyAction、model内で移動する。並び順をrepository transactionへ接続し、失敗時は通知して再読込。mainwindow testでroot順/子へのdrop拒否/行数維持を確認。編集メニューはComposeDialogの最後の編集可能な入力欄へundo/redoを転送し、readonly/送信中/閉じた画面では無効。ホストCTest12ターゲット成功。
 - 添付カードからDownloadsへ保存しDB履歴に記録する処理をrepository workerに追加。MimeParserで添付partだけを検証してdecodedBody（message/rfc822はbodyAsMessage encodedContent）を抽出。保存名の制御/format文字・パス区切り・ADS・Windows予約device名を処理、NewOnlyで原子的に既存ファイルを非上書き。同名は連番。保存失敗は履歴なし、履歴失敗後は保存済みpathとエラーを報告。
 - DownloadHistoryDialogはsubject/date/absolutePath/SI bytesと右クリックの元メール/保存先を実装。source jumpはaccount/folder/UIDVALIDITY/UID照合、見つからなければ別メールを開かず状態表示。添付保存/ファイル名逸脱/同名非上書き/バイナリ/履歴はaccountrepository test、カードpartId通知はmessageviewer testで検証。ホストCTest12ターゲット成功。Downloadsへの実ホスト書込みや実ファイラー起動はしていない（テストはbuild配下）。
+- OAuthClientはGoogle/Microsoft固定endpoint/scope、PKCE S256、system乱数state、loopback callback(Host/HTTPmethod/path/state/code重複検査)、HTTPS token exchange/refresh、手動redirect、タイムアウト/応答上限/取消/invalid_grantエラーを実装。ネットワークは非同期Qt Network。Sandbox tst_oauthclient6 passed（FakeNetworkと実loopback、外部接続なし）。UI/secret保存/メールへ渡す接続は後続。公式設定と資料はdocs/dev/oauth.md。実アプリ登録/実サービス認可は未提供。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

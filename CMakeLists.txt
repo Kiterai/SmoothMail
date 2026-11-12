@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 # Qt is supplied by the developer. Do not fetch or install a second SDK.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Sql)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Sql Network)
 find_package(Qt6Keychain CONFIG REQUIRED)
 find_package(ECM 6.31 CONFIG REQUIRED)
 list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
@@ -39,6 +39,10 @@ add_library(smoothmail_connection_policy STATIC src/mail/connectionpolicy.cpp sr
 target_include_directories(smoothmail_connection_policy PUBLIC src)
 target_link_libraries(smoothmail_connection_policy PUBLIC Qt6::Core)
 smoothmail_target_defaults(smoothmail_connection_policy)
+add_library(smoothmail_oauth STATIC src/mail/oauthclient.cpp src/mail/oauthclient.h)
+target_include_directories(smoothmail_oauth PUBLIC src)
+target_link_libraries(smoothmail_oauth PUBLIC Qt6::Core Qt6::Network)
+smoothmail_target_defaults(smoothmail_oauth)
 
 add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
     src/storage/accountrepository.cpp src/storage/accountrepository.h
@@ -174,6 +178,11 @@ if(BUILD_TESTING)
     endif()
 
     if(SMOOTHMAIL_TEST_MAIL)
+        add_executable(tst_oauthclient tests/tst_oauthclient.cpp)
+        target_link_libraries(tst_oauthclient PRIVATE smoothmail_oauth Qt6::Test)
+        smoothmail_target_defaults(tst_oauthclient)
+        add_test(NAME oauthclient COMMAND tst_oauthclient)
+        set_tests_properties(oauthclient PROPERTIES TIMEOUT 60)
         add_executable(tst_connectiontester tests/tst_connectiontester.cpp tests/mailtestserver.h)
         qt_add_resources(tst_connectiontester "test_tls" PREFIX "/test"
             BASE "${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
