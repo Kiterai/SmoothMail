@@ -33,9 +33,12 @@
 - WinFlexBison 2.5.25（1176da2adaf972b2216b1ac8dd611e128fe80bc5）をMSVCでソースビルド済み。BuildWinFlexBison.cmakeによる再実行も成功。Solid 6.31.0のDebug DLL構築も成功（solid-build.log）。Solid以降の手順のスクリプト化は後続作業。
 - vcpkg-recipesは177e8175121536d414f405ed8b3099b325a42638、ツールは2026-10-29を固定。gettext-libintl/libiconvのDebug/Release構築・インストールが成功（execution 1a7ecddffd914c019253840369040033、build/deps/vcpkg-native.log）。
 - vcpkg組込みHTTP/WinHTTPはサンドボックスのproxyに失敗。X_VCPKG_ASSET_SOURCESでPython helper→Git付属curlを使用して取得できた。証明書検証を無効にしたりproxy変数を消したりしない。helperのGNU/MSYS2 canonical URL変換とSHA512等の4テストは成功。
-- BuildNativeDependencies.cmakeでgettext[tools]を構築継続中（execution d9506241a0024247876a29f847b430b4、build/deps/native-tools-build.log）。KI18nのconfigureはlibintlだけでなくGettextのmsgfmt/msgmergeも必須。同じvcpkgのinstallを並行実行しない。全完了は未確認。
+- BuildNativeDependencies.cmakeによるgettext[tools]の構築・インストールは成功（execution d9506241a0024247876a29f847b430b4、build/deps/native-tools-build.log）。KI18nのconfigureはlibintlだけでなくGettextのmsgfmt/msgmergeも必須。
 - 参考用に取得したlibintl-liteはAPI/翻訳機能がGNU gettextと異なり、Windows代替として採用していない。製品へ組み込まない。
 - authenticationDecisionを追加。TLS/証明書未検証、必須機構欠如、不明なenumを拒否する。KSMTPと同じ厳密な機構名で判定するため、大文字小文字を緩く許可してライブラリ側のfallbackを誘発しない。LoginJob作成前・秘密情報設定前にこの判定を適用すること。現在はポリシー単体テスト段階で接続層へ未接続。
 - SASLを有効にしたdevビルドでCTest全5ターゲットが成功（connectionpolicy/mainwindow/messageviewer/mimeparser/sasl）。
 - Native bootstrapはVSINSTALLDIR末尾の区切りを削除してVCPKG_VISUAL_STUDIO_PATHへ渡す。末尾区切りがあるとvcpkgのVS照合が失敗した。
 - ブロッカー: KIO 6.31.0 src/core/CMakeLists.txt:78にGPL系のみのfaviconscache.cppが無条件追加される。対応ヘッダも同条件。global.cpp（LGPL-2.0-only）がinclude/callしている。KIOCORE_ONLYでも除外されない。そのままアプリへ統合しない。favicon除外パッチ方針のユーザ承認と残るライセンス監査が必要。全KIOの完成やMIT条件での配布可否を検証済みと記載しない。
+- BuildI18nDependencies.cmakeでKI18n/KService 6.31.0のDebug DLL構築に成功（execution adc1844f7c284914a852c024c54d31a2、i18n-build.log）。native Debugのlibintlとホスト用gettextのパスを明示指定。上流ソースは変更していない。
+- KDE_BASE/SASL両テスト有効でCTest全6ターゲットが成功。テスト/実行PATHにはnative/x64-windows/debug/bin、native/x64-windows/tools/gettext/bin、install/Debug/bin、指定Qt/binが必要。ホストツールは自身のRelease DLLをexe隣からロードする。
+- dumpbin /dependentsでKF6I18n.dllがQt6Cored/intl-8等、KF6Service.dllがQt6Cored/Qt6Xmld/ConfigCore/CoreAddons等を使用することを確認。これらのテストにKIOはリンクしていない。

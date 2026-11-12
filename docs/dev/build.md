@@ -46,3 +46,4 @@ ctest --preset dev
 - MIME解析ではUTF-8、ISO-2022-JP、Shift_JIS、CP932、RFC 2047件名、RFC 2231添付名、multipart、Base64/Quoted-Printableをテストしています。採用タグ全体の互換性を保証するものではありません。
 - 認証可否ポリシーでは、TLS確立・証明書検証前の認証拒否、設定外の認証方式への切替拒否、不明な設定値の拒否をテストしています。KIMAP/KSMTPの接続処理への組込みはまだです。
 - SASL単体テストは[依存構築](dependencies.md)後に`-DSMOOTHMAIL_TEST_SASL=ON`で有効にできます。機構のロード・応答生成のテストであり、実サービスでの認証試験ではありません。
+- KI18n/KServiceのロード・基本APIのテストは依存構築後に`-DSMOOTHMAIL_TEST_KDE_BASE=ON`で有効にできます。両オプション有効時のCTest全6ターゲット成功を確認済みです。KIO本体は組み込んでいません。

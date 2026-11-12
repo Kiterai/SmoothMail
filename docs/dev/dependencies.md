@@ -45,7 +45,7 @@ MIME依存に加え、CoreAddons・KConfig・KCrash 6.31.0を構築します。Q
 
 KIMAP/KSMTPの要求はQt 6.9以降、Frameworks 6.25以降、CMake 3.29以降です。ただし今回選んだKMime/KCodecs 6.31.0はQt 6.10以降・CMake 3.30以降が必要です。
 
-KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加えてKService・Solid・KCrashが必要です。`KIOCORE_ONLY=ON`でも上流configureはKService/Solidを要求します。Solidにはビルド時のFlex/Bisonも必要です。ソースとコミットは確認済みですが、これらの残る構築はまだ完了していません。
+KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加えてKService・Solid・KCrashが必要です。`KIOCORE_ONLY=ON`でも上流configureはKService/Solidを要求します。Solidにはビルド時のFlex/Bisonも必要です。これらの基礎依存は構築済みですが、KIO本体以降は下記ライセンス確認のため保留しています。
 
 ### gettextとビルド用ツール
 
@@ -54,7 +54,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildNativeDependencies.cmake
 ```
 
-WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**gettext-libintlとlibiconvのDebug/Releaseビルドは成功しています。gettextホストツールはビルド継続中で、このNativeDependencies全体の完了確認はまだです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
+WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**gettext-libintlとlibiconvのDebug/Release、およびgettextホストツールの構築・インストール成功を確認済みです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
 
 サンドボックスのプロキシでvcpkg内蔵ダウンローダーが失敗する場合は、接続可能なcurlを指定して次を追加できます。
 
@@ -65,6 +65,27 @@ WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済み
 このオプションにはPython 3.11以降が必要です。既存のプロキシ設定は変更せず、GNU/MSYS2のミラーURLを各公式配布元へ正規化し、HTTPS・証明書検証とSHA512確認を維持します。ダウンローダーの単体テストは`python tests/test_asset_fetch.py`で実行できます（ネットワークを使用しません）。
 
 gettext/Flex/Bison等のGPLビルドツールは、アプリへリンクするLGPLのlibintlとは区別します。これらのビルドツール自体を製品へ同梱する構成にはしません。
+
+### KI18n / KService
+
+基礎Frameworksとネイティブ依存の構築後に実行します。
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildI18nDependencies.cmake
+```
+
+KI18n/KService 6.31.0のDebug DLL構築に成功しています。スクリプトはDebug/Releaseに合わせたlibintlを明示指定し、gettextホストツールとは分離します。別prefixを使う場合は`-DSMOOTHMAIL_NATIVE_PREFIX=/path/to/native/x64-windows`を指定してください。
+
+ロード・基本APIのテストは次で有効にできます（既存の開発用PATHに追加）。
+
+```bat
+set PATH=%CD%\build\deps\native\x64-windows\debug\bin;%CD%\build\deps\native\x64-windows\tools\gettext\bin;%PATH%
+cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_KDE_BASE=ON
+cmake --build --preset dev
+ctest --preset dev
+```
+
+KI18nによる英語フォールバックの引数・複数形処理、KServiceのメタデータ生成を確認します。サービスの実行・登録・デスクトップDBの検索は行いません。KIOをリンクするテストではありません。日本語翻訳カタログやクリーンPCへの配布は別途検証が必要です。
 
 ### KIOCoreのライセンス上の保留事項
 
@@ -101,4 +122,4 @@ MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してく�
 
 KMimeのライブラリソースにLGPL-2.0-or-later、KSMTPのライブラリソースにLGPL-2.1-or-laterとLGPL-2.0-or-laterを確認しています。CMakeのライセンスチェック引数だけで製品ライセンスを判定しないでください。
 
-全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。KIMAP/KSMTP/SASLのビルド・XOAUTH2プラグイン・TLS・実サービス認証も引き続き検証対象です。
+全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。SASLの単体構築・機構ロードは確認済みですが、KIMAP/KSMTP本体の構築、TLS、実サービス認証、クリーン環境への配布は引き続き検証対象です。
