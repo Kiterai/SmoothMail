@@ -10,6 +10,7 @@
 #include <QUuid>
 #include <QVBoxLayout>
 #include <QScrollArea>
+#include <QScreen>
 
 namespace smoothmail {
 ServerSettings AccountDialog::ServerFields::value() const
@@ -87,7 +88,8 @@ AccountDialog::AccountDialog(QWidget *parent)
 {
     setWindowTitle(QStringLiteral("アカウントの追加"));
     setModal(true);
-    resize(560, 700);
+    const auto available = screen()->availableGeometry().size();
+    resize(qMin(560, available.width() - 80), qMin(700, available.height() - 80));
     auto *layout = new QVBoxLayout(this);
     auto *form = new QFormLayout;
     m_email->setObjectName(QStringLiteral("accountEmail"));

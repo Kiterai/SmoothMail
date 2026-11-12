@@ -14,7 +14,7 @@
 
 - Qt6は開発者が別途インストールしたSDKを使用する。ビルドシステムが別のQtを自動導入する構成にはしない。
 - 開発者は使用するQt SDKのパスをCMakeのQt6_ROOTまたはCMAKE_PREFIX_PATHで指定する。共通設定に個人環境の絶対パスを固定しない。
-- 現開発環境ではC:/Qt/6.12.0/msvc2022_64が存在することを確認済み。このSDKを利用する方針とする。ただし、KDE依存を含むビルド互換性は未検証。
+- 現開発環境ではC:/Qt/6.12.0/msvc2022_64を利用し、KDE依存を含むMSVC x64 Debugビルドを確認済み。Releaseおよび他OSの互換性は未検証。
 - KIMAP、KSMTP、KMimeおよび必要な依存は、指定SDKと同じQt・コンパイラ・アーキテクチャ・ランタイム構成でビルドする。別のQtにリンク済みのバイナリを混在させない。
 - CraftによるQtを含む一括導入は標準の開発手順としない。依存管理ツールを使用する場合も、指定した外部Qt SDKを利用できることを条件とする。
 
@@ -51,4 +51,4 @@
 - Qt未導入のWindows環境でのTLS、Cyrus SASLおよびXOAUTH2機構の配布・探索・認証。
 - Google/Microsoftそれぞれのredirect URI登録、認証、更新、失効、秘密情報保存。長いトークンの保存と保存失敗も確認する。
 - 日本語MIME・添付名・フォルダ名、IMAPのUIDVALIDITY/UIDと既読・削除同期、30秒更新時のUI応答性。
-- メイン画面基盤とKMime解析層は、指定SDKとMSVCでビルド・自動テストを確認済み。ECM/KCodecs/KMime 6.31.0は同SDKに対してDLLをビルド済み。KIMAP/KSMTPと残る推移依存のビルド、実通信、クリーン環境への配布は未検証。ライブラリ採用と動作検証完了は区別する。
+- 指定SDKとMSVCでアプリおよびKIMAP/KSMTP/KMime・必要な推移依存のDebug構築を確認済み。Qt SDK未導入のWindows Sandboxでは合成IMAP/SMTP、TLS証明書検証、SASL/XOAUTH2、模擬OAuthとOS秘密情報保存を検証済み。実Google/Microsoft認可・実メール送受信・Release配布と全ライセンス監査は未完了。詳細は`docs/dev/implementation-status.md`、`docs/dev/dependencies.md`、`docs/dev/oauth.md`を参照し、実装と実サービス・製品配布の検証完了を区別する。

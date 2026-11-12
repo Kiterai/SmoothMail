@@ -8,6 +8,7 @@
 #include <QSignalSpy>
 #include <QtTest>
 #include <QPlainTextEdit>
+#include <QScreen>
 
 using namespace smoothmail;
 class AccountDialogTest final : public QObject
@@ -24,6 +25,15 @@ private slots:
         for (const auto *name : {"SMTPPassword", "IMAP4Password"}) {
             QCOMPARE(dialog.findChild<QLineEdit *>(QLatin1String(name))->echoMode(), QLineEdit::Password);
         }
+    }
+    void initialSizeFitsAvailableScreen()
+    {
+        AccountDialog dialog;
+        dialog.show();
+        QCoreApplication::processEvents();
+        QVERIFY(dialog.height() < dialog.screen()->availableGeometry().height());
+        const auto *buttons = dialog.findChild<QDialogButtonBox *>();
+        QVERIFY(dialog.rect().contains(QRect(buttons->mapTo(&dialog, QPoint()), buttons->size())));
     }
     void validatesAndPreservesError()
     {

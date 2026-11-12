@@ -33,6 +33,7 @@ struct MessageDocument
     QString senderAddress;
     QStringList fromAddresses;
     QStringList replyToAddresses;
+    bool hasReplyTo = false;
     QDateTime date;
     QStringList recipients;
     QString headers;

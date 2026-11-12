@@ -81,6 +81,7 @@ MessageParseResult MimeParser::parse(const QByteArray &rawMessage)
             document.senderAddress = QString::fromUtf8(mailboxes.first().address());
         }
     }
+    document.hasReplyTo = message.hasHeader("Reply-To");
     if (const auto *reply = message.replyTo()) {
         for (const auto &address : reply->addresses()) document.replyToAddresses.append(QString::fromUtf8(address));
     }

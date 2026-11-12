@@ -44,6 +44,21 @@ private slots:
         QCOMPARE(draft.to, QStringLiteral("from@example.test"));
         QVERIFY(draft.reply.inReplyTo.isEmpty());
     }
+    void presentInvalidReplyToNeverFallsBackToFrom()
+    {
+        for (const auto &header : {QByteArray("Reply-To:\r\n"), QByteArray("Reply-To: <>\r\n")}) {
+            const auto parsed = MimeParser::parse("From: sender@example.test\r\n" + header + "Subject: test\r\n\r\nbody");
+            QVERIFY(parsed.ok());
+            QVERIFY(parsed.message.hasReplyTo);
+            QVERIFY(parsed.message.replyToAddresses.isEmpty());
+            const auto draft = replyDraft(QStringLiteral("me@example.test"), parsed.message);
+            QVERIFY(draft.to.isEmpty());
+            QVERIFY(!composeMessage(draft).ok());
+        }
+        const auto absent = MimeParser::parse("From: sender@example.test\r\n\r\nbody");
+        QVERIFY(!absent.message.hasReplyTo);
+        QCOMPARE(replyDraft(QStringLiteral("me@example.test"), absent.message).to, QStringLiteral("sender@example.test"));
+    }
     void rejectsInjectionAndSupportsEmptyDraft()
     {
         ComposeData draft;

@@ -39,6 +39,9 @@
 - OAuth再認可はアカウント行の右クリックから明示実行し、同じaccount/protocolのgrantを差し替える。失効で勝手にブラウザを起動しない。新規認可のclient IDはSMOOTHMAIL_GOOGLE_CLIENT_ID/MICROSOFT_CLIENT_ID、Google公開desktop secretは任意環境変数。アカウント画面にスクロールを導入。暫定追加UIはspec/provisional/oauth-controls.md、手順はdocs/dev/oauth.md。
 - 最新Debugの全15テストEXEをQt SDK未導入のWindows Sandboxで実行し、合計142 passed、0 failed、0 skipped（init/cleanup含む）。all-exit-code.txt=0、各ログall-tst_*.txt。ホストはnetwork3ターゲットを除くCTest12成功（資格情報はopt-inなしskip）。実Google/Microsoft認可・実送受信・配布ライセンス/Release梱包は未検証。外部アプリ登録とユーザ自身の認可が必要。
 - KSMTPにもローカルpatchを追加。SessionPrivate::startHandshakeでAUTH/SIZE/STARTTLS/DSN/SMTPUTF8をclearし、TLS前広告の残留を防止（RFC3207）。BuildMailDependenciesは独立ksmtpコピーからbuild/Debug/ksmtp-fresh-ehloへ構築。原本クリーンを維持。Sandbox postTlsCapabilitiesAreAuthoritativeでbeforeXOAUTH2/afterPLAINを広告、旧DLLはAUTH送信して2 passed/1 failed、修正DLLは認証送信なしで3 passed/0 failed。ログsmtp-{unpatched,patched}-results.txt、buildログsmtp-patched-build.log。ライセンスはLGPL-2.1-or-laterのまま通知/差分を配置。
+- c89b1d1で変更済み依存receiptの生成・configure時検証を追加。固定commit/patch SHA256/DLL SHA256/QtCore SHA256/configurationをJSON dataとして照合し、取り違え・欠如をfail closed。Python6テスト成功。ローカル整合性検証であり署名・配布元真正性の保証ではない。
+- Reply-Toの存在と解析されたアドレス一覧を区別するhasReplyToを追加。空/不正Reply-Toがある場合Fromへの暗黙fallbackを防止。原本rawから再parseするDB cacheにも反映される。回帰テスト成功。
+- guest実GUIでアカウント追加dialogの下端が拡大表示時に隠れる問題を発見。availableGeometryに初期サイズを制限して修正、決定/Cancelと入力エラー/取消、空履歴、tray hide/double-click restoreを手動確認。最新全15EXEは145 passed/0 failed/0 skipped、host CTest12 targets成功（OS秘密情報はopt-inなしskip）、receipt Python6成功。現時点で実サービス認可・実送受信・Release配布/全ライセンス監査は未完了。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

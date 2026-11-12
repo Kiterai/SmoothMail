@@ -24,7 +24,7 @@ ComposeData replyDraft(const QString &from, const MessageDocument &parent)
 {
     ComposeData result;
     result.from = from;
-    result.to = (parent.replyToAddresses.isEmpty() ? parent.fromAddresses : parent.replyToAddresses).join(QStringLiteral(", "));
+    result.to = (parent.hasReplyTo || !parent.replyToAddresses.isEmpty() ? parent.replyToAddresses : parent.fromAddresses).join(QStringLiteral(", "));
     result.subject = QStringLiteral("Re: ") + parent.subject;
     result.replySubject = parent.subject;
     result.reply = replyHeaders(parent.messageId, parent.references, parent.inReplyTo);

@@ -123,6 +123,8 @@ KIMAPには`patches/kimap/26.08.3-fix-sasl-continuation.patch`を適用します
 
 KSMTPにも`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。STARTTLS後に以前のAUTH等の広告情報を残さないための修正です。未修正版ではTLS後にXOAUTH2が広告されなくてもAUTHを送ることを合成サーバーで再現し、修正後はAUTHと秘密情報を送らず拒否することを確認しています。差分・通知は`share/licenses/ksmtp`へ配置します。
 
+変更済みKIO/KIMAP/KSMTPの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`python tests/test_modified_receipt.py`で検証できます。
+
 `mailtransport`はループバック限定の合成サーバーとダミー資格情報を使用します。PLAIN／LOGIN／XOAUTH2の通信、未広告のOAuth方式の拒否、STARTTLS非対応時の認証禁止を対象とし、認証成功ケースは明示的な非暗号化設定です。実サービス、TLSハンドシェイク・証明書検証、Google／MicrosoftのOAuth認可フローの検証ではありません。
 
 現在のSafe Shell内ではループバックTCP接続が拒否されます（Pythonの最小接続でも`WinError 10013`）。localhostが設定上許可されていても、この環境では接続できません。起動時の接続確認で早期に失敗させ、各ケースのタイムアウトを避けます。
@@ -138,7 +140,7 @@ KSMTPにも`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用しま�
 
 ### 認証方式の切替に注意
 
-KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。XOAUTH2を広告しないローカルサーバーへ、`authenticationDecision()`による拒否後にAUTHやトークンを送らない回帰テストはWindows Sandbox内で成功しました。本番接続への組込みは別途必要です。
+KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリのMailServiceではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認しています。特にOAuthトークンを別方式へ自動送信してはいけません。XOAUTH2を広告しないローカルサーバーへ、`authenticationDecision()`による拒否後にAUTHやトークンを送らない回帰テストはWindows Sandbox内で成功しました。実サービスでは未検証です。
 
 ## WindowsのSASLクライアント
 
@@ -179,4 +181,4 @@ IMAPはライブラリAPI上、TLSハンドシェイクとログインを別ジ�
 
 KMimeのライブラリソースにLGPL-2.0-or-later、KSMTPのライブラリソースにLGPL-2.1-or-laterとLGPL-2.0-or-laterを確認しています。CMakeのライセンスチェック引数だけで製品ライセンスを判定しないでください。
 
-全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。SASLの単体構築・機構ロードとKIMAP/KSMTP本体の構築は確認済みですが、TLS、実サービス認証、クリーン環境への配布は引き続き検証対象です。
+全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。SASL機構ロード・KIMAP/KSMTP構築・合成サーバーTLSとSDK未導入guestでの開発用実行は確認済みですが、実サービス認証とRelease製品配布は引き続き検証対象です。
