@@ -192,6 +192,18 @@ void OAuthClient::postToken(const QList<QPair<QString, QString>> &parameters)
         const auto document = QJsonDocument::fromJson(*buffer);
         const auto json = document.object();
         if (json.value("error").toString() == QStringLiteral("invalid_grant")) { finishError(QStringLiteral("OAuth認可が失効しています。再認可してください。")); return; }
+        // Report only recognized protocol codes, never raw provider text that
+        // might contain authorization codes, tokens or other request data.
+        const auto providerError = json.value("error").toString();
+        if (error != QNetworkReply::NoError || status != 200) {
+            if (providerError == QStringLiteral("invalid_client")) {
+                finishError(QStringLiteral("OAuthアプリの登録情報が拒否されました (invalid_client)。クライアント種別・IDと、Google Desktop登録情報のclient_secretを確認してください。")); return;
+            }
+            if (providerError == QStringLiteral("unauthorized_client") || providerError == QStringLiteral("invalid_scope")
+                || providerError == QStringLiteral("invalid_request")) {
+                finishError(QStringLiteral("OAuthアプリまたは要求の設定に問題があります (%1)。登録種別・権限・redirect URIを確認してください。").arg(providerError)); return;
+            }
+        }
         if (error != QNetworkReply::NoError || status != 200 || !document.isObject() || buffer->size() > 128 * 1024) {
             finishError(QStringLiteral("OAuthトークンを取得できませんでした。TLS、ネットワーク、アプリ登録と同意設定を確認してください。")); return;
         }

@@ -100,6 +100,13 @@ qt_add_executable(smoothmail WIN32 src/main.cpp src/app/applicationcontroller.cp
 target_link_libraries(smoothmail PRIVATE smoothmail_ui smoothmail_transport smoothmail_oauth smoothmail_auth)
 smoothmail_target_defaults(smoothmail)
 
+option(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE "Build opt-in live Google OAuth/authentication probe (never a CTest test)" OFF)
+if(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE)
+    add_executable(smoothmail_google_probe tests/manual/google_oauth_probe.cpp)
+    target_link_libraries(smoothmail_google_probe PRIVATE smoothmail_transport smoothmail_oauth Qt6::Gui)
+    smoothmail_target_defaults(smoothmail_google_probe)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)

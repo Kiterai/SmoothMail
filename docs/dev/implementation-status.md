@@ -22,6 +22,7 @@
 - 空または不正なReply-Toが存在するときはFromへ切り替えず宛先を空に保ち、送信前の補完を要求。Reply-Toがない場合だけFromを初期値にする回帰テストを追加。
 - 開発用起動フォルダ`build/launch-debug`をwindeployqtと再帰import解決で作成。SDK/PATHなしの新しいguestでGUI起動と配置済み依存による合成通信14ケース成功。起動は`start-smoothmail.cmd`。手順・制限は`windows-launch.md`。
 - 明示許可されたSafe Shell外でGoogle IMAP 993 / SMTP 465 / STARTTLS 587へ、資格情報なしで証明書検証付きTLS 1.3接続とXOAUTH2広告を確認。アカウントの認証・送受信は未実施。
+- 提供されたGoogle OAuthクライアントIDで実認可を開始し、外部ブラウザを起動。ログイン後、利用者から「テスターのみアクセス可」の403 access_denied表示が報告されました。Google CloudのAudience/Test users設定が必要で、この実行では認可コード交換・トークン取得・メール認証へ進んでいません。待機中のプローブは停止済み。実サービス成功とは扱いません。
 
 ## 残る作業
 
@@ -30,7 +31,7 @@
 
 ## 外部設定・権限
 
-- Googleのテスト用アカウントは利用者から提供済みですが、OAuth Desktop appのクライアントIDと利用者自身によるブラウザ認可は未提供です。Microsoftのアプリ登録・認可も未提供です。通常のGoogleパスワードをIMAP/SMTPへ送信する代替方法は使いません。利用者のパスワードやトークンをチャットへ貼り付ける必要はありません。
+- Googleのテスト用アカウントとOAuth Desktop appのクライアントIDは提供済みです。利用者自身によるブラウザ認可と、その後のトークン取得・更新・メール認証の成功確認は必要です。Microsoftのアプリ登録・認可は未提供です。通常のGoogleパスワードをIMAP/SMTPへ送信する代替方法は使いません。利用者のパスワードやトークンをチャットへ貼り付ける必要はありません。
 - Safe Shell内のloopback TCPはWinError 10013で拒否されます。外部通信を無効にしたWindows Sandbox内の合成サーバーではテスト可能です。
 - OS資格情報ストアの書込みテストは使い捨てのWindows Sandbox内だけで実行しています。
 

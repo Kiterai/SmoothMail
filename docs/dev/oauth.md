@@ -11,7 +11,7 @@ Qt Network上にAuthorization Code + PKCE S256 + state検証を実装してい�
 
 GoogleではDesktop app、MicrosoftではMobile and desktop applicationsのpublic clientとしてアプリを登録してください。Microsoftのsystem browser redirect URIは`http://localhost`です。登録した対象アカウント種別と委任権限、組織側のIMAP/SMTP AUTH許可を確認してください。Googleのメールスコープは公開形態によって検証・審査が必要です。
 
-Googleのテスト用アカウントは提供済みですが、利用するOAuthアプリ登録情報と実サービスのブラウザ認可は未提供です。テストアカウントの通常パスワードだけではOAuthを開始できません。秘密情報をチャットへ貼り付ける必要はありません。Windowsの起動手順と接続確認は`windows-launch.md`を参照してください。
+Googleのテスト用アカウントとDesktop OAuthクライアントIDは提供済みです。実サービス検証では利用者自身による外部ブラウザのログイン・同意が必要です。認可後のトークン取得・更新・IMAP/SMTP認証まで確認して初めて成功とします。秘密情報をチャットへ貼り付ける必要はありません。Windowsの起動手順と接続確認は`windows-launch.md`を参照してください。
 
 起動環境で以下を設定します。クライアントIDは公開アプリの識別子です。Googleのdesktop client secretが登録情報に含まれる場合だけ、任意で`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`も設定できます（desktop appでは機密保持できる秘密として扱いません）。Microsoftはpublic clientでありclient secretを使いません。
 
@@ -25,6 +25,29 @@ set SMOOTHMAIL_MICROSOFT_CLIENT_ID=<Microsoft public clientのアプリID>
 失効後はアカウント行の右クリックから対象プロトコルのOAuthを再認可できます。アカウントIDとメールキャッシュは維持します。背景更新の失敗を理由に勝手にブラウザを起動しません。暫定UIの説明は`spec/provisional/oauth-controls.md`を参照してください。
 
 ## 検証
+
+### 実アカウントの手動プローブ
+
+`-DSMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE=ON`で、実装と同じ`OAuthClient`・`MailService`を使う`smoothmail_google_probe`を追加できます。既定OFFで、CTestでは自動実行しません。開発用ランタイムのQtプラグイン/SASL探索先を設定して、以下を実行します。
+
+```bat
+smoothmail_google_probe.exe --client-id <Desktop appのclient ID> --email <テスト用Gmailアドレス>
+```
+
+外部ブラウザで利用者が認可すると、コード交換→refresh→SSL/TLS接続のSMTP/IMAP XOAUTH2認証を順番に検証します。メール本文の読出し・送信・下書き追加は行いません。トークンはメモリ内のみで、資格情報ストア/DB/ファイルへ保存しません。プロトコルログ・TLS鍵ログを無効化し、ログには段階と成否だけを表示します。認可は最大5分、全体は最大7分です。通常のSafe Shell内でloopback/外部接続を拒否される場合、外側での実行には明示的な許可が必要です。
+
+Google Desktopアプリの登録JSONに`client_secret`が含まれる場合、トークン交換に必要になることがあります。ローカルの`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`に設定して起動してください。チャットやGit管理ファイルには貼り付けません。`invalid_client`等は既知のエラーコードだけを表示し、Googleの生の応答文をログへ出しません。
+
+### Googleで403 access_deniedになる場合
+
+「テスト中で、デベロッパーに承認されたテスターのみがアクセスできます」と表示された場合、OAuthクライアントを作成した同じGoogle Cloudプロジェクトで、**Google Auth Platform → Audience（対象）→ Test users（テストユーザー）→ Add users**から、実際にログインするテスト用Googleアカウントを追加して保存します。旧UIでは「APIとサービス → OAuth同意画面 → テストユーザー」です。プロジェクト所有者のメールも、テストで使う場合は明示的に追加します。テストのために本番公開へ切り替えたり審査済みと扱ったりする必要はありません。
+
+設定後は古い認可URLを使い回さず、新しくOAuth操作を開始してください。Testing状態のGmailスコープでは、認可・refresh tokenは通常7日で期限切れになる点にも注意します。
+
+公式手順: https://developers.google.com/workspace/guides/configure-oauth-consent
+対象ユーザーと有効期限: https://support.google.com/cloud/answer/15549945
+
+### 合成環境の検証結果
 
 Windows Sandboxの合成callback・差替えネットワーク応答・使い捨て資格情報ストアで7 passed（init/cleanup含む）。RFC 7636のPKCEベクトル、state検証、code/verifierの交換、refresh tokenのローテーションと保持、失効、HTTP redirect拒否、Microsoftの要求scope、取消を確認しています。保存上限超過でローテーション保存が失敗するとアクセストークンを返さないこと、OAuth項目がなくてもpassword項目へ切り替えないことも確認済みです。Google/Microsoftの実サービスで認可が成功したという意味ではありません。OSの証明書ストアと実アカウントを変更していません。
 

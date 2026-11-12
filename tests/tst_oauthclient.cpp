@@ -132,6 +132,21 @@ private slots:
         client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("refresh"));
         QTRY_COMPARE(errors.size(), 2); QVERIFY(result.isEmpty());
     }
+    void reportsRegistrationErrorsWithoutEchoingProviderData()
+    {
+        FakeNetwork network; OAuthClient client(nullptr, &network);
+        QSignalSpy errors(&client, &OAuthClient::failed);
+        network.status = 400;
+        for (const auto &code : {QStringLiteral("invalid_client"), QStringLiteral("unauthorized_client"),
+                                QStringLiteral("invalid_request"), QStringLiteral("invalid_scope")}) {
+            network.response = {{"error", code}, {"error_description", "must-not-echo-token-or-request"}};
+            client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("dummy_refresh"));
+            QTRY_COMPARE(errors.size(), 1);
+            const auto error = errors.takeFirst().first().toString();
+            QVERIFY(error.contains(code));
+            QVERIFY(!error.contains(QStringLiteral("must-not-echo")));
+        }
+    }
     void microsoftAndCancellation()
     {
         FakeNetwork network; OAuthClient client(nullptr, &network);
