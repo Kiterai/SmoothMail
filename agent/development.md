@@ -30,4 +30,8 @@
 - 重要: KSMTP 26.08.3 loginjob.cpp:155以降で優先認証方式からLOGIN/PLAINへのfallbackがある。OAuthでは利用可能機構を検査してからジョブ開始し、欠如時はトークンを一切送らないテストが必須。
 - BuildSaslDependencies/BuildXOAuth2DependencyでSASL 2.1.28と3機構をDebug DLL構築済み。CyrusのGitソースには生成ファイルがないためSHA256固定の公式tarballを使用。上流nmakeは子ディレクトリで引数が継承されないため、lib/pluginsを個別実行する。
 - SASL単体テストにはWindowsのWSAStartupが必要。Qt Network経由ではなく生APIを呼ぶテストなので明示初期化している。全4 CTestターゲットが成功。
-- WinFlexBison 2.5.25（1176da2adaf972b2216b1ac8dd611e128fe80bc5）をMSVCでソースビルド済み。Solid 6.31.0のDebug DLL構築も成功（solid-build.log）。手順のスクリプト化は後続作業。
+- WinFlexBison 2.5.25（1176da2adaf972b2216b1ac8dd611e128fe80bc5）をMSVCでソースビルド済み。BuildWinFlexBison.cmakeによる再実行も成功。Solid 6.31.0のDebug DLL構築も成功（solid-build.log）。Solid以降の手順のスクリプト化は後続作業。
+- vcpkg-recipesは177e8175121536d414f405ed8b3099b325a42638、ツールは2026-10-29を固定。native prefixにgettext-libintlを構築中（Safe Shell execution 1a7ecddffd914c019253840369040033、ログbuild/deps/vcpkg-native.log）。同じvcpkgのinstallを並行実行しない。
+- vcpkg組込みHTTP/WinHTTPはサンドボックスのproxyに失敗。X_VCPKG_ASSET_SOURCESでPython helper→Git付属curlを使用して取得できた。証明書検証を無効にしたりproxy変数を消したりしない。helperのGNU/MSYS2 canonical URL変換とSHA512等の4テストは成功。
+- 次は進行中のgettext-libintl結果を反映し、その後BuildNativeDependencies.cmakeでgettext[tools]も構築する。KI18nのconfigureはlibintlだけでなくGettextのmsgfmt/msgmergeも必須。新Native bootstrapの全完了は未確認。
+- 参考用に取得したlibintl-liteはAPI/翻訳機能がGNU gettextと異なり、Windows代替として採用していない。製品へ組み込まない。

@@ -47,6 +47,25 @@ KIMAP/KSMTPの要求はQt 6.9以降、Frameworks 6.25以降、CMake 3.29以降�
 
 KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加えてKService・Solid・KCrashが必要です。`KIOCORE_ONLY=ON`でも上流configureはKService/Solidを要求します。Solidにはビルド時のFlex/Bisonも必要です。ソースとコミットは確認済みですが、これらの残る構築はまだ完了していません。
 
+### gettextとビルド用ツール
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildWinFlexBison.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildNativeDependencies.cmake
+```
+
+WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**現時点ではgettext-libintlのビルドが継続中で、このNativeDependencies全体の完了確認はまだです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
+
+サンドボックスのプロキシでvcpkg内蔵ダウンローダーが失敗する場合は、接続可能なcurlを指定して次を追加できます。
+
+```text
+-DSMOOTHMAIL_USE_ASSET_DOWNLOADER=ON -DCURL_EXECUTABLE=C:/path/to/curl.exe
+```
+
+このオプションにはPython 3.11以降が必要です。既存のプロキシ設定は変更せず、GNU/MSYS2のミラーURLを各公式配布元へ正規化し、HTTPS・証明書検証とSHA512確認を維持します。ダウンローダーの単体テストは`python tests/test_asset_fetch.py`で実行できます（ネットワークを使用しません）。
+
+gettext/Flex/Bison等のGPLビルドツールは、アプリへリンクするLGPLのlibintlとは区別します。これらのビルドツール自体を製品へ同梱する構成にはしません。
+
 ### 認証方式の切替に注意
 
 KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。構築後、XOAUTH2を広告しないローカルサーバーへAUTHやトークンを送らないことを回帰テストします。

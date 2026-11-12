@@ -1,4 +1,9 @@
 {
+  "vcpkg-recipes": {
+    "repository": "https://github.com/microsoft/vcpkg.git",
+    "tag": "commit",
+    "commit": "177e8175121536d414f405ed8b3099b325a42638"
+  },
   "cyrus-sasl-xoauth2": {
     "repository": "https://github.com/moriyoshi/cyrus-sasl-xoauth2.git",
     "tag": "commit",

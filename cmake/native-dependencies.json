@@ -1,0 +1,6 @@
+{
+  "vcpkgTool": {
+    "url": "https://github.com/microsoft/vcpkg-tool/releases/download/2026-10-29/vcpkg.exe",
+    "sha512": "18a3ac319fc494fd5ecd795c74d3a1f327e5b7c335fb7d697b5e9e236990a4e6a5433a70fe48a88e8f267349b6d07946426e130c60a1a801dfaf089b3084d6c0"
+  }
+}
