@@ -42,6 +42,10 @@
 - c89b1d1で変更済み依存receiptの生成・configure時検証を追加。固定commit/patch SHA256/DLL SHA256/QtCore SHA256/configurationをJSON dataとして照合し、取り違え・欠如をfail closed。Python6テスト成功。ローカル整合性検証であり署名・配布元真正性の保証ではない。
 - Reply-Toの存在と解析されたアドレス一覧を区別するhasReplyToを追加。空/不正Reply-Toがある場合Fromへの暗黙fallbackを防止。原本rawから再parseするDB cacheにも反映される。回帰テスト成功。
 - guest実GUIでアカウント追加dialogの下端が拡大表示時に隠れる問題を発見。availableGeometryに初期サイズを制限して修正、決定/Cancelと入力エラー/取消、空履歴、tray hide/double-click restoreを手動確認。最新全15EXEは145 passed/0 failed/0 skipped、host CTest12 targets成功（OS秘密情報はopt-inなしskip）、receipt Python6成功。現時点で実サービス認可・実送受信・Release配布/全ライセンス監査は未完了。
+- 利用者がGoogleの開発用アカウントを提供。通常パスワードはファイル/ログへ保存も認証送信もしていない。Google Desktop OAuth client IDは環境変数未設定、実ブラウザ認可も未実施。Googleアカウント作成とOAuthアプリ登録は別。以後、パスワードを再掲/コードへ固定しない。
+- tests/manual/google_readiness.pyを作成。認証・送信なしでGoogleのIMAP993/SMTP465/STARTTLS587のTLSとXOAUTH2広告だけを確認。Safe Shell内では10013、利用者のコマンド許可後に外側で3件成功（TLS1.3/XOAUTH2）。Python imaplibのcapabilitiesはstr/bytes両対応。実アカウント認証は未検証。
+- cmake/StageWindowsRuntime.cmakeでDebug開発用の起動フォルダを作成。dumpbin再帰imports+明示Qt plugins/SASL3機構+選択MSVC Debug CRT/UCRT。windeployqt6.12がqt6keychaindをSDK moduleと誤認するため、解決されたQt SDK DLLだけを入力にする（SDK変更なし）。qt.conf/start-smoothmail.cmd/runtime-sha256.txtを生成。出力既存時とReleaseは拒否。Python guard3 tests成功。現在の完成フォルダbuild/launch-debug。途中試行のbuild/run-debug*は未完成/不採用であり起動用には使わない。
+- 新しいSDKなしguestにlaunch-debugだけをコピーしWindowsだけのPATHで起動成功。ロードモジュールはguest C:\SmoothMailとOS配下、qsqliteも配置からロード。別フォルダにテストEXE+QtTestDLLだけ追加して、runtimeをlaunch-debugに限定した合成通信14 passed/0 failed/0 skipped。ログsandbox-mail-output/{launch-debug-loaded-modules.txt,runtime-probe-results.txt}。外部Google認証とRelease配布の検証ではない。詳細docs/dev/windows-launch.md。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

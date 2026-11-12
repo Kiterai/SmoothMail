@@ -20,6 +20,8 @@
 - 変更済み依存のreceipt検証はPythonの6テストで成功。DLL・Qt・patch・構成・commitの不一致と実行形式のreceiptを拒否。
 - guest実GUIで起動、設定メニュー、アカウント追加の入力エラーと取消、空の履歴、閉じる操作後のトレイ常駐とダブルクリック復帰を確認。低解像度/拡大表示時の追加画面下端切れを修正し、決定/取消が画面内に収まることを再確認。
 - 空または不正なReply-Toが存在するときはFromへ切り替えず宛先を空に保ち、送信前の補完を要求。Reply-Toがない場合だけFromを初期値にする回帰テストを追加。
+- 開発用起動フォルダ`build/launch-debug`をwindeployqtと再帰import解決で作成。SDK/PATHなしの新しいguestでGUI起動と配置済み依存による合成通信14ケース成功。起動は`start-smoothmail.cmd`。手順・制限は`windows-launch.md`。
+- 明示許可されたSafe Shell外でGoogle IMAP 993 / SMTP 465 / STARTTLS 587へ、資格情報なしで証明書検証付きTLS 1.3接続とXOAUTH2広告を確認。アカウントの認証・送受信は未実施。
 
 ## 残る作業
 
@@ -28,7 +30,7 @@
 
 ## 外部設定・権限
 
-- OAuthの実サービス検証には、Google/Microsoftのアプリ登録情報（クライアントID等）とテストアカウントでの利用者自身による認可が必要です。現在は未提供です。クライアントシークレットや利用者のパスワードをチャットへ貼り付ける必要はありません。
+- Googleのテスト用アカウントは利用者から提供済みですが、OAuth Desktop appのクライアントIDと利用者自身によるブラウザ認可は未提供です。Microsoftのアプリ登録・認可も未提供です。通常のGoogleパスワードをIMAP/SMTPへ送信する代替方法は使いません。利用者のパスワードやトークンをチャットへ貼り付ける必要はありません。
 - Safe Shell内のloopback TCPはWinError 10013で拒否されます。外部通信を無効にしたWindows Sandbox内の合成サーバーではテスト可能です。
 - OS資格情報ストアの書込みテストは使い捨てのWindows Sandbox内だけで実行しています。
 

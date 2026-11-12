@@ -11,7 +11,7 @@ Qt Network上にAuthorization Code + PKCE S256 + state検証を実装してい�
 
 GoogleではDesktop app、MicrosoftではMobile and desktop applicationsのpublic clientとしてアプリを登録してください。Microsoftのsystem browser redirect URIは`http://localhost`です。登録した対象アカウント種別と委任権限、組織側のIMAP/SMTP AUTH許可を確認してください。Googleのメールスコープは公開形態によって検証・審査が必要です。
 
-現在、利用するアプリ登録情報と実サービスのテスト認可は未提供です。秘密情報をチャットへ貼り付ける必要はありません。
+Googleのテスト用アカウントは提供済みですが、利用するOAuthアプリ登録情報と実サービスのブラウザ認可は未提供です。テストアカウントの通常パスワードだけではOAuthを開始できません。秘密情報をチャットへ貼り付ける必要はありません。Windowsの起動手順と接続確認は`windows-launch.md`を参照してください。
 
 起動環境で以下を設定します。クライアントIDは公開アプリの識別子です。Googleのdesktop client secretが登録情報に含まれる場合だけ、任意で`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`も設定できます（desktop appでは機密保持できる秘密として扱いません）。Microsoftはpublic clientでありclient secretを使いません。
 

@@ -163,6 +163,8 @@ MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してく�
 
 ## ライセンスと残る検証
 
+Windowsの開発用起動フォルダを作成する`StageWindowsRuntime.cmake`と`windeployqt`の手順は`windows-launch.md`を参照してください。現在の起動用cmdは`build/launch-debug/start-smoothmail.cmd`です。Debug CRTを含む開発テスト専用で、製品配布物ではありません。
+
 秘密情報保存用のQtKeychainは、次の手順で指定Qt SDKに対して構築します（別Qtの取得なし）。
 
 ```bat
