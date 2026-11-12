@@ -35,6 +35,9 @@
 - 添付カードからDownloadsへ保存しDB履歴に記録する処理をrepository workerに追加。MimeParserで添付partだけを検証してdecodedBody（message/rfc822はbodyAsMessage encodedContent）を抽出。保存名の制御/format文字・パス区切り・ADS・Windows予約device名を処理、NewOnlyで原子的に既存ファイルを非上書き。同名は連番。保存失敗は履歴なし、履歴失敗後は保存済みpathとエラーを報告。
 - DownloadHistoryDialogはsubject/date/absolutePath/SI bytesと右クリックの元メール/保存先を実装。source jumpはaccount/folder/UIDVALIDITY/UID照合、見つからなければ別メールを開かず状態表示。添付保存/ファイル名逸脱/同名非上書き/バイナリ/履歴はaccountrepository test、カードpartId通知はmessageviewer testで検証。ホストCTest12ターゲット成功。Downloadsへの実ホスト書込みや実ファイラー起動はしていない（テストはbuild配下）。
 - OAuthClientはGoogle/Microsoft固定endpoint/scope、PKCE S256、system乱数state、loopback callback(Host/HTTPmethod/path/state/code重複検査)、HTTPS token exchange/refresh、手動redirect、タイムアウト/応答上限/取消/invalid_grantエラーを実装。ネットワークは非同期Qt Network。Sandbox tst_oauthclient6 passed（FakeNetworkと実loopback、外部接続なし）。UI/secret保存/メールへ渡す接続は後続。公式設定と資料はdocs/dev/oauth.md。実アプリ登録/実サービス認可は未提供。
+- OAuthをAccountDialog/AccountRegistrar/AuthenticationBroker/IMAP/SMTPへ接続済み。ServerSettingsのprovider/clientIdは非秘密メタデータ、Keychainはpasswordとoauthの別key。OAuth grant JSONを通常パスワードで代用不可。brokerはaccess tokenをメモリcacheし、refresh rotationをKeychainへ保存できてからaccessを返す。保存上限超過/失効/キー欠如時はtokenを返さずpassword fallbackもなし。Sandbox oauthclient7 passed（実使い捨てKeychain+FakeNetwork）、MS短縮scope表記とcallback交換も検証。
+- OAuth再認可はアカウント行の右クリックから明示実行し、同じaccount/protocolのgrantを差し替える。失効で勝手にブラウザを起動しない。新規認可のclient IDはSMOOTHMAIL_GOOGLE_CLIENT_ID/MICROSOFT_CLIENT_ID、Google公開desktop secretは任意環境変数。アカウント画面にスクロールを導入。暫定追加UIはspec/provisional/oauth-controls.md、手順はdocs/dev/oauth.md。
+- 最新Debugの全15テストEXEをQt SDK未導入のWindows Sandboxで実行し、合計142 passed、0 failed、0 skipped（init/cleanup含む）。all-exit-code.txt=0、各ログall-tst_*.txt。ホストはnetwork3ターゲットを除くCTest12成功（資格情報はopt-inなしskip）。実Google/Microsoft認可・実送受信・配布ライセンス/Release梱包は未検証。外部アプリ登録とユーザ自身の認可が必要。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

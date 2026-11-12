@@ -4,6 +4,7 @@
 #include <QPointer>
 #include <QQueue>
 class QWidget;
+class QProgressDialog;
 
 namespace smoothmail {
 class MainWindow;
@@ -14,6 +15,8 @@ class MailService;
 class AccountDialog;
 class ComposeDialog;
 class DownloadHistoryDialog;
+class AuthenticationBroker;
+class OAuthClient;
 class ApplicationController final : public QObject
 {
     Q_OBJECT
@@ -36,6 +39,12 @@ private:
     CredentialStore *m_credentials;
     AccountRegistrar *m_registrar;
     MailService *m_mail;
+    AuthenticationBroker *m_authentication;
+    OAuthClient *m_authorization;
+    bool m_authorizingSmtp = false;
+    QString m_authorizingClientId;
+    QString m_reauthorizingId, m_reauthorizingProtocol;
+    QPointer<QProgressDialog> m_oauthProgress;
     QList<Account> m_accounts;
     struct Request { QString accountId; QString folder; };
     QQueue<Request> m_queue;

@@ -206,7 +206,11 @@ void OAuthClient::postToken(const QList<QPair<QString, QString>> &parameters)
         const auto granted = json.value("scope").toString();
         if (!granted.isEmpty()) {
             for (const auto &required : scope(m_provider).split(u' ')) {
-                if (required != QStringLiteral("offline_access") && !granted.split(u' ').contains(required)) {
+                const auto grantedScopes = granted.split(u' ');
+                const auto shortScope = required.section(u'/', -1);
+                const bool permitted = grantedScopes.contains(required)
+                    || (m_provider == QStringLiteral("microsoft") && grantedScopes.contains(shortScope));
+                if (required != QStringLiteral("offline_access") && !permitted) {
                     finishError(QStringLiteral("IMAP/SMTPに必要なOAuth権限が許可されていません。")); return;
                 }
             }

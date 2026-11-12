@@ -1,6 +1,7 @@
 #include "accountregistrar.h"
 #include <QPointer>
 #include <QUuid>
+#include "mail/oauthclient.h"
 
 namespace smoothmail {
 AccountRegistrar::AccountRegistrar(AccountRepository *repository, CredentialStore *credentials, QObject *parent)
@@ -17,9 +18,9 @@ AccountRegistrar::AccountRegistrar(AccountRepository *repository, CredentialStor
     });
 }
 
-QString AccountRegistrar::secretKey(const QString &id, const QString &protocol)
+QString AccountRegistrar::secretKey(const QString &id, const QString &protocol, AuthenticationMode mode)
 {
-    return id + u'/' + protocol + QStringLiteral("/password");
+    return id + u'/' + protocol + (mode == AuthenticationMode::OAuth2 ? QStringLiteral("/oauth") : QStringLiteral("/password"));
 }
 
 void AccountRegistrar::add(Account account, const QString &smtpPassword, const QString &imapPassword)
@@ -34,21 +35,22 @@ void AccountRegistrar::add(Account account, const QString &smtpPassword, const Q
         emit finished({}, error);
         return;
     }
-    if (account.smtp.authentication == AuthenticationMode::OAuth2 || account.imap.authentication == AuthenticationMode::OAuth2) {
-        emit finished({}, QStringLiteral("OAuthアプリ登録・認可の連携は準備中です。パスワードを代用して保存することはできません。"));
+    if ((account.smtp.authentication == AuthenticationMode::OAuth2 && refreshTokenFromGrant(smtpPassword).isEmpty())
+        || (account.imap.authentication == AuthenticationMode::OAuth2 && refreshTokenFromGrant(imapPassword).isEmpty())) {
+        emit finished({}, QStringLiteral("OAuth認可がありません。通常のパスワードを代用することはできません。"));
         return;
     }
     m_pending = account;
     m_busy = true;
     const QPointer<AccountRegistrar> guard(this);
-    m_credentials->write(secretKey(account.id, QStringLiteral("imap")), imapPassword,
+    m_credentials->write(secretKey(account.id, QStringLiteral("imap"), account.imap.authentication), imapPassword,
         [guard, smtpPassword](const QString &, const QString &error) {
             if (!guard) return;
             if (!error.isEmpty()) {
                 guard->rollback(error);
                 return;
             }
-            guard->m_credentials->write(secretKey(guard->m_pending.id, QStringLiteral("smtp")), smtpPassword,
+            guard->m_credentials->write(secretKey(guard->m_pending.id, QStringLiteral("smtp"), guard->m_pending.smtp.authentication), smtpPassword,
                 [guard](const QString &, const QString &error) {
                     if (!guard) return;
                     if (!error.isEmpty()) guard->rollback(error);
@@ -60,10 +62,10 @@ void AccountRegistrar::add(Account account, const QString &smtpPassword, const Q
 void AccountRegistrar::rollback(const QString &error)
 {
     const QPointer<AccountRegistrar> guard(this);
-    m_credentials->remove(secretKey(m_pending.id, QStringLiteral("smtp")),
+    m_credentials->remove(secretKey(m_pending.id, QStringLiteral("smtp"), m_pending.smtp.authentication),
         [guard, error](const QString &, const QString &smtpError) {
             if (!guard) return;
-            guard->m_credentials->remove(secretKey(guard->m_pending.id, QStringLiteral("imap")),
+            guard->m_credentials->remove(secretKey(guard->m_pending.id, QStringLiteral("imap"), guard->m_pending.imap.authentication),
                 [guard, error, smtpError](const QString &, const QString &imapError) {
                     if (!guard) return;
                     auto message = error;

@@ -42,6 +42,7 @@ signals:
     void accountOrderChanged(const QStringList &accountIds);
     void historyRequested();
     void downloadRequested(const smoothmail::MailRecord &message, const QString &partId);
+    void reauthorizeRequested(const QString &accountId, const QString &protocol);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

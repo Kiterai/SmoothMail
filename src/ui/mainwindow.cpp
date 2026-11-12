@@ -128,6 +128,22 @@ void MainWindow::createPanes()
     folders->setDragDropMode(QAbstractItemView::DragDrop);
     folders->setDefaultDropAction(Qt::CopyAction);
     connect(folderModel, &FolderModel::accountOrderChanged, this, &MainWindow::accountOrderChanged);
+    folders->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(folders, &QTreeView::customContextMenuRequested, this, [this, folders](const QPoint &position) {
+        const auto index = folders->indexAt(position);
+        if (!index.isValid() || index.parent().isValid()) return;
+        const auto id = index.data(Qt::UserRole).toString();
+        Account account;
+        for (const auto &candidate : m_accounts) if (candidate.id == id) account = candidate;
+        QMenu menu(this);
+        auto *smtp = menu.addAction(QStringLiteral("SMTPのOAuthを再認可"));
+        auto *imap = menu.addAction(QStringLiteral("IMAP4のOAuthを再認可"));
+        smtp->setEnabled(account.smtp.authentication == AuthenticationMode::OAuth2);
+        imap->setEnabled(account.imap.authentication == AuthenticationMode::OAuth2);
+        const auto *chosen = menu.exec(folders->viewport()->mapToGlobal(position));
+        if (chosen == smtp) emit reauthorizeRequested(id, QStringLiteral("smtp"));
+        if (chosen == imap) emit reauthorizeRequested(id, QStringLiteral("imap"));
+    });
     connect(folders->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex &index) {
         if (m_rebuilding || !index.isValid()) return;
         const auto id = index.data(Qt::UserRole).toString();

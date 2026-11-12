@@ -10,7 +10,7 @@ class AccountRegistrar final : public QObject
 public:
     AccountRegistrar(AccountRepository *repository, CredentialStore *credentials, QObject *parent = nullptr);
     void add(Account account, const QString &smtpPassword, const QString &imapPassword);
-    static QString secretKey(const QString &accountId, const QString &protocol);
+    static QString secretKey(const QString &accountId, const QString &protocol, AuthenticationMode mode = AuthenticationMode::Plain);
 signals:
     void finished(const QString &id, const QString &error);
 private:

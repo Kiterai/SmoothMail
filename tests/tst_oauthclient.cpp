@@ -1,4 +1,7 @@
 #include "mail/oauthclient.h"
+#include "mail/authenticationbroker.h"
+#include "storage/credentialstore.h"
+#include "storage/accountregistrar.h"
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkProxy>
@@ -9,6 +12,7 @@
 #include <QSignalSpy>
 #include <QtTest>
 #include <cstring>
+#include <QUuid>
 
 using namespace smoothmail;
 class FakeReply final : public QNetworkReply
@@ -54,6 +58,9 @@ protected:
 class OAuthClientTest final : public QObject
 {
     Q_OBJECT
+signals:
+    void credentialCompleted(const QString &value, const QString &error);
+private:
     static void callback(const QUrl &redirect, const QByteArray &query)
     {
         QTcpSocket socket; socket.setProxy(QNetworkProxy::NoProxy);
@@ -139,7 +146,56 @@ private slots:
         client.cancel(); QCOMPARE(errors.size(), 1); QVERIFY(network.requests.isEmpty());
         client.authorize(QStringLiteral("microsoft"), QStringLiteral("id"), {});
         QVERIFY(QUrlQuery(url.last().first().toUrl()).queryItemValue(QStringLiteral("state")) != firstState);
-        client.cancel();
+        network.response["scope"] = QStringLiteral("IMAP.AccessAsUser.All SMTP.Send");
+        QSignalSpy tokens(&client, &OAuthClient::tokensReady);
+        const QUrlQuery second(url.last().first().toUrl());
+        callback(QUrl(second.queryItemValue(QStringLiteral("redirect_uri"), QUrl::FullyDecoded)),
+            "state=" + QUrl::toPercentEncoding(second.queryItemValue(QStringLiteral("state"))) + "&code=ms-dummy-code");
+        QTRY_COMPARE(tokens.size(), 1);
+        QCOMPARE(network.requests.first().url(), QUrl(QStringLiteral("https://login.microsoftonline.com/common/oauth2/v2.0/token")));
+        QCOMPARE(errors.size(), 1);
+    }
+    void brokerPersistsRotationAndNeverFallsBack()
+    {
+        if (qEnvironmentVariable("SMOOTHMAIL_TEST_KEYCHAIN") != QStringLiteral("1")) QSKIP("Requires disposable guest credential store opt-in.");
+        CredentialStore store(nullptr, QStringLiteral("SmoothMail-oauth-test-") + QUuid::createUuid().toString(QUuid::WithoutBraces));
+        FakeNetwork network; AuthenticationBroker broker(&store, nullptr, &network);
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("test@example.test"),
+            {QStringLiteral("smtp.test"), 465, QStringLiteral("test")},
+            {QStringLiteral("imap.test"), 993, QStringLiteral("test"), AuthenticationMode::OAuth2, EncryptionMode::ImplicitTls,
+             QStringLiteral("google"), QStringLiteral("dummy-id")}};
+        const auto oauthKey = AccountRegistrar::secretKey(account.id, QStringLiteral("imap"), AuthenticationMode::OAuth2);
+        const auto passwordKey = AccountRegistrar::secretKey(account.id, QStringLiteral("imap"));
+        QSignalSpy completed(this, &OAuthClientTest::credentialCompleted);
+        const auto callback = [this](const QString &value, const QString &error) { emit credentialCompleted(value, error); };
+        store.write(oauthKey, refreshGrant(QStringLiteral("old_refresh")), callback);
+        QTRY_COMPARE(completed.size(), 1); QVERIFY(completed.takeFirst().at(1).toString().isEmpty());
+        store.write(passwordKey, QStringLiteral("must-not-use-password"), callback);
+        QTRY_COMPARE(completed.size(), 1); QVERIFY(completed.takeFirst().at(1).toString().isEmpty());
+        broker.acquire(account, QStringLiteral("imap"), callback);
+        QTRY_COMPARE(completed.size(), 1); QCOMPARE(completed.takeFirst().first().toString(), QStringLiteral("dummy_access"));
+        store.read(oauthKey, callback);
+        QTRY_COMPARE(completed.size(), 1);
+        QCOMPARE(refreshTokenFromGrant(completed.takeFirst().first().toString()), QStringLiteral("dummy_refresh"));
+        broker.acquire(account, QStringLiteral("imap"), callback);
+        QTRY_COMPARE(completed.size(), 1); completed.clear();
+        QCOMPARE(network.requests.size(), 1); // Access token reused before expiry.
+        broker.invalidate(account.id);
+        network.response["refresh_token"] = QString(50000, u'x'); // Credential backend cannot persist this rotation.
+        broker.acquire(account, QStringLiteral("imap"), callback);
+        QTRY_COMPARE(completed.size(), 1);
+        QVERIFY(!completed.first().at(1).toString().isEmpty()); QVERIFY(completed.takeFirst().first().toString().isEmpty());
+        network.status = 400; network.response = {{"error", "invalid_grant"}};
+        broker.acquire(account, QStringLiteral("imap"), callback);
+        QTRY_COMPARE(completed.size(), 1);
+        QVERIFY(!completed.first().at(1).toString().isEmpty()); QVERIFY(completed.takeFirst().first().toString().isEmpty());
+        const auto posts = network.requests.size();
+        store.remove(oauthKey, callback); QTRY_COMPARE(completed.size(), 1); completed.clear();
+        broker.acquire(account, QStringLiteral("imap"), callback);
+        QTRY_COMPARE(completed.size(), 1);
+        QVERIFY(!completed.first().at(1).toString().isEmpty()); QVERIFY(completed.takeFirst().first().toString().isEmpty());
+        QCOMPARE(network.requests.size(), posts); // Does not read the password key or try another mechanism.
+        store.remove(passwordKey, callback); QTRY_COMPARE(completed.size(), 1);
     }
 };
 QTEST_GUILESS_MAIN(OAuthClientTest)

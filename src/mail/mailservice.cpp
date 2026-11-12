@@ -214,7 +214,7 @@ void MailService::test(const Account &account, const QString &smtpSecret, const 
                 emit finished(smtp, imap);
             }, Qt::QueuedConnection);
         };
-        auto error = validateAccount(account);
+        auto error = validateAccount(account, false);
         if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
         if (!error.isEmpty()) { deliver(error, error); return; }
         const auto smtpError = testSmtp(account.smtp, smtpSecret);
@@ -229,7 +229,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
     if (m_busy) return;
     m_busy = true;
     QMetaObject::invokeMethod(m_worker, [this, account, secret, requestedFolder] {
-        auto error = validateAccount(account);
+        auto error = validateAccount(account, false);
         if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
         QList<MailFolder> folders;
         QList<MailRecord> records;
@@ -321,7 +321,7 @@ void MailService::submit(const Account &account, const QString &secret, const Co
     if (m_busy) return;
     m_busy = true;
     QMetaObject::invokeMethod(m_worker, [this, account, secret, draft, saveAsDraft] {
-        auto error = validateAccount(account);
+        auto error = validateAccount(account, false);
         if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
         if (draft.from != account.email) error = QStringLiteral("送信元が選択アカウントと一致しません。");
         ComposedMessage message;

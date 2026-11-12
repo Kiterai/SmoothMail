@@ -13,9 +13,20 @@ GoogleではDesktop app、MicrosoftではMobile and desktop applicationsのpubli
 
 現在、利用するアプリ登録情報と実サービスのテスト認可は未提供です。秘密情報をチャットへ貼り付ける必要はありません。
 
+起動環境で以下を設定します。クライアントIDは公開アプリの識別子です。Googleのdesktop client secretが登録情報に含まれる場合だけ、任意で`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`も設定できます（desktop appでは機密保持できる秘密として扱いません）。Microsoftはpublic clientでありclient secretを使いません。
+
+```bat
+set SMOOTHMAIL_GOOGLE_CLIENT_ID=<Google Desktop appのクライアントID>
+set SMOOTHMAIL_MICROSOFT_CLIENT_ID=<Microsoft public clientのアプリID>
+```
+
+アカウント追加で各プロトコルをOAuth2にしてプロバイダを選び、「OAuthで認可」を実行します。メールサーバ設定のテスト後に「決定」で保存します。更新トークンはプロトコル別のQtKeychain項目にのみ保存され、SQLiteにはプロバイダとクライアントIDだけが入ります。アクセストークンはメモリ内で有効期限前まで再利用します。更新トークンの差替えをOSストアへ保存できなければ認証を止めます。
+
+失効後はアカウント行の右クリックから対象プロトコルのOAuthを再認可できます。アカウントIDとメールキャッシュは維持します。背景更新の失敗を理由に勝手にブラウザを起動しません。暫定UIの説明は`spec/provisional/oauth-controls.md`を参照してください。
+
 ## 検証
 
-Windows Sandboxの合成callbackと差替えネットワーク応答で6 passed（init/cleanup含む）。RFC 7636のPKCEベクトル、state検証、code/verifierの交換、refresh tokenのローテーションと保持、失効、HTTP redirect拒否、Microsoftの要求scope、取消を確認しています。Google/Microsoftの実サービスで認可が成功したという意味ではありません。OSの証明書ストアと実アカウントを変更していません。
+Windows Sandboxの合成callback・差替えネットワーク応答・使い捨て資格情報ストアで7 passed（init/cleanup含む）。RFC 7636のPKCEベクトル、state検証、code/verifierの交換、refresh tokenのローテーションと保持、失効、HTTP redirect拒否、Microsoftの要求scope、取消を確認しています。保存上限超過でローテーション保存が失敗するとアクセストークンを返さないこと、OAuth項目がなくてもpassword項目へ切り替えないことも確認済みです。Google/Microsoftの実サービスで認可が成功したという意味ではありません。OSの証明書ストアと実アカウントを変更していません。
 
 ## 公式資料
 

@@ -18,7 +18,8 @@ bool noControls(const QString &text)
 QJsonObject serverJson(const ServerSettings &server)
 {
     return {{"host", server.host}, {"port", server.port}, {"user", server.user},
-            {"authentication", int(server.authentication)}, {"encryption", int(server.encryption)}};
+            {"authentication", int(server.authentication)}, {"encryption", int(server.encryption)},
+            {"oauthProvider", server.oauthProvider}, {"oauthClientId", server.oauthClientId}};
 }
 
 bool readServer(const QJsonObject &json, ServerSettings &server)
@@ -30,6 +31,8 @@ bool readServer(const QJsonObject &json, ServerSettings &server)
     server.host = json.value("host").toString();
     server.user = json.value("user").toString();
     server.port = quint16(port);
+    server.oauthProvider = json.value("oauthProvider").toString();
+    server.oauthClientId = json.value("oauthClientId").toString();
     for (const auto &key : {QStringLiteral("authentication"), QStringLiteral("encryption")}) {
         const auto value = json.value(key);
         if (!value.isDouble() || value.toDouble() != value.toInt(-1)) {
@@ -42,7 +45,7 @@ bool readServer(const QJsonObject &json, ServerSettings &server)
 }
 }
 
-QString validateAccount(const Account &account)
+QString validateAccount(const Account &account, bool requireOAuthRegistration)
 {
     if (QUuid(account.id).isNull()) {
         return QStringLiteral("アカウントIDが不正です。");
@@ -64,6 +67,11 @@ QString validateAccount(const Account &account)
         switch (server->encryption) {
         case EncryptionMode::None: case EncryptionMode::ImplicitTls: case EncryptionMode::StartTls: break;
         default: return QStringLiteral("暗号化方式が不正です。");
+        }
+        if (requireOAuthRegistration && server->authentication == AuthenticationMode::OAuth2
+            && ((server->oauthProvider != QStringLiteral("google") && server->oauthProvider != QStringLiteral("microsoft"))
+                || server->oauthClientId.trimmed().isEmpty() || !noControls(server->oauthClientId))) {
+            return QStringLiteral("OAuthのプロバイダとアプリ登録情報を設定し、認可してください。");
         }
     }
     return {};

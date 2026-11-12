@@ -5,6 +5,7 @@
 #include "ui/downloadhistorydialog.h"
 #include "storage/accountregistrar.h"
 #include "mail/mailservice.h"
+#include "mail/authenticationbroker.h"
 #include <QStatusBar>
 #include <QApplication>
 #include <QLineEdit>
@@ -12,12 +13,15 @@
 #include <QTextDocument>
 #include <QMessageBox>
 #include <QStandardPaths>
+#include <QDesktopServices>
+#include <QProgressDialog>
 
 namespace smoothmail {
 ApplicationController::ApplicationController(MainWindow *window, const QString &path, const QString &plugins)
     : m_window(window), m_repository(new AccountRepository(path, this)),
       m_credentials(new CredentialStore(this)), m_registrar(new AccountRegistrar(m_repository, m_credentials, this)),
-      m_mail(new MailService(plugins, this))
+      m_mail(new MailService(plugins, this)), m_authentication(new AuthenticationBroker(m_credentials, this)),
+      m_authorization(new OAuthClient(this))
 {
     window->enableAccountManagement(true);
     window->enableHistory(true);
@@ -60,6 +64,49 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_current = {}; processNext();
         });
     connect(window, &MainWindow::addAccountRequested, this, &ApplicationController::addAccount);
+    connect(m_authorization, &OAuthClient::authorizationUrlReady, this, [this](const QUrl &url) {
+        if (!QDesktopServices::openUrl(url)) {
+            m_authorization->cancel();
+            if (m_dialog) m_dialog->oauthFinished(m_authorizingSmtp, {}, {}, QStringLiteral("外部ブラウザを開けませんでした。"));
+        }
+    });
+    connect(m_authorization, &OAuthClient::failed, this, [this](const QString &error) {
+        if (!m_reauthorizingId.isEmpty()) {
+            m_window->statusBar()->showMessage(error);
+            m_reauthorizingId.clear(); m_reauthorizingProtocol.clear();
+            if (m_oauthProgress) { m_oauthProgress->close(); m_oauthProgress->deleteLater(); }
+        } else if (m_dialog) m_dialog->oauthFinished(m_authorizingSmtp, {}, {}, error);
+    });
+    connect(m_authorization, &OAuthClient::tokensReady, this, [this](const OAuthTokens &tokens) {
+        if (!m_reauthorizingId.isEmpty()) {
+            const auto id = m_reauthorizingId, protocol = m_reauthorizingProtocol;
+            m_reauthorizingId.clear(); m_reauthorizingProtocol.clear();
+            if (m_oauthProgress) { m_oauthProgress->close(); m_oauthProgress->deleteLater(); }
+            const QPointer<ApplicationController> guard(this);
+            m_credentials->write(AccountRegistrar::secretKey(id, protocol, AuthenticationMode::OAuth2), refreshGrant(tokens.refreshToken),
+                [guard, id](const QString &, const QString &error) {
+                    if (!guard) return;
+                    guard->m_authentication->invalidate(id);
+                    guard->m_window->statusBar()->showMessage(error.isEmpty() ? QStringLiteral("OAuth認可を更新しました。") : error);
+                    if (error.isEmpty()) guard->refresh(id, guard->m_window->selectedFolderFor(id));
+                });
+        } else if (m_dialog) m_dialog->oauthFinished(m_authorizingSmtp, refreshGrant(tokens.refreshToken), m_authorizingClientId, {});
+    });
+    connect(window, &MainWindow::reauthorizeRequested, this, [this](const QString &id, const QString &protocol) {
+        if (m_authorization->busy()) { m_window->statusBar()->showMessage(QStringLiteral("OAuth認可を処理中です。")); return; }
+        for (const auto &account : m_accounts) if (account.id == id) {
+            const auto settings = protocol == QStringLiteral("smtp") ? account.smtp : account.imap;
+            if (settings.authentication != AuthenticationMode::OAuth2) return;
+            m_reauthorizingId = id; m_reauthorizingProtocol = protocol;
+            m_oauthProgress = new QProgressDialog(QStringLiteral("外部ブラウザでOAuth認可を完了してください。"), QStringLiteral("取消"), 0, 0, m_window);
+            m_oauthProgress->setWindowTitle(QStringLiteral("OAuthの再認可"));
+            m_oauthProgress->setMinimumDuration(0); m_oauthProgress->setWindowModality(Qt::WindowModal); m_oauthProgress->show();
+            connect(m_oauthProgress, &QProgressDialog::canceled, m_authorization, &OAuthClient::cancel);
+            m_authorization->authorize(settings.oauthProvider, settings.oauthClientId, settings.user,
+                settings.oauthProvider == QStringLiteral("google") ? qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET") : QString{});
+            break;
+        }
+    });
     connect(window, &MainWindow::downloadRequested, this, [this](const MailRecord &message, const QString &partId) {
         QString name = QStringLiteral("添付ファイル");
         for (const auto &item : message.document.attachments) if (item.partId == partId && !item.fileName.isEmpty()) name = item.fileName;
@@ -118,6 +165,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             if (error.isEmpty()) {
                 m_repository->saveSnapshot(id, folder, folders, messages);
             } else {
+                m_authentication->invalidate(id);
                 m_window->setRefreshing(id, false);
                 m_window->applySnapshot(id, folder, folders, messages, error);
                 m_current = {}; processNext();
@@ -125,6 +173,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         });
     connect(m_mail, &MailService::submissionFinished, this, [this](const QString &id, bool savedAsDraft, const QString &error) {
         m_submissionWaiting = false;
+        if (!error.isEmpty()) m_authentication->invalidate(id);
         if (m_compose) m_compose->submissionFinished(savedAsDraft, error);
         updateEditingState();
         if (error.isEmpty()) refresh(id, m_window->selectedFolderFor(id));
@@ -136,6 +185,8 @@ ApplicationController::~ApplicationController()
 {
     // Stop mail workers before dependencies and the GUI callbacks disappear.
     delete m_mail;
+    delete m_authorization;
+    delete m_authentication;
     delete m_registrar;
     delete m_credentials;
     delete m_repository;
@@ -147,13 +198,40 @@ void ApplicationController::addAccount()
     m_dialog = new AccountDialog(m_window);
     m_dialog->setAttribute(Qt::WA_DeleteOnClose);
     connect(m_dialog, &AccountDialog::saveRequested, m_registrar, &AccountRegistrar::add);
+    connect(m_dialog, &AccountDialog::oauthRequested, this, [this](bool smtp, const QString &provider, const QString &hint) {
+        m_authorizingSmtp = smtp;
+        m_authorizingClientId = qEnvironmentVariable(provider == QStringLiteral("google") ? "SMOOTHMAIL_GOOGLE_CLIENT_ID" : "SMOOTHMAIL_MICROSOFT_CLIENT_ID");
+        m_authorization->authorize(provider, m_authorizingClientId, hint,
+            provider == QStringLiteral("google") ? qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET") : QString{});
+    });
+    connect(m_dialog, &AccountDialog::oauthCancelled, m_authorization, &OAuthClient::cancel);
     connect(m_dialog, &AccountDialog::testRequested, this,
         [this](const Account &account, const QString &smtp, const QString &imap) {
             if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting) {
                 m_dialog->testFinished(QStringLiteral("メール更新中です。更新完了後に再試行してください。"), {});
                 return;
             }
-            m_mail->test(account, smtp, imap);
+            m_submissionWaiting = true;
+            const QPointer<ApplicationController> guard(this);
+            m_authentication->transient(account.smtp, smtp, [guard, account, imap](const QString &smtpToken, const QString &grant, const QString &error) {
+                if (!guard) return;
+                if (!error.isEmpty()) {
+                    guard->m_submissionWaiting = false;
+                    if (guard->m_dialog) guard->m_dialog->testFinished(error, {});
+                    guard->processNext(); return;
+                }
+                if (!grant.isEmpty() && guard->m_dialog) guard->m_dialog->setOAuthGrant(true, grant);
+                guard->m_authentication->transient(account.imap, imap, [guard, account, smtpToken](const QString &imapToken, const QString &imapGrant, const QString &imapError) {
+                    if (!guard) return;
+                    guard->m_submissionWaiting = false;
+                    if (!imapError.isEmpty()) {
+                        if (guard->m_dialog) guard->m_dialog->testFinished({}, imapError);
+                        guard->processNext(); return;
+                    }
+                    if (!imapGrant.isEmpty() && guard->m_dialog) guard->m_dialog->setOAuthGrant(false, imapGrant);
+                    guard->m_mail->test(account, smtpToken, imapToken);
+                });
+            });
         });
     m_dialog->open();
 }
@@ -175,7 +253,7 @@ void ApplicationController::processNext()
     if (account.id.isEmpty()) { m_current = {}; processNext(); return; }
     m_window->setRefreshing(account.id, true);
     const QPointer<ApplicationController> guard(this);
-    m_credentials->read(AccountRegistrar::secretKey(account.id, QStringLiteral("imap")),
+    m_authentication->acquire(account, QStringLiteral("imap"),
         [guard, account](const QString &secret, const QString &error) {
             if (!guard) return;
             if (!error.isEmpty()) {
@@ -212,7 +290,7 @@ void ApplicationController::compose(bool reply)
         }
         m_submissionWaiting = true;
         const QPointer<ApplicationController> guard(this);
-        m_credentials->read(AccountRegistrar::secretKey(account.id, saveAsDraft ? QStringLiteral("imap") : QStringLiteral("smtp")),
+        m_authentication->acquire(account, saveAsDraft ? QStringLiteral("imap") : QStringLiteral("smtp"),
             [guard, account, draft, saveAsDraft](const QString &secret, const QString &error) {
                 if (!guard) return;
                 if (!error.isEmpty()) {

@@ -49,6 +49,14 @@ private slots:
         auth->setCurrentIndex(auth->findData(int(AuthenticationMode::OAuth2)));
         QVERIFY(dialog.findChild<QLineEdit *>(QStringLiteral("SMTPPassword"))->text().isEmpty());
         QVERIFY(!dialog.findChild<QLineEdit *>(QStringLiteral("SMTPPassword"))->isEnabled());
+        const auto grant = QStringLiteral("{\"kind\":\"oauth-refresh-v1\",\"refresh_token\":\"dummy-refresh\"}");
+        dialog.oauthFinished(true, grant, QStringLiteral("dummy-client"), {});
+        QCOMPARE(dialog.account().smtp.oauthProvider, QStringLiteral("google"));
+        QCOMPARE(dialog.account().smtp.oauthClientId, QStringLiteral("dummy-client"));
+        buttons->button(QDialogButtonBox::Ok)->click();
+        QCOMPARE(submitted.size(), 2);
+        QCOMPARE(submitted.last().at(1).toString(), grant);
+        dialog.saveFinished(QStringLiteral("test error"));
     }
     void composePreservesInputOnFailure()
     {

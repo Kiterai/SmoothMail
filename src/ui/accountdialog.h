@@ -8,6 +8,7 @@ class QComboBox;
 class QLabel;
 class QDialogButtonBox;
 class QPushButton;
+class QVBoxLayout;
 namespace smoothmail {
 class AccountDialog final : public QDialog
 {
@@ -17,9 +18,13 @@ public:
     Account account() const;
     void saveFinished(const QString &error);
     void testFinished(const QString &smtpError, const QString &imapError);
+    void oauthFinished(bool smtp, const QString &grant, const QString &clientId, const QString &error);
+    void setOAuthGrant(bool smtp, const QString &grant, const QString &clientId = {});
 signals:
     void saveRequested(const smoothmail::Account &account, const QString &smtpPassword, const QString &imapPassword);
     void testRequested(const smoothmail::Account &account, const QString &smtpPassword, const QString &imapPassword);
+    void oauthRequested(bool smtp, const QString &provider, const QString &loginHint);
+    void oauthCancelled();
 protected:
     void reject() override;
 private:
@@ -30,17 +35,22 @@ private:
         QLineEdit *password;
         QComboBox *authentication;
         QComboBox *encryption;
+        QComboBox *provider;
+        QPushButton *authorize;
         ServerSettings value() const;
+        QString secret() const;
     };
     ServerFields createServer(const QString &name, int port);
     void setBusy(bool busy);
     QLineEdit *m_email;
     QLabel *m_error;
     QDialogButtonBox *m_buttons;
+    QVBoxLayout *m_serverLayout = nullptr;
     QPushButton *m_test = nullptr;
     ServerFields m_smtp;
     ServerFields m_imap;
     QString m_id;
     bool m_saving = false;
+    bool m_authorizing = false;
 };
 } // namespace smoothmail

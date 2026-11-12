@@ -29,6 +29,7 @@ public:
     void authorize(const QString &provider, const QString &clientId, const QString &loginHint, const QString &clientSecret = {});
     void refresh(const QString &provider, const QString &clientId, const QString &token, const QString &clientSecret = {});
     void cancel();
+    bool busy() const { return m_busy; }
 signals:
     void authorizationUrlReady(const QUrl &url);
     void tokensReady(const smoothmail::OAuthTokens &tokens);

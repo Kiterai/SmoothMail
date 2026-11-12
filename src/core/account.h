@@ -13,6 +13,8 @@ struct ServerSettings
     QString user;
     AuthenticationMode authentication = AuthenticationMode::Plain;
     EncryptionMode encryption = EncryptionMode::ImplicitTls;
+    QString oauthProvider;
+    QString oauthClientId;
 };
 
 // No passwords or tokens belong in these persistable values.
@@ -24,7 +26,7 @@ struct Account
     ServerSettings imap;
 };
 
-QString validateAccount(const Account &account);
+QString validateAccount(const Account &account, bool requireOAuthRegistration = true);
 QJsonObject accountJson(const Account &account);
 bool accountFromJson(const QJsonObject &json, Account &account);
 

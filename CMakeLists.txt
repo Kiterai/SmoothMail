@@ -51,8 +51,12 @@ add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
 target_sources(smoothmail_storage PRIVATE src/storage/downloadfile.cpp src/storage/downloadfile.h)
 target_include_directories(smoothmail_storage PUBLIC src)
 target_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy Qt6::Core
-    PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain smoothmail_mime)
+    PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain smoothmail_mime smoothmail_oauth)
 smoothmail_target_defaults(smoothmail_storage)
+add_library(smoothmail_auth STATIC src/mail/authenticationbroker.cpp src/mail/authenticationbroker.h)
+target_include_directories(smoothmail_auth PUBLIC src)
+target_link_libraries(smoothmail_auth PUBLIC smoothmail_storage smoothmail_oauth)
+smoothmail_target_defaults(smoothmail_auth)
 add_library(smoothmail_threading STATIC src/core/threading.cpp src/core/threading.h)
 target_include_directories(smoothmail_threading PUBLIC src)
 target_link_libraries(smoothmail_threading PUBLIC Qt6::Core)
@@ -91,7 +95,7 @@ target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets smoothmail_storage smoot
 smoothmail_target_defaults(smoothmail_ui)
 
 qt_add_executable(smoothmail WIN32 src/main.cpp src/app/applicationcontroller.cpp src/app/applicationcontroller.h)
-target_link_libraries(smoothmail PRIVATE smoothmail_ui smoothmail_transport)
+target_link_libraries(smoothmail PRIVATE smoothmail_ui smoothmail_transport smoothmail_oauth smoothmail_auth)
 smoothmail_target_defaults(smoothmail)
 
 include(CTest)
@@ -179,7 +183,7 @@ if(BUILD_TESTING)
 
     if(SMOOTHMAIL_TEST_MAIL)
         add_executable(tst_oauthclient tests/tst_oauthclient.cpp)
-        target_link_libraries(tst_oauthclient PRIVATE smoothmail_oauth Qt6::Test)
+        target_link_libraries(tst_oauthclient PRIVATE smoothmail_oauth smoothmail_auth Qt6::Test)
         smoothmail_target_defaults(tst_oauthclient)
         add_test(NAME oauthclient COMMAND tst_oauthclient)
         set_tests_properties(oauthclient PROPERTIES TIMEOUT 60)
