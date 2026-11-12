@@ -10,6 +10,7 @@ class MailTestServer final : public QObject
 {
 public:
     enum class Protocol { Imap, Smtp };
+    enum class AuthenticationReply { Accept, Reject, Malformed };
 
     explicit MailTestServer(Protocol protocol, const QStringList &mechanisms, QObject *parent = nullptr)
         : QObject(parent), m_protocol(protocol), m_mechanisms(mechanisms)
@@ -33,6 +34,8 @@ public:
 
     QList<QByteArray> commands;
     QList<QByteArray> authenticationResponses;
+    AuthenticationReply authenticationReply = AuthenticationReply::Accept;
+    QByteArray imapEmptyChallenge = "+ ";
 
     bool receivedAuthentication() const
     {
@@ -98,6 +101,13 @@ private:
                 write(m_protocol == Protocol::Imap ? m_tag + " NO unsupported mechanism" : QByteArray("504 unsupported mechanism"));
                 return;
             }
+            if (m_protocol == Protocol::Imap && authenticationReply != AuthenticationReply::Accept) {
+                // "*" lacks the required untagged response type. It must not
+                // be mistaken for a successful login (upstream error()==0 bug).
+                write(authenticationReply == AuthenticationReply::Malformed ? QByteArray("*")
+                                                                            : m_tag + " NO rejected test credentials");
+                return;
+            }
             if (fields.size() > mechanismIndex + 1) {
                 authenticationResponses.append(QByteArray::fromBase64(fields.at(mechanismIndex + 1)));
                 success();
@@ -106,7 +116,7 @@ private:
                 write(m_protocol == Protocol::Imap ? "+ VXNlcm5hbWU6" : "334 VXNlcm5hbWU6");
             } else {
                 m_waitingFor = 2;
-                write(m_protocol == Protocol::Imap ? "+ " : "334 ");
+                write(m_protocol == Protocol::Imap ? imapEmptyChallenge : QByteArray("334 "));
             }
         } else if (command == "QUIT" || command == "LOGOUT") {
             if (m_protocol == Protocol::Imap) {

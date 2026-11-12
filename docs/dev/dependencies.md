@@ -119,15 +119,18 @@ ctest --preset dev
 
 KIMAP／KSMTP 26.08.3（CMakeパッケージ版6.8.3）は指定Qt/MSVCでDebug構築済みです。先に承認済みKIOパッチとSASL機構を構築してください。実行時はQt・依存prefix・native依存のbinをPATHに追加します。
 
+KIMAPには`patches/kimap/26.08.3-fix-sasl-continuation.patch`を適用します。空のSASLチャレンジ処理と、不正応答時のエラーコード未設定を修正するローカルパッチです。原本の独立コピーを使用し、変更通知・上流ライセンス・差分は`share/licenses/kimap`へ配置します。詳細は`patches/kimap/README.md`と`THIRD_PARTY_NOTICES.md`を参照してください。
+
 `mailtransport`はループバック限定の合成サーバーとダミー資格情報を使用します。PLAIN／LOGIN／XOAUTH2の通信、未広告のOAuth方式の拒否、STARTTLS非対応時の認証禁止を対象とし、認証成功ケースは明示的な非暗号化設定です。実サービス、TLSハンドシェイク・証明書検証、Google／MicrosoftのOAuth認可フローの検証ではありません。
 
 現在のSafe Shell内ではループバックTCP接続が拒否されます（Pythonの最小接続でも`WinError 10013`）。localhostが設定上許可されていても、この環境では接続できません。起動時の接続確認で早期に失敗させ、各ケースのタイムアウトを避けます。
 
-2026-11-13、別のWindows Sandbox（外部ネットワーク無効）内ではループバック通信を実行できました。結果は**10 passed／1 failed**（init／cleanupを含む）です。
+2026-11-13、別のWindows Sandbox（外部ネットワーク無効）内ではループバック通信を実行できました。KIMAP修正後は**15 passed／0 failed**（init／cleanupを含む）です。同じ拡張テストを未修正DLLでも実行し、12 passed／3 failedを確認しました。
 
-- 成功: SMTPのPLAIN／LOGIN／XOAUTH2、IMAPのPLAIN／LOGIN、SMTPでXOAUTH2が未広告の場合の認証禁止、両プロトコルのSTARTTLS非対応時の認証禁止。
-- 失敗: IMAPのXOAUTH2。合成サーバーの空チャレンジに対し、KIMAPは`Login failed, malformed reply from the server.`と表示し、セッションが未認証のままです。このとき`LoginJob::error()`は0でした。エラー値だけで認証成功と判定してはいけません。原因の修正と再検証は未完了です。
-- ログ: `build/sandbox-mail-output/mailtransport-results.txt`、終了コード1。再実行でも同じ結果でした。
+- 成功: SMTPのPLAIN／LOGIN／XOAUTH2、IMAPのPLAIN／LOGIN／XOAUTH2、SMTPでXOAUTH2が未広告の場合の認証禁止、両プロトコルのSTARTTLS非対応時の認証禁止。
+- IMAPのXOAUTH2は、`+ `、`+`、`+ =`の空チャレンジで成功を確認しました。不正な応答と認証拒否では、非0エラー・未認証状態・別方式への再試行なしを確認しています。
+- 未修正DLLでは、XOAUTH2の空チャレンジ2ケースと、不正応答時のエラーコード検査が失敗しました。以前の10 passed／1 failedはこの問題によるものです。今後もエラー値だけでなくセッションの認証済み状態を確認します。
+- 比較ログ: `build/sandbox-mail-output/{patched,unpatched}-results.txt`、終了コードはそれぞれ0／3です。以前の検証ログ`mailtransport-results.txt`は未修正時の記録として残しています。
 
 実行には、テストEXE・依存DLL・SASLプラグイン・Qt Debug DLL／TLSプラグイン・MSVC Debug CRT／Debug UCRTを`build/sandbox-mail-test`へ集め、読み取り専用共有からゲストの`C:\MailTest`へコピーしました。`SMOOTHMAIL_TEST_SASL_PATH`をゲストの`sasl2`に、`QT_PLUGIN_PATH`をゲストの実行ディレクトリに指定し、Qt Testの`-o`でログを書き込み可能な専用共有へ回収しました。これは開発用の検証セットで、製品配布物ではありません。特にDebug CRTは製品へ同梱しません。ゲストはログ回収後に終了済みです。
 

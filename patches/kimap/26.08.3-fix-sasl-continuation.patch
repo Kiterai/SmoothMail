@@ -1,0 +1,32 @@
+diff --git a/src/loginjob.cpp b/src/loginjob.cpp
+--- a/src/loginjob.cpp
++++ b/src/loginjob.cpp
+@@ -343,11 +343,11 @@ void LoginJob::handleResponse(const Response &response)
+             challengeResponse = challengeResponse.toBase64();
+             d->sessionInternal()->sendData(challengeResponse);
+-        } else if (response.content.size() >= 2) {
+-            if (!d->answerChallenge(QByteArray::fromBase64(response.content[1].toString()))) {
++        } else {
++            // SmoothMail downstream change (2026-11-13): an empty SASL challenge
++            // is valid, including the initial XOAUTH2 continuation without SASL-IR.
++            const auto challenge = response.content.size() >= 2 ? QByteArray::fromBase64(response.content[1].toString()) : QByteArray();
++            if (!d->answerChallenge(challenge)) {
+                 emitResult(); // error, we're done
+             }
+-        } else {
+-            // Received empty continuation for authMode other than PLAIN
+-            code = MALFORMED;
+         }
+         break;
+@@ -434,6 +434,11 @@ void LoginJob::handleResponse(const Response &response)
+     if (code == MALFORMED) {
++        // SmoothMail downstream change (2026-11-13): never report malformed authentication as success.
++        setError(UserDefinedError);
++        if (d->authState == LoginJobPrivate::Authenticate) {
++            sasl_dispose(&d->conn);
++        }
+         setErrorText(i18n("%1 failed, malformed reply from the server.", commandName));
+         emitResult();
+     }
+ }
+ 

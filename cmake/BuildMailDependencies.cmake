@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 include("${CMAKE_CURRENT_LIST_DIR}/DependencyBuild.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/PreparePatchedSource.cmake")
 if(NOT WIN32)
     message(FATAL_ERROR "This mail dependency bootstrap is currently validated for Windows only.")
 endif()
@@ -21,9 +22,20 @@ else()
     set(native_bin "${native}/bin")
 endif()
 set(ENV{PATH} "${native_bin};${gettext_tools};${prefix}/bin;${Qt6_ROOT}/bin;$ENV{PATH}")
-foreach(dependency IN ITEMS kimap ksmtp)
-    smoothmail_build_dependency("${dependency}"
-        "-DGETTEXT_MSGFMT_EXECUTABLE=${gettext_tools}/msgfmt.exe"
-        "-DGETTEXT_MSGMERGE_EXECUTABLE=${gettext_tools}/msgmerge.exe")
-endforeach()
+smoothmail_fetch_dependency(kimap pristine)
+string(JSON commit GET "${manifest}" kimap commit)
+get_filename_component(kimap_patch "${CMAKE_CURRENT_LIST_DIR}/../patches/kimap/26.08.3-fix-sasl-continuation.patch" ABSOLUTE)
+smoothmail_prepare_patched_source(kimap "${pristine}" "${commit}" "${kimap_patch}"
+    "${DEPENDENCY_ROOT}/patched-src" source)
+smoothmail_build_dependency_source(kimap "${source}"
+    "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/kimap-sasl-continuation"
+    "-DGETTEXT_MSGFMT_EXECUTABLE=${gettext_tools}/msgfmt.exe"
+    "-DGETTEXT_MSGMERGE_EXECUTABLE=${gettext_tools}/msgmerge.exe")
+set(notices "${prefix}/share/licenses/kimap")
+file(MAKE_DIRECTORY "${notices}")
+file(COPY "${pristine}/LICENSES" "${kimap_patch}" "${CMAKE_CURRENT_LIST_DIR}/../THIRD_PARTY_NOTICES.md"
+    DESTINATION "${notices}")
+smoothmail_build_dependency(ksmtp
+    "-DGETTEXT_MSGFMT_EXECUTABLE=${gettext_tools}/msgfmt.exe"
+    "-DGETTEXT_MSGMERGE_EXECUTABLE=${gettext_tools}/msgmerge.exe")
 message(STATUS "KIMAP/KSMTP built; server authentication and distribution remain separate tests.")

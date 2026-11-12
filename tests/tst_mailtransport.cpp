@@ -83,7 +83,16 @@ private slots:
     }
 
     void smtpAuthentication_data() { authenticationRows(); }
-    void imapAuthentication_data() { authenticationRows(); }
+    void imapAuthentication_data()
+    {
+        QTest::addColumn<int>("authentication");
+        QTest::addColumn<QByteArray>("emptyChallenge");
+        QTest::newRow("PLAIN") << int(AuthenticationMode::Plain) << QByteArray("+ ");
+        QTest::newRow("LOGIN") << int(AuthenticationMode::Login) << QByteArray("+ ");
+        QTest::newRow("XOAUTH2-empty") << int(AuthenticationMode::OAuth2) << QByteArray("+ ");
+        QTest::newRow("XOAUTH2-bare-plus") << int(AuthenticationMode::OAuth2) << QByteArray("+");
+        QTest::newRow("XOAUTH2-base64-empty") << int(AuthenticationMode::OAuth2) << QByteArray("+ =");
+    }
 
 private:
     void verifyLoopbackFixture()
@@ -134,8 +143,10 @@ private slots:
     void imapAuthentication()
     {
         QFETCH(int, authentication);
+        QFETCH(QByteArray, emptyChallenge);
         const auto mode = static_cast<AuthenticationMode>(authentication);
         MailTestServer server(MailTestServer::Protocol::Imap, allMechanisms);
+        server.imapEmptyChallenge = emptyChallenge;
         QVERIFY(server.listen());
         KIMAP::Session session(QStringLiteral("127.0.0.1"), server.port());
         session.setUseNetworkProxy(false);
@@ -167,6 +178,42 @@ private slots:
         QCOMPARE(job->error(), 0);
         QVERIFY2(session.state() == KIMAP::Session::Authenticated, qPrintable(job->errorText()));
         checkResponse(server, mode);
+        delete job;
+        session.close();
+    }
+
+    void imapAuthenticationFailure_data()
+    {
+        QTest::addColumn<bool>("malformed");
+        QTest::newRow("rejected") << false;
+        QTest::newRow("malformed-reply") << true;
+    }
+
+    void imapAuthenticationFailure()
+    {
+        QFETCH(bool, malformed);
+        MailTestServer server(MailTestServer::Protocol::Imap, allMechanisms);
+        server.authenticationReply = malformed ? MailTestServer::AuthenticationReply::Malformed
+                                               : MailTestServer::AuthenticationReply::Reject;
+        QVERIFY(server.listen());
+        KIMAP::Session session(QStringLiteral("127.0.0.1"), server.port());
+        session.setUseNetworkProxy(false);
+        session.setTimeout(2);
+        auto *job = new KIMAP::LoginJob(&session);
+        job->setAutoDelete(false);
+        job->setUserName(user);
+        job->setPassword(secret);
+        job->setEncryptionMode(KIMAP::LoginJob::Unencrypted);
+        job->setAuthenticationMode(KIMAP::LoginJob::XOAuth2);
+        QSignalSpy result(job, &KJob::result);
+        job->start();
+        QTRY_COMPARE_WITH_TIMEOUT(result.count(), 1, 5000);
+        QVERIFY2(job->error() != 0, qPrintable(job->errorText()));
+        QCOMPARE(session.state(), KIMAP::Session::NotAuthenticated);
+        QVERIFY(server.receivedAuthentication());
+        QVERIFY(server.authenticationResponses.isEmpty());
+        QCOMPARE(server.commands.size(), 1);
+        QVERIFY(server.commands.first().endsWith(" AUTHENTICATE XOAUTH2"));
         delete job;
         session.close();
     }

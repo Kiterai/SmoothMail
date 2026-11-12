@@ -20,6 +20,17 @@ KIOはファイルごとに許諾条件が異なります。対象2ファイル�
 
 ビルド手順は、インストール先の`share/licenses/kio`へ上流の`LICENSES`ディレクトリ、変更パッチ、変更通知を配置します。配布時には、採用DLLに対応した原本ソース・パッチ・ビルド手順を提供できるよう整備する必要があります。開発用prefix全体を、そのまま製品の配布物として扱ってはいけません。
 
+## KIMAP 26.08.3：SASL継続応答とエラー通知の修正
+
+- 上流: https://invent.kde.org/pim/kimap
+- 固定コミット: `fe0df283d6745c5ad1e0478db0a74ea0a2205d5a`（v26.08.3、ライブラリ版6.8.3）。
+- 変更日・変更者: 2026-11-13、SmoothMail contributors。
+- 差分と説明: `patches/kimap/26.08.3-fix-sasl-continuation.patch`、`patches/kimap/README.md`。
+
+`src/loginjob.cpp`を変更し、PLAIN以外でも正当な空のSASLチャレンジを処理します。また、不正応答時にはエラーコードを設定して認証中のSASL接続を解放します。認証方式の自動切替やTLS検証の緩和は追加しません。
+
+対象ファイルのLGPL-2.0-or-laterおよび元の著作権表示を保持します。この修正は上流の標準実装ではありません。ビルド時に`share/licenses/kimap`へ上流ライセンス・パッチ・変更通知を配置します。配布時の対応ソース提供等の義務は引き続き残ります。
+
 ## その他の依存
 
 Qt、KMime、KIMAP、KSMTP、KDE Frameworks、Cyrus SASL、XOAUTH2プラグイン、GNU libintl/libiconv等は、それぞれの許諾条件に従います。バージョン・取得元は`cmake/dependencies.json`と`docs/dev/dependencies.md`、個別のライセンスは取得元ソースおよび各prefixのライセンス情報を参照してください。
