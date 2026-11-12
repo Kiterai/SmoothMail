@@ -81,7 +81,8 @@ void MainWindow::createMenus()
     auto *tools = menuBar()->addMenu(QStringLiteral("ツール"));
     pendingAction(tools, QStringLiteral("ダウンロード履歴"), "downloadHistoryAction");
     auto *settings = menuBar()->addMenu(QStringLiteral("設定"));
-    pendingAction(settings, QStringLiteral("アカウントの追加"), "addAccountAction");
+    auto *addAccount = pendingAction(settings, QStringLiteral("アカウントの追加"), "addAccountAction");
+    connect(addAccount, &QAction::triggered, this, &MainWindow::addAccountRequested);
 }
 
 void MainWindow::createPanes()
@@ -91,6 +92,7 @@ void MainWindow::createPanes()
     auto *folders = new QTreeView(horizontal);
     folders->setObjectName(QStringLiteral("folderTree"));
     auto *folderModel = new QStandardItemModel(folders);
+    m_folders = folderModel;
     folderModel->setHorizontalHeaderLabels({QStringLiteral("アカウント / フォルダ")});
     folders->setModel(folderModel);
 
@@ -117,6 +119,26 @@ void MainWindow::createPanes()
     horizontal->setStretchFactor(1, 1);
     vertical->setStretchFactor(1, 1);
     setCentralWidget(horizontal);
+}
+
+void MainWindow::enableAccountManagement(bool enabled)
+{
+    auto *action = findChild<QAction *>(QStringLiteral("addAccountAction"));
+    action->setEnabled(enabled);
+    action->setStatusTip(enabled ? QStringLiteral("アカウントを追加します。") : QStringLiteral("保存先を利用できません。"));
+}
+
+void MainWindow::setAccounts(const QList<Account> &accounts)
+{
+    m_folders->removeRows(0, m_folders->rowCount());
+    for (const auto &account : accounts) {
+        auto *item = new QStandardItem(account.email);
+        item->setEditable(false);
+        item->setData(account.id, Qt::UserRole);
+        m_folders->appendRow(item);
+    }
+    statusBar()->showMessage(accounts.isEmpty() ? QStringLiteral("アカウントを追加してください。")
+                                              : QStringLiteral("アカウント設定を読み込みました。メール同期は準備中です。"));
 }
 
 void MainWindow::createTray()

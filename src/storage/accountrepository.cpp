@@ -19,7 +19,7 @@ struct AccountRepository::State
     explicit State(const QString &path)
     {
         connection = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        if (path != QStringLiteral(":memory:") && !QDir().mkpath(QFileInfo(path).absolutePath())) {
             error = QStringLiteral("データベースの保存先を作成できません。");
             return;
         }

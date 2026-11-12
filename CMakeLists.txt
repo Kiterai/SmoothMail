@@ -31,6 +31,7 @@ smoothmail_target_defaults(smoothmail_connection_policy)
 
 add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
     src/storage/accountrepository.cpp src/storage/accountrepository.h
+    src/storage/accountregistrar.cpp src/storage/accountregistrar.h
     src/storage/credentialstore.cpp src/storage/credentialstore.h)
 target_include_directories(smoothmail_storage PUBLIC src)
 target_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy Qt6::Core
@@ -46,6 +47,7 @@ if(SMOOTHMAIL_BUILD_MIME)
 endif()
 
 add_library(smoothmail_ui STATIC
+    src/ui/accountdialog.cpp src/ui/accountdialog.h
     src/core/messagedocument.h
     src/ui/mainwindow.cpp
     src/ui/mainwindow.h
@@ -55,7 +57,7 @@ add_library(smoothmail_ui STATIC
     src/ui/safebodyview.h
 )
 target_include_directories(smoothmail_ui PUBLIC src)
-target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets)
+target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets smoothmail_storage)
 smoothmail_target_defaults(smoothmail_ui)
 
 qt_add_executable(smoothmail WIN32 src/main.cpp)
@@ -65,6 +67,11 @@ smoothmail_target_defaults(smoothmail)
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(tst_accountdialog tests/tst_accountdialog.cpp)
+    target_link_libraries(tst_accountdialog PRIVATE smoothmail_ui Qt6::Test)
+    smoothmail_target_defaults(tst_accountdialog)
+    add_test(NAME accountdialog COMMAND tst_accountdialog)
+    set_tests_properties(accountdialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     foreach(name IN ITEMS accountrepository credentialstore)
         add_executable(tst_${name} tests/tst_${name}.cpp)
         target_link_libraries(tst_${name} PRIVATE smoothmail_storage Qt6::Test)
