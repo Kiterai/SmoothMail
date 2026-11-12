@@ -196,6 +196,10 @@ void OAuthClient::postToken(const QList<QPair<QString, QString>> &parameters)
         // might contain authorization codes, tokens or other request data.
         const auto providerError = json.value("error").toString();
         if (error != QNetworkReply::NoError || status != 200) {
+            if (m_provider == QStringLiteral("google") && providerError == QStringLiteral("invalid_request")
+                && json.value("error_description").toString() == QStringLiteral("client_secret is missing.")) {
+                finishError(QStringLiteral("Google Desktopアプリのclient_secretが必要です。ダウンロードしたOAuthクライアント登録情報を確認し、SMOOTHMAIL_GOOGLE_CLIENT_SECRETをローカルで設定してください。秘密情報をチャットやログへ貼り付けないでください。")); return;
+            }
             if (providerError == QStringLiteral("invalid_client")) {
                 finishError(QStringLiteral("OAuthアプリの登録情報が拒否されました (invalid_client)。クライアント種別・IDと、Google Desktop登録情報のclient_secretを確認してください。")); return;
             }

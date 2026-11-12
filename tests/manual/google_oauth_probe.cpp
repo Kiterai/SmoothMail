@@ -5,6 +5,9 @@
 #include <QCommandLineParser>
 #include <QDesktopServices>
 #include <QGuiApplication>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTimer>
 #include <QUuid>
 #include <iostream>
@@ -26,6 +29,7 @@ int main(int argc, char **argv)
     parser.addHelpOption();
     parser.addOption({QStringLiteral("client-id"), QStringLiteral("Google Desktop OAuth client ID (not a password)."), QStringLiteral("id")});
     parser.addOption({QStringLiteral("email"), QStringLiteral("Test account to suggest in the consent browser."), QStringLiteral("address")});
+    parser.addOption({QStringLiteral("registration-file"), QStringLiteral("Local downloaded Google Desktop client JSON; contents are never printed."), QStringLiteral("path")});
     parser.process(app);
     const auto clientId = parser.value(QStringLiteral("client-id"));
     const auto email = parser.value(QStringLiteral("email"));
@@ -33,7 +37,20 @@ int main(int argc, char **argv)
         std::cerr << "SETUP_REQUIRED: specify --client-id and --email for the Google test account.\n";
         return 2;
     }
-    const auto secret = qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET");
+    auto secret = qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET");
+    if (parser.isSet(QStringLiteral("registration-file"))) {
+        QFile file(parser.value(QStringLiteral("registration-file")));
+        if (!file.open(QIODevice::ReadOnly) || file.size() > 65536) {
+            std::cerr << "SETUP_REQUIRED: cannot read the local registration JSON or it is too large.\n";
+            return 2;
+        }
+        const auto installed = QJsonDocument::fromJson(file.readAll()).object().value("installed").toObject();
+        if (installed.value("client_id").toString() != clientId || installed.value("client_secret").toString().isEmpty()) {
+            std::cerr << "SETUP_REQUIRED: expected Desktop (installed) registration JSON with the matching client ID and a client secret.\n";
+            return 2;
+        }
+        secret = installed.value("client_secret").toString();
+    }
     smoothmail::OAuthClient authorization, refresh;
     smoothmail::MailService mail(qEnvironmentVariable("SMOOTHMAIL_SASL_PATH",
         QCoreApplication::applicationDirPath() + QStringLiteral("/sasl2")));

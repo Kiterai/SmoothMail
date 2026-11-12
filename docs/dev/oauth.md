@@ -38,6 +38,10 @@ smoothmail_google_probe.exe --client-id <Desktop appのclient ID> --email <テ�
 
 Google Desktopアプリの登録JSONに`client_secret`が含まれる場合、トークン交換に必要になることがあります。ローカルの`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`に設定して起動してください。チャットやGit管理ファイルには貼り付けません。`invalid_client`等は既知のエラーコードだけを表示し、Googleの生の応答文をログへ出しません。
 
+手動プローブでは`--registration-file <ローカルJSONパス>`も使用できます。Google CloudからダウンロードしたDesktop app用JSONの`installed.client_id`が指定IDと一致することを確認し、`installed.client_secret`をメモリ内でだけ利用します。ファイル本文は出力・コピーしません。登録JSONはリポジトリ外へ保存してください。
+
+2026-11-13の実検証では、テストユーザー追加後に認可応答を受け取りましたが、コード交換で`invalid_request`となりました。公開client IDと意図的に無効なダミーcode/verifierのみを送る`tests/manual/google_token_configuration.py`で、Googleが`client_secret is missing.`を返すことを確認済みです。このクライアントには登録時のclient_secretの設定が必要です。実トークン取得・更新・メール認証はまだ未確認です。
+
 ### Googleで403 access_deniedになる場合
 
 「テスト中で、デベロッパーに承認されたテスターのみがアクセスできます」と表示された場合、OAuthクライアントを作成した同じGoogle Cloudプロジェクトで、**Google Auth Platform → Audience（対象）→ Test users（テストユーザー）→ Add users**から、実際にログインするテスト用Googleアカウントを追加して保存します。旧UIでは「APIとサービス → OAuth同意画面 → テストユーザー」です。プロジェクト所有者のメールも、テストで使う場合は明示的に追加します。テストのために本番公開へ切り替えたり審査済みと扱ったりする必要はありません。

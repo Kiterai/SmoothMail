@@ -23,6 +23,7 @@
 - 開発用起動フォルダ`build/launch-debug`をwindeployqtと再帰import解決で作成。SDK/PATHなしの新しいguestでGUI起動と配置済み依存による合成通信14ケース成功。起動は`start-smoothmail.cmd`。手順・制限は`windows-launch.md`。
 - 明示許可されたSafe Shell外でGoogle IMAP 993 / SMTP 465 / STARTTLS 587へ、資格情報なしで証明書検証付きTLS 1.3接続とXOAUTH2広告を確認。アカウントの認証・送受信は未実施。
 - 提供されたGoogle OAuthクライアントIDで実認可を開始し、外部ブラウザを起動。ログイン後、利用者から「テスターのみアクセス可」の403 access_denied表示が報告されました。Google CloudのAudience/Test users設定が必要で、この実行では認可コード交換・トークン取得・メール認証へ進んでいません。待機中のプローブは停止済み。実サービス成功とは扱いません。
+- テストユーザー追加後の再試行では認可応答を受け取りましたが、トークン交換でinvalid_request。秘密情報を使わない設定診断でGoogleがclient_secretを要求していることを確認しました。登録JSONのローカル読込みを手動プローブへ追加。登録情報の設定後に再検証が必要で、実トークン・メール認証は未取得/未確認です。
 
 ## 残る作業
 

@@ -146,6 +146,10 @@ private slots:
             QVERIFY(error.contains(code));
             QVERIFY(!error.contains(QStringLiteral("must-not-echo")));
         }
+        network.response = {{"error", "invalid_request"}, {"error_description", "client_secret is missing."}};
+        client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("dummy_refresh"));
+        QTRY_COMPARE(errors.size(), 1);
+        QVERIFY(errors.first().first().toString().contains(QStringLiteral("SMOOTHMAIL_GOOGLE_CLIENT_SECRET")));
     }
     void microsoftAndCancellation()
     {
