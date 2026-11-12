@@ -31,9 +31,11 @@
 - BuildSaslDependencies/BuildXOAuth2DependencyでSASL 2.1.28と3機構をDebug DLL構築済み。CyrusのGitソースには生成ファイルがないためSHA256固定の公式tarballを使用。上流nmakeは子ディレクトリで引数が継承されないため、lib/pluginsを個別実行する。
 - SASL単体テストにはWindowsのWSAStartupが必要。Qt Network経由ではなく生APIを呼ぶテストなので明示初期化している。全4 CTestターゲットが成功。
 - WinFlexBison 2.5.25（1176da2adaf972b2216b1ac8dd611e128fe80bc5）をMSVCでソースビルド済み。BuildWinFlexBison.cmakeによる再実行も成功。Solid 6.31.0のDebug DLL構築も成功（solid-build.log）。Solid以降の手順のスクリプト化は後続作業。
-- vcpkg-recipesは177e8175121536d414f405ed8b3099b325a42638、ツールは2026-10-29を固定。native prefixにgettext-libintlを構築中（Safe Shell execution 1a7ecddffd914c019253840369040033、ログbuild/deps/vcpkg-native.log）。同じvcpkgのinstallを並行実行しない。
+- vcpkg-recipesは177e8175121536d414f405ed8b3099b325a42638、ツールは2026-10-29を固定。gettext-libintl/libiconvのDebug/Release構築・インストールが成功（execution 1a7ecddffd914c019253840369040033、build/deps/vcpkg-native.log）。
 - vcpkg組込みHTTP/WinHTTPはサンドボックスのproxyに失敗。X_VCPKG_ASSET_SOURCESでPython helper→Git付属curlを使用して取得できた。証明書検証を無効にしたりproxy変数を消したりしない。helperのGNU/MSYS2 canonical URL変換とSHA512等の4テストは成功。
-- 次は進行中のgettext-libintl結果を反映し、その後BuildNativeDependencies.cmakeでgettext[tools]も構築する。KI18nのconfigureはlibintlだけでなくGettextのmsgfmt/msgmergeも必須。新Native bootstrapの全完了は未確認。
+- BuildNativeDependencies.cmakeでgettext[tools]を構築継続中（execution d9506241a0024247876a29f847b430b4、build/deps/native-tools-build.log）。KI18nのconfigureはlibintlだけでなくGettextのmsgfmt/msgmergeも必須。同じvcpkgのinstallを並行実行しない。全完了は未確認。
 - 参考用に取得したlibintl-liteはAPI/翻訳機能がGNU gettextと異なり、Windows代替として採用していない。製品へ組み込まない。
 - authenticationDecisionを追加。TLS/証明書未検証、必須機構欠如、不明なenumを拒否する。KSMTPと同じ厳密な機構名で判定するため、大文字小文字を緩く許可してライブラリ側のfallbackを誘発しない。LoginJob作成前・秘密情報設定前にこの判定を適用すること。現在はポリシー単体テスト段階で接続層へ未接続。
 - SASLを有効にしたdevビルドでCTest全5ターゲットが成功（connectionpolicy/mainwindow/messageviewer/mimeparser/sasl）。
+- Native bootstrapはVSINSTALLDIR末尾の区切りを削除してVCPKG_VISUAL_STUDIO_PATHへ渡す。末尾区切りがあるとvcpkgのVS照合が失敗した。
+- ブロッカー: KIO 6.31.0 src/core/CMakeLists.txt:78にGPL系のみのfaviconscache.cppが無条件追加される。対応ヘッダも同条件。global.cpp（LGPL-2.0-only）がinclude/callしている。KIOCORE_ONLYでも除外されない。そのままアプリへ統合しない。favicon除外パッチ方針のユーザ承認と残るライセンス監査が必要。全KIOの完成やMIT条件での配布可否を検証済みと記載しない。

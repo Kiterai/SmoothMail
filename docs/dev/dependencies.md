@@ -54,7 +54,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildNativeDependencies.cmake
 ```
 
-WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**現時点ではgettext-libintlのビルドが継続中で、このNativeDependencies全体の完了確認はまだです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
+WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**gettext-libintlとlibiconvのDebug/Releaseビルドは成功しています。gettextホストツールはビルド継続中で、このNativeDependencies全体の完了確認はまだです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
 
 サンドボックスのプロキシでvcpkg内蔵ダウンローダーが失敗する場合は、接続可能なcurlを指定して次を追加できます。
 
@@ -65,6 +65,14 @@ WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済み
 このオプションにはPython 3.11以降が必要です。既存のプロキシ設定は変更せず、GNU/MSYS2のミラーURLを各公式配布元へ正規化し、HTTPS・証明書検証とSHA512確認を維持します。ダウンローダーの単体テストは`python tests/test_asset_fetch.py`で実行できます（ネットワークを使用しません）。
 
 gettext/Flex/Bison等のGPLビルドツールは、アプリへリンクするLGPLのlibintlとは区別します。これらのビルドツール自体を製品へ同梱する構成にはしません。
+
+### KIOCoreのライセンス上の保留事項
+
+取得したKIO 6.31.0の`src/core/CMakeLists.txt`は`faviconscache.cpp`を無条件にライブラリへ組み込みます。同ファイルと`faviconscache_p.h`のSPDXは`GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL`であり、LGPLの選択肢は記載されていません。
+
+そのため、現在の「GPL-onlyの実行時依存を含めない」方針では、この構成のKIOCoreをアプリへ組み込みません。候補は、メールに不要なfavicon機能を取り除く限定パッチと、残るビルド対象・依存の再監査です。パッチ方針の承認と検証が終わるまでKIOCore/KIMAP/KSMTPの統合は保留します。ライセンス表記の書換えによって問題を解消した扱いにはしません。
+
+確認箇所: `build/deps/src/kio/src/core/{CMakeLists.txt,faviconscache.cpp,faviconscache_p.h,global.cpp}`。上流: https://invent.kde.org/frameworks/kio/-/tree/v6.31.0/src/core
 
 ### 認証方式の切替に注意
 
