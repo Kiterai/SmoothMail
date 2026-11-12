@@ -24,6 +24,7 @@
 - 追加画面後CTest10ターゲット成功。Sandboxでcredentialstore5 passed（50000文字の保存失敗後rollbackとDB非公開、正常追加も確認）。SQLite :memory: はファイルパスではないためmkpathしない。アカウント表示/保存エラーはプレインテキスト。OAuthの実認可にはGoogle/Microsoftアプリ登録とclient IDが必要で未提供。
 - ConnectionTesterは専用QThreadでKIMAP/KSMTP接続テストを実行。KJob完了を最大30秒/中断監視、破棄時はworkerへinterruption。TLS証明書proxyは常にfalse。SMTPはNotAuthenticated状態とstrict proxyを根拠にTLS確立を判定して認証gateへ渡す。IMAPのTLS/STARTTLSはLoginJob内部の暗号化確立後CAPABILITY/認証方式検査に依存（API上pre-auth TLS単独jobがない）。平文IMAPは明示CAPABILITY後にpolicyで検査。job error+state+encryptionModeを成功条件とする。
 - Sandboxのconnectiontester 11 passed。信頼済みSSL/TLS・STARTTLS成功、未信頼証明書で認証送信ゼロも確認。tests/dataの鍵/証明書はOpenSSL生成の公開テスト用で製品へ含めない。初回KI18nはctorのGUI threadでsetApplicationDomainし、worker初期化によるQObjectイベントフィルタ警告を防止。アカウント画面の接続テストを実接続層へ接続し、テスト/保存中の設定編集を禁止。
+- core/threadingはアカウント内Message-ID照合、曖昧な重複ID拒否、In-Reply-To優先/References末尾fallback、循環/自己参照拒否と直線チェーン圧縮、返信ヘッダ生成、一意ID生成を提供。件名やReply-Toでは関連付けない。tst_threading7 passed（init/cleanup含む）。UIへのツリー反映は未接続。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。
