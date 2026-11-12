@@ -12,3 +12,10 @@
 - Qt 6.12.0 msvc2022_64、MSVC 19.44でDebugビルドとmainwindowのQt Test（4ケース）が成功。
 - サンドボックス内でcmdシェルを使用し、vcvars64.batをcallしてからQt付属のCMake/Ninjaを使用。Git Bashからcmd /cを渡すと引数変換でコマンドが実行されない場合があるため避ける。
 - CTest実行時はQt SDKのbinをPATHへ追加する。GUIテストはoffscreenであり、実トレイ操作の保証にはならない。
+- 本文ビューを含むDebugビルドとCTestの全2ターゲットが成功。ACL付与エラーはユーザによる追加readルールの削除後に解消。
+
+## 次の作業
+
+- 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
+- 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。
+- 表示時にはQTextDocumentの正規化後の文字列で範囲計算する。CRLFとUTF-16サロゲートペアの回帰テストを維持する。

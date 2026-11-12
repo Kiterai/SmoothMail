@@ -1,8 +1,11 @@
 #include "mainwindow.h"
 
+#include "messageviewer.h"
+
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDesktopServices>
 #include <QHeaderView>
 #include <QLabel>
 #include <QMenuBar>
@@ -11,7 +14,6 @@
 #include <QStandardItemModel>
 #include <QStatusBar>
 #include <QSystemTrayIcon>
-#include <QTextBrowser>
 #include <QTreeView>
 
 namespace smoothmail {
@@ -105,11 +107,11 @@ void MainWindow::createPanes()
     messages->setUniformRowHeights(true);
     messages->header()->setStretchLastSection(true);
 
-    auto *body = new QTextBrowser(vertical);
-    body->setObjectName(QStringLiteral("messageBody"));
-    body->setOpenLinks(false);
-    body->setOpenExternalLinks(false);
-    body->setPlainText(QStringLiteral("表示するメールはありません。"));
+    auto *viewer = new MessageViewer(vertical);
+    viewer->setObjectName(QStringLiteral("messageViewer"));
+    connect(viewer, &MessageViewer::externalLinkRequested, this, [](const QUrl &url) {
+        QDesktopServices::openUrl(url);
+    });
     horizontal->setSizes({250, 850});
     vertical->setSizes({300, 400});
     horizontal->setStretchFactor(1, 1);

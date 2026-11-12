@@ -19,8 +19,13 @@ function(smoothmail_target_defaults target)
 endfunction()
 
 add_library(smoothmail_ui STATIC
+    src/core/messagedocument.h
     src/ui/mainwindow.cpp
     src/ui/mainwindow.h
+    src/ui/messageviewer.cpp
+    src/ui/messageviewer.h
+    src/ui/safebodyview.cpp
+    src/ui/safebodyview.h
 )
 target_include_directories(smoothmail_ui PUBLIC src)
 target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets)
@@ -38,4 +43,10 @@ if(BUILD_TESTING)
     smoothmail_target_defaults(tst_mainwindow)
     add_test(NAME mainwindow COMMAND tst_mainwindow)
     set_tests_properties(mainwindow PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(tst_messageviewer tests/tst_messageviewer.cpp)
+    target_link_libraries(tst_messageviewer PRIVATE smoothmail_ui Qt6::Test)
+    smoothmail_target_defaults(tst_messageviewer)
+    add_test(NAME messageviewer COMMAND tst_messageviewer)
+    set_tests_properties(messageviewer PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
