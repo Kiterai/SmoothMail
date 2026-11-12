@@ -61,9 +61,10 @@ smoothmail_target_defaults(smoothmail_transport)
 
 if(SMOOTHMAIL_BUILD_MIME)
     find_package(KF6Mime 6.31 CONFIG REQUIRED)
-    add_library(smoothmail_mime STATIC src/mail/mimeparser.cpp src/mail/mimeparser.h)
+    add_library(smoothmail_mime STATIC src/mail/mimeparser.cpp src/mail/mimeparser.h
+        src/mail/messagecomposer.cpp src/mail/messagecomposer.h)
     target_include_directories(smoothmail_mime PUBLIC src)
-    target_link_libraries(smoothmail_mime PUBLIC Qt6::Core PRIVATE KF6::Mime)
+    target_link_libraries(smoothmail_mime PUBLIC Qt6::Core PRIVATE KF6::Mime smoothmail_threading)
     smoothmail_target_defaults(smoothmail_mime)
 endif()
 
@@ -123,6 +124,10 @@ if(BUILD_TESTING)
     set_tests_properties(messageviewer PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     if(SMOOTHMAIL_BUILD_MIME)
+        add_executable(tst_messagecomposer tests/tst_messagecomposer.cpp)
+        target_link_libraries(tst_messagecomposer PRIVATE smoothmail_mime smoothmail_threading Qt6::Test)
+        smoothmail_target_defaults(tst_messagecomposer)
+        add_test(NAME messagecomposer COMMAND tst_messagecomposer)
         add_executable(tst_mimeparser tests/tst_mimeparser.cpp)
         target_link_libraries(tst_mimeparser PRIVATE smoothmail_mime Qt6::Test)
         smoothmail_target_defaults(tst_mimeparser)

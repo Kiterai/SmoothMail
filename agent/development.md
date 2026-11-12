@@ -28,6 +28,7 @@
 - ConnectionTesterはMailServiceへ改名し、認証後のLIST/STATUS/EXAMINE/UID FETCHでフォルダと完全メールを取得。ヘッダサイズを先に取得してMIME上限を検査する。失敗時は不完全snapshotを公開しない。ApplicationControllerがアカウントごとの更新を直列化、資格情報を必要時にreadする。選択フォルダ/F5/30秒更新、未読集計（子含む）/ソート/スレッド/閲覧へ接続。更新失敗時に既存表示を消さず、別アカウント更新で閲覧を切替えない。本文は引き続きソースの安全なプレインテキスト表示。
 - AccountRepositoryにfolder/messageキャッシュ追加。account/folder/UIDVALIDITY/UIDで保存し、snapshot単位のtransactionで旧UID・削除・フォルダ消失を反映。失敗はrollback。キャッシュMIME解析もDBworker内。起動時のreloadはGUIキューへ遅延させ、constructor直後のsignal購読前にloadedを失うraceを防止。
 - 既存+拡張ホストCTest11ターゲット成功。Sandbox connectiontester12 passed（メール2件/STATUS未読/本文/Reply-To/UIDVALIDITY変更後1件の取得）。最初の全体実行ではsyncが一度timeout、単独とその後の全体再実行は成功。testの待機上限は実jobの30秒を越える45秒へ変更。継続監視。persistent cache/GUI表示/失敗時表示保持はQt Testで検証済み。送信・下書き・添付保存・履歴・OAuth・アカウントdrag orderは未実装。
+- MessageComposerでUTF-8本文/件名、Date、一意Message-ID、返信ヘッダをKMimeで生成。transportSourceからBCCを除外し、storageSourceには下書き用BCCを保持。宛先空のdraftを許可し送信では拒否、制御文字/不正識別子のheader injection拒否。replyDraftはReply-To優先で全アドレスを初期化。tst_messagecomposer5 passed。UI/SMTP send/IMAP APPEND接続は次。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。
