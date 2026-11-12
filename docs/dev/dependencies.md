@@ -121,6 +121,8 @@ KIMAP／KSMTP 26.08.3（CMakeパッケージ版6.8.3）は指定Qt/MSVCでDebug�
 
 KIMAPには`patches/kimap/26.08.3-fix-sasl-continuation.patch`を適用します。空のSASLチャレンジ処理と、不正応答時のエラーコード未設定を修正するローカルパッチです。原本の独立コピーを使用し、変更通知・上流ライセンス・差分は`share/licenses/kimap`へ配置します。詳細は`patches/kimap/README.md`と`THIRD_PARTY_NOTICES.md`を参照してください。
 
+KSMTPにも`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。STARTTLS後に以前のAUTH等の広告情報を残さないための修正です。未修正版ではTLS後にXOAUTH2が広告されなくてもAUTHを送ることを合成サーバーで再現し、修正後はAUTHと秘密情報を送らず拒否することを確認しています。差分・通知は`share/licenses/ksmtp`へ配置します。
+
 `mailtransport`はループバック限定の合成サーバーとダミー資格情報を使用します。PLAIN／LOGIN／XOAUTH2の通信、未広告のOAuth方式の拒否、STARTTLS非対応時の認証禁止を対象とし、認証成功ケースは明示的な非暗号化設定です。実サービス、TLSハンドシェイク・証明書検証、Google／MicrosoftのOAuth認可フローの検証ではありません。
 
 現在のSafe Shell内ではループバックTCP接続が拒否されます（Pythonの最小接続でも`WinError 10013`）。localhostが設定上許可されていても、この環境では接続できません。起動時の接続確認で早期に失敗させ、各ケースのタイムアウトを避けます。

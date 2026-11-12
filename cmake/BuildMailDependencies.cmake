@@ -35,7 +35,17 @@ set(notices "${prefix}/share/licenses/kimap")
 file(MAKE_DIRECTORY "${notices}")
 file(COPY "${pristine}/LICENSES" "${kimap_patch}" "${CMAKE_CURRENT_LIST_DIR}/../THIRD_PARTY_NOTICES.md"
     DESTINATION "${notices}")
-smoothmail_build_dependency(ksmtp
+smoothmail_fetch_dependency(ksmtp smtp_pristine)
+string(JSON smtp_commit GET "${manifest}" ksmtp commit)
+get_filename_component(smtp_patch "${CMAKE_CURRENT_LIST_DIR}/../patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch" ABSOLUTE)
+smoothmail_prepare_patched_source(ksmtp "${smtp_pristine}" "${smtp_commit}" "${smtp_patch}"
+    "${DEPENDENCY_ROOT}/patched-src" smtp_source)
+smoothmail_build_dependency_source(ksmtp "${smtp_source}"
+    "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/ksmtp-fresh-ehlo"
     "-DGETTEXT_MSGFMT_EXECUTABLE=${gettext_tools}/msgfmt.exe"
     "-DGETTEXT_MSGMERGE_EXECUTABLE=${gettext_tools}/msgmerge.exe")
+set(smtp_notices "${prefix}/share/licenses/ksmtp")
+file(MAKE_DIRECTORY "${smtp_notices}")
+file(COPY "${smtp_pristine}/LICENSES" "${smtp_patch}" "${CMAKE_CURRENT_LIST_DIR}/../THIRD_PARTY_NOTICES.md"
+    DESTINATION "${smtp_notices}")
 message(STATUS "KIMAP/KSMTP built; server authentication and distribution remain separate tests.")

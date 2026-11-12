@@ -146,6 +146,33 @@ private slots:
         QCOMPARE(updated.first().uidValidity, 20);
         QCOMPARE(updated.first().uid, 5);
     }
+    void postTlsCapabilitiesAreAuthoritative()
+    {
+        QFile certFile(QStringLiteral(":/test/tls-cert.pem")), keyFile(QStringLiteral(":/test/tls-key.pem"));
+        QVERIFY(certFile.open(QIODevice::ReadOnly)); QVERIFY(keyFile.open(QIODevice::ReadOnly));
+        const QSslCertificate certificate(certFile.readAll()); const QSslKey key(keyFile.readAll(), QSsl::Rsa);
+        auto config = m_defaultSsl; config.addCaCertificate(certificate); QSslConfiguration::setDefaultConfiguration(config);
+        MailTestServer smtp(MailTestServer::Protocol::Smtp, {QStringLiteral("XOAUTH2")});
+        MailTestServer imap(MailTestServer::Protocol::Imap, {QStringLiteral("XOAUTH2")});
+        for (auto *server : {&smtp, &imap}) {
+            server->tlsMode = MailTestServer::TlsMode::StartTls;
+            server->certificate = certificate; server->privateKey = key;
+            server->changeMechanismsAfterTls = true; server->postTlsMechanisms = {QStringLiteral("PLAIN")};
+            QVERIFY(server->listen());
+        }
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("test@example.com"),
+            {QStringLiteral("127.0.0.1"), smtp.port(), QStringLiteral("test"), AuthenticationMode::OAuth2, EncryptionMode::StartTls},
+            {QStringLiteral("127.0.0.1"), imap.port(), QStringLiteral("test"), AuthenticationMode::OAuth2, EncryptionMode::StartTls}};
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+        QSignalSpy result(&service, &MailService::finished);
+        service.test(account, QStringLiteral("dummy-token"), QStringLiteral("dummy-token"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 45000);
+        QVERIFY(smtp.tlsEstablished); QVERIFY(imap.tlsEstablished);
+        QVERIFY(!result.first().at(0).toString().isEmpty()); QVERIFY(!result.first().at(1).toString().isEmpty());
+        QVERIFY(!smtp.receivedAuthentication()); QVERIFY(!imap.receivedAuthentication());
+        QVERIFY(smtp.authenticationResponses.isEmpty()); QVERIFY(imap.authenticationResponses.isEmpty());
+    }
+
     void sendsAndSavesDraftWithoutLeakingBcc()
     {
         MailTestServer smtp(MailTestServer::Protocol::Smtp, {QStringLiteral("PLAIN")});

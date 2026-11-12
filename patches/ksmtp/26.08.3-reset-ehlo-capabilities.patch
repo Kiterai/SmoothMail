@@ -1,0 +1,18 @@
+diff --git a/src/session.cpp b/src/session.cpp
+--- a/src/session.cpp
++++ b/src/session.cpp
+@@ -62,6 +62,14 @@
+ void SessionPrivate::startHandshake()
+ {
++    // SmoothMail downstream change (2026-11-13): RFC 3207 requires discarding
++    // pre-TLS capabilities; never authenticate using a stale AUTH advertisement.
++    m_authModes.clear();
++    m_size = 0;
++    m_allowsTls = false;
++    m_allowsDsn = false;
++    m_allowsSmtpUtf8 = false;
++
+     QString hostname = m_customHostname;
+ 
+     if (hostname.isEmpty()) {
+         // FIXME: QHostInfo::fromName can get a FQDN, but does a DNS lookup

@@ -33,6 +33,10 @@ KIOはファイルごとに許諾条件が異なります。対象2ファイル�
 
 ## その他の依存
 
+### KSMTP 26.08.3の能力情報リセット
+
+上流 https://invent.kde.org/pim/ksmtp の固定コミット`f78c9bbcf690f5f829ccaf31921caec650579f20`に、`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。2026-11-13にSmoothMail contributorsが`src/session.cpp`を変更し、EHLO握手開始時に古いAUTH/SIZE/STARTTLS/DSN/SMTPUTF8広告を破棄します。これにより、STARTTLS前の認証方式をTLS後の認証前チェックで誤って許可することを防ぎます。元のLGPL-2.1-or-laterおよび著作権表示は保持します。上流未採用の変更であり、差分・上流LICENSES・変更通知をprefixの`share/licenses/ksmtp`へ配置します。対応ソース提供等の配布義務は残ります。
+
 QtKeychain 0.15.0（`ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7`、https://github.com/frankosterfeld/qtkeychain）は変更せず指定Qt SDKで構築します。Frank Osterfeldほかの著作権表示と上流`COPYING`（BSD系の3条件）に従います。`share/licenses/qtkeychain`へCOPYINGと著作権表示を含む公開ヘッダを配置します。
 
 Qt、KMime、KIMAP、KSMTP、KDE Frameworks、Cyrus SASL、XOAUTH2プラグイン、GNU libintl/libiconv等は、それぞれの許諾条件に従います。バージョン・取得元は`cmake/dependencies.json`と`docs/dev/dependencies.md`、個別のライセンスは取得元ソースおよび各prefixのライセンス情報を参照してください。

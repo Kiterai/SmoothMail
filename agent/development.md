@@ -38,6 +38,7 @@
 - OAuthをAccountDialog/AccountRegistrar/AuthenticationBroker/IMAP/SMTPへ接続済み。ServerSettingsのprovider/clientIdは非秘密メタデータ、Keychainはpasswordとoauthの別key。OAuth grant JSONを通常パスワードで代用不可。brokerはaccess tokenをメモリcacheし、refresh rotationをKeychainへ保存できてからaccessを返す。保存上限超過/失効/キー欠如時はtokenを返さずpassword fallbackもなし。Sandbox oauthclient7 passed（実使い捨てKeychain+FakeNetwork）、MS短縮scope表記とcallback交換も検証。
 - OAuth再認可はアカウント行の右クリックから明示実行し、同じaccount/protocolのgrantを差し替える。失効で勝手にブラウザを起動しない。新規認可のclient IDはSMOOTHMAIL_GOOGLE_CLIENT_ID/MICROSOFT_CLIENT_ID、Google公開desktop secretは任意環境変数。アカウント画面にスクロールを導入。暫定追加UIはspec/provisional/oauth-controls.md、手順はdocs/dev/oauth.md。
 - 最新Debugの全15テストEXEをQt SDK未導入のWindows Sandboxで実行し、合計142 passed、0 failed、0 skipped（init/cleanup含む）。all-exit-code.txt=0、各ログall-tst_*.txt。ホストはnetwork3ターゲットを除くCTest12成功（資格情報はopt-inなしskip）。実Google/Microsoft認可・実送受信・配布ライセンス/Release梱包は未検証。外部アプリ登録とユーザ自身の認可が必要。
+- KSMTPにもローカルpatchを追加。SessionPrivate::startHandshakeでAUTH/SIZE/STARTTLS/DSN/SMTPUTF8をclearし、TLS前広告の残留を防止（RFC3207）。BuildMailDependenciesは独立ksmtpコピーからbuild/Debug/ksmtp-fresh-ehloへ構築。原本クリーンを維持。Sandbox postTlsCapabilitiesAreAuthoritativeでbeforeXOAUTH2/afterPLAINを広告、旧DLLはAUTH送信して2 passed/1 failed、修正DLLは認証送信なしで3 passed/0 failed。ログsmtp-{unpatched,patched}-results.txt、buildログsmtp-patched-build.log。ライセンスはLGPL-2.1-or-laterのまま通知/差分を配置。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

@@ -37,6 +37,7 @@ public:
             m_socket->setPrivateKey(privateKey);
             m_socket->setPeerVerifyMode(QSslSocket::VerifyNone); // Test server does not require a client certificate.
             m_socket->setProtocol(QSsl::TlsV1_2OrLater);
+            connect(m_socket, &QSslSocket::encrypted, this, [this] { tlsEstablished = true; });
             if (tlsMode == TlsMode::Implicit) {
                 connect(m_socket, &QSslSocket::encrypted, this, [this] { greeting(); });
                 m_socket->startServerEncryption();
@@ -86,6 +87,9 @@ public:
     TlsMode tlsMode = TlsMode::None;
     QSslCertificate certificate;
     QSslKey privateKey;
+    bool tlsEstablished = false;
+    bool changeMechanismsAfterTls = false;
+    QStringList postTlsMechanisms;
     bool provideMailbox = false;
     qint64 uidValidity = 10;
     QMap<qint64, QByteArray> messages;
@@ -105,6 +109,10 @@ public:
     }
 
 private:
+    QStringList advertisedMechanisms() const
+    {
+        return changeMechanismsAfterTls && m_socket && m_socket->isEncrypted() ? postTlsMechanisms : m_mechanisms;
+    }
     void greeting()
     {
         m_socket->write(m_protocol == Protocol::Imap ? "* OK localhost ready\r\n" : "220 localhost ESMTP\r\n");
@@ -143,7 +151,7 @@ private:
         if (command == "CAPABILITY") {
             QByteArray capabilities("* CAPABILITY IMAP4rev1");
             if (tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) capabilities += " STARTTLS";
-            for (const auto &mechanism : m_mechanisms) {
+            for (const auto &mechanism : advertisedMechanisms()) {
                 capabilities += " AUTH=" + mechanism.toLatin1();
             }
             write(capabilities);
@@ -151,7 +159,8 @@ private:
         } else if (command == "EHLO") {
             write("250-localhost");
             if (tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) write("250-STARTTLS");
-            write("250-AUTH " + m_mechanisms.join(u' ').toLatin1());
+            const auto mechanisms = advertisedMechanisms();
+            if (!mechanisms.isEmpty()) write("250-AUTH " + mechanisms.join(u' ').toLatin1());
             write("250 SIZE 102400");
         } else if (command == "STARTTLS" && tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) {
             write(m_protocol == Protocol::Imap ? m_tag + " OK begin TLS" : QByteArray("220 begin TLS"));
@@ -164,7 +173,7 @@ private:
                 return;
             }
             const auto mechanism = fields.at(mechanismIndex);
-            if (!m_mechanisms.contains(QString::fromLatin1(mechanism))) {
+            if (!advertisedMechanisms().contains(QString::fromLatin1(mechanism))) {
                 write(m_protocol == Protocol::Imap ? m_tag + " NO unsupported mechanism" : QByteArray("504 unsupported mechanism"));
                 return;
             }
