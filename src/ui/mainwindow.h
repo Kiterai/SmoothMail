@@ -30,11 +30,14 @@ public:
     QString selectedFolderFor(const QString &accountId) const { return m_accountId == accountId ? m_folder : QString{}; }
     QString selectedAccountId() const { return m_accountId; }
     std::optional<MailRecord> selectedMessage() const;
+    void setEditingState(bool undoAvailable, bool redoAvailable);
 signals:
     void addAccountRequested();
     void refreshAllRequested();
     void refreshRequested(const QString &accountId, const QString &folder);
     void composeRequested(bool reply);
+    void undoRedoRequested(bool redo);
+    void accountOrderChanged(const QStringList &accountIds);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

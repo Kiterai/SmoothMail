@@ -31,6 +31,7 @@
 - MessageComposerでUTF-8本文/件名、Date、一意Message-ID、返信ヘッダをKMimeで生成。transportSourceからBCCを除外し、storageSourceには下書き用BCCを保持。宛先空のdraftを許可し送信では拒否、制御文字/不正識別子のheader injection拒否。replyDraftはReply-To優先で全アドレスを初期化。tst_messagecomposer5 passed。UI/SMTP send/IMAP APPEND接続は次。
 - ComposeDialog/SMTP SendJob/IMAP AppendJobを接続済み。senderは選択アカウント固定、失敗時は入力保持、送信自動再試行なし。\DraftsのLIST flag優先、存在確認済みDrafts名をfallbackに使い、特定できなければ保存拒否（INBOXへ代用しない）。Sandbox connectiontester13 passed（送信BCC envelopeのみ/下書きBCC保持/下書きfolderなし拒否）。ホストCTest12ターゲット成功。
 - 前記sync timeoutの原因は完了signalのworker直接emitとm_busy解除のGUIqueued slotとのrace。QSignalSpy/即時observerが次の操作を開始するとbusyで落としていた。MailServiceの全完了通知を所有スレッドへ戻し、busy=falseを先に設定してからemitするよう修正。連続sync/send/draftテストで再現し修正後全成功。今後signal通知時には次操作を開始可能な状態を保証する。
+- FolderModelはトップレベルアカウントだけを並び替える専用MIME drag/dropを実装。QTreeViewによる二重source削除を避けるためdrag protocolはCopyAction、model内で移動する。並び順をrepository transactionへ接続し、失敗時は通知して再読込。mainwindow testでroot順/子へのdrop拒否/行数維持を確認。編集メニューはComposeDialogの最後の編集可能な入力欄へundo/redoを転送し、readonly/送信中/閉じた画面では無効。ホストCTest12ターゲット成功。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

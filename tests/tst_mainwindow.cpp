@@ -1,10 +1,12 @@
 #include "ui/mainwindow.h"
+#include "ui/foldermodel.h"
 
 #include <QAction>
 #include <QSplitter>
 #include <QTextBrowser>
 #include <QTreeView>
 #include <QtTest>
+#include <QMimeData>
 
 class MainWindowTest final : public QObject
 {
@@ -85,6 +87,20 @@ private slots:
         QVERIFY(body->toPlainText().contains(QStringLiteral("safe fixture body")));
         window.applySnapshot(account.id, root.folder, {}, {}, QStringLiteral("offline"));
         QCOMPARE(messages->model()->rowCount(), 1); // Failure preserves readable mail.
+    }
+    void reordersOnlyAccounts()
+    {
+        smoothmail::FolderModel model;
+        for (const auto &id : {QStringLiteral("first"), QStringLiteral("second")}) {
+            auto *item = new QStandardItem(id); item->setData(id, Qt::UserRole); model.appendRow(item);
+        }
+        QSignalSpy order(&model, &smoothmail::FolderModel::accountOrderChanged);
+        std::unique_ptr<QMimeData> data(model.mimeData({model.index(1, 0)}));
+        QVERIFY(!model.dropMimeData(data.get(), Qt::CopyAction, 0, 0, model.index(0, 0)));
+        QVERIFY(model.dropMimeData(data.get(), Qt::CopyAction, 0, 0, {}));
+        QCOMPARE(order.size(), 1);
+        QCOMPARE(order.first().first().toStringList(), QStringList({QStringLiteral("second"), QStringLiteral("first")}));
+        QCOMPARE(model.rowCount(), 2);
     }
 };
 

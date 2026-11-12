@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QQueue>
+class QWidget;
 
 namespace smoothmail {
 class MainWindow;
@@ -23,9 +24,11 @@ private:
     void refresh(const QString &accountId, const QString &folder);
     void processNext();
     void compose(bool reply);
+    void updateEditingState();
     QPointer<MainWindow> m_window;
     QPointer<AccountDialog> m_dialog;
     QPointer<ComposeDialog> m_compose;
+    QPointer<QWidget> m_editor;
     bool m_submissionWaiting = false;
     AccountRepository *m_repository;
     CredentialStore *m_credentials;

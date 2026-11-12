@@ -5,6 +5,11 @@
 #include "storage/accountregistrar.h"
 #include "mail/mailservice.h"
 #include <QStatusBar>
+#include <QApplication>
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QTextDocument>
+#include <QMessageBox>
 
 namespace smoothmail {
 ApplicationController::ApplicationController(MainWindow *window, const QString &path, const QString &plugins)
@@ -34,6 +39,11 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_current = {}; processNext();
         }
         if (operation.startsWith(QStringLiteral("cache:"))) m_window->statusBar()->showMessage(QStringLiteral("保存済みメールを読み込めません: ") + error);
+        if (operation == QStringLiteral("reorder")) {
+            auto *notice = new QMessageBox(QMessageBox::Warning, QStringLiteral("並び順を保存できません"), error, QMessageBox::Ok, m_window);
+            notice->setTextFormat(Qt::PlainText); notice->setAttribute(Qt::WA_DeleteOnClose); notice->open();
+            m_repository->reload();
+        }
     });
     connect(m_repository, &AccountRepository::cacheLoaded, this,
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders, const QList<MailRecord> &messages) {
@@ -47,6 +57,18 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         });
     connect(window, &MainWindow::addAccountRequested, this, &ApplicationController::addAccount);
     connect(window, &MainWindow::composeRequested, this, &ApplicationController::compose);
+    connect(window, &MainWindow::accountOrderChanged, m_repository, &AccountRepository::reorder);
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *focus) {
+        if (m_compose && focus && m_compose->isAncestorOf(focus)
+            && (qobject_cast<QLineEdit *>(focus) || qobject_cast<QPlainTextEdit *>(focus))) m_editor = focus;
+        updateEditingState();
+    });
+    connect(window, &MainWindow::undoRedoRequested, this, [this](bool redo) {
+        if (!m_editor || !m_compose || !m_compose->isVisible()) return;
+        if (auto *line = qobject_cast<QLineEdit *>(m_editor)) { if (redo) line->redo(); else line->undo(); }
+        if (auto *text = qobject_cast<QPlainTextEdit *>(m_editor)) { if (redo) text->redo(); else text->undo(); }
+        updateEditingState();
+    });
     connect(window, &MainWindow::refreshRequested, this, &ApplicationController::refresh);
     connect(window, &MainWindow::refreshAllRequested, this, [this] {
         for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id));
@@ -73,6 +95,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(m_mail, &MailService::submissionFinished, this, [this](const QString &id, bool savedAsDraft, const QString &error) {
         m_submissionWaiting = false;
         if (m_compose) m_compose->submissionFinished(savedAsDraft, error);
+        updateEditingState();
         if (error.isEmpty()) refresh(id, m_window->selectedFolderFor(id));
         processNext();
     });
@@ -151,6 +174,7 @@ void ApplicationController::compose(bool reply)
     m_compose = new ComposeDialog(draft, m_window);
     m_compose->setAttribute(Qt::WA_DeleteOnClose);
     connect(m_compose, &ComposeDialog::submitRequested, this, [this, account](const ComposeData &draft, bool saveAsDraft) {
+        updateEditingState();
         if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting) {
             m_compose->submissionFinished(saveAsDraft, QStringLiteral("メール更新中です。更新完了後に再試行してください。"));
             return;
@@ -169,6 +193,26 @@ void ApplicationController::compose(bool reply)
                 guard->m_mail->submit(account, secret, draft, saveAsDraft);
             });
     });
+    for (auto *line : m_compose->findChildren<QLineEdit *>()) connect(line, &QLineEdit::textChanged, this, &ApplicationController::updateEditingState);
+    for (auto *text : m_compose->findChildren<QPlainTextEdit *>()) {
+        connect(text, &QPlainTextEdit::undoAvailable, this, &ApplicationController::updateEditingState);
+        connect(text, &QPlainTextEdit::redoAvailable, this, &ApplicationController::updateEditingState);
+    }
+    connect(m_compose, &QObject::destroyed, this, [this] { m_editor = nullptr; m_window->setEditingState(false, false); });
     m_compose->show();
+}
+
+void ApplicationController::updateEditingState()
+{
+    bool undo = false, redo = false;
+    if (m_compose && m_compose->isVisible() && m_editor && m_editor->isEnabled()) {
+        if (const auto *line = qobject_cast<QLineEdit *>(m_editor); line && !line->isReadOnly()) {
+            undo = line->isUndoAvailable(); redo = line->isRedoAvailable();
+        }
+        if (const auto *text = qobject_cast<QPlainTextEdit *>(m_editor); text && !text->isReadOnly()) {
+            undo = text->document()->isUndoAvailable(); redo = text->document()->isRedoAvailable();
+        }
+    }
+    m_window->setEditingState(undo, redo);
 }
 } // namespace smoothmail

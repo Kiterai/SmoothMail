@@ -2,6 +2,7 @@
 
 #include "messageviewer.h"
 #include "core/threading.h"
+#include "foldermodel.h"
 
 #include <QAction>
 #include <QApplication>
@@ -79,8 +80,10 @@ MainWindow::MainWindow(bool enableSystemTray, QWidget *parent)
 void MainWindow::createMenus()
 {
     auto *edit = menuBar()->addMenu(QStringLiteral("編集"));
-    pendingAction(edit, QStringLiteral("元に戻す"), "undoAction");
-    pendingAction(edit, QStringLiteral("やり直す"), "redoAction");
+    connect(pendingAction(edit, QStringLiteral("元に戻す"), "undoAction"), &QAction::triggered,
+        this, [this] { emit undoRedoRequested(false); });
+    connect(pendingAction(edit, QStringLiteral("やり直す"), "redoAction"), &QAction::triggered,
+        this, [this] { emit undoRedoRequested(true); });
 
     auto *view = menuBar()->addMenu(QStringLiteral("表示"));
     auto *threads = pendingAction(view, QStringLiteral("スレッド表示"), "threadAction");
@@ -116,10 +119,14 @@ void MainWindow::createPanes()
     auto *folders = new QTreeView(horizontal);
     m_folderView = folders;
     folders->setObjectName(QStringLiteral("folderTree"));
-    auto *folderModel = new QStandardItemModel(folders);
+    auto *folderModel = new FolderModel(folders);
     m_folders = folderModel;
     folderModel->setHorizontalHeaderLabels({QStringLiteral("アカウント / フォルダ")});
     folders->setModel(folderModel);
+    folders->setDragEnabled(true); folders->setAcceptDrops(true); folders->setDropIndicatorShown(true);
+    folders->setDragDropMode(QAbstractItemView::DragDrop);
+    folders->setDefaultDropAction(Qt::CopyAction);
+    connect(folderModel, &FolderModel::accountOrderChanged, this, &MainWindow::accountOrderChanged);
     connect(folders->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex &index) {
         if (m_rebuilding || !index.isValid()) return;
         const auto id = index.data(Qt::UserRole).toString();
@@ -237,6 +244,7 @@ void MainWindow::rebuildFolders()
     for (const auto &account : m_accounts) {
         auto *root = new QStandardItem(account.email);
         root->setEditable(false);
+        root->setDragEnabled(true); root->setDropEnabled(false);
         root->setData(account.id, Qt::UserRole);
         if (m_refreshing.contains(account.id)) root->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
         m_folders->appendRow(root);
@@ -253,6 +261,7 @@ void MainWindow::rebuildFolders()
                 if (!items.contains(path)) {
                     auto *node = new QStandardItem(part);
                     node->setEditable(false);
+                    node->setDragEnabled(false); node->setDropEnabled(false);
                     node->setData(account.id, Qt::UserRole);
                     node->setData(path, Qt::UserRole + 1);
                     parent->appendRow(node);
@@ -348,6 +357,12 @@ void MainWindow::rebuildMessages()
         }
     }
     for (int c = 0; c < 6; ++c) m_messageView->resizeColumnToContents(c);
+}
+
+void MainWindow::setEditingState(bool undoAvailable, bool redoAvailable)
+{
+    findChild<QAction *>(QStringLiteral("undoAction"))->setEnabled(undoAvailable);
+    findChild<QAction *>(QStringLiteral("redoAction"))->setEnabled(redoAvailable);
 }
 
 void MainWindow::createTray()
