@@ -1,4 +1,14 @@
 {
+  "cyrus-sasl-xoauth2": {
+    "repository": "https://github.com/moriyoshi/cyrus-sasl-xoauth2.git",
+    "tag": "commit",
+    "commit": "36aabca54fd65c8fa7a707cb4936751599967904"
+  },
+  "winflexbison": {
+    "repository": "https://github.com/lexxmark/winflexbison.git",
+    "tag": "v2.5.25",
+    "commit": "1176da2adaf972b2216b1ac8dd611e128fe80bc5"
+  },
   "extra-cmake-modules": {
     "repository": "https://invent.kde.org/frameworks/extra-cmake-modules.git",
     "tag": "v6.31.0",

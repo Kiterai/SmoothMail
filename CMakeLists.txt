@@ -10,6 +10,7 @@ set(CMAKE_AUTOMOC ON)
 # Qt is supplied by the developer. Do not fetch or install a second SDK.
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets)
 option(SMOOTHMAIL_BUILD_MIME "Build the KMime mail parser" ON)
+option(SMOOTHMAIL_TEST_SASL "Test installed SASL client mechanisms" OFF)
 
 function(smoothmail_target_defaults target)
     if(MSVC)
@@ -64,5 +65,23 @@ if(BUILD_TESTING)
         target_link_libraries(tst_mimeparser PRIVATE smoothmail_mime Qt6::Test)
         smoothmail_target_defaults(tst_mimeparser)
         add_test(NAME mimeparser COMMAND tst_mimeparser)
+    endif()
+
+    if(SMOOTHMAIL_TEST_SASL)
+        find_package(ECM 6.31 CONFIG REQUIRED)
+        list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+        find_package(Sasl2 REQUIRED)
+        set(SMOOTHMAIL_SASL_PLUGIN_DIR
+            "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install/${CMAKE_BUILD_TYPE}/bin/sasl2"
+            CACHE PATH "SASL mechanisms to test (never a global plugin path)")
+        add_executable(tst_sasl tests/tst_sasl.cpp)
+        target_link_libraries(tst_sasl PRIVATE Qt6::Test Sasl2::Sasl2)
+        if(WIN32)
+            target_link_libraries(tst_sasl PRIVATE ws2_32)
+        endif()
+        smoothmail_target_defaults(tst_sasl)
+        add_test(NAME sasl COMMAND tst_sasl)
+        set_tests_properties(sasl PROPERTIES
+            ENVIRONMENT "SMOOTHMAIL_TEST_SASL_PATH=${SMOOTHMAIL_SASL_PLUGIN_DIR}")
     endif()
 endif()

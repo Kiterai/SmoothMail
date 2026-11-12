@@ -1,0 +1,5 @@
+/* Compatibility with MSVC and Cyrus SASL 2.1.28. Protocol code is unmodified. */
+#pragma once
+#include <windows.h>
+#define __attribute__(attribute)
+typedef int (*sasl_callback_ft)(void);

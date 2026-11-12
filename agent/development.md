@@ -26,5 +26,8 @@
 - MimeParser追加後のDebugビルドとCTest全3ターゲットが成功。詳細ログはmimeparser-results.txtで15 passed（init/cleanupを含む）。日本語3文字コードとMIME転送符号化・添付名・抽出上限を確認。
 - CoreAddons/KConfig/KCrash 6.31.0のDebug DLLを同一Qt SDK/MSVCに対して構築済み。BuildFrameworkDependencies.cmakeの共通処理を含む再実行も成功（build/deps/framework-bootstrap.log）。
 - KIMAP/KSMTPにはKIOCoreが必要。KIOCORE_ONLYでもKService/Solid/Crashのfind_packageが必須。KI18nはlibintl、SolidはFlex/Bisonが必要で、Windows向けの依存取得・固定手順を続けて整備する。
-- GitHubへのネットワーク許可（Cyrus SASL等のソース取得）は要求済み。未承認の間は取得しない。Craft blueprintはbuild/deps/src/craft-blueprints-kdeに調査用取得済み（2eb0b809261d66717cd3060d02065f3b21e70802）。Qtを取得するCraft実行はしない。
+- GitHub/Release assets/ftp.gnu.org/repo.msys2.orgの接続許可を承認済み。Craft blueprintはbuild/deps/src/craft-blueprints-kdeに調査用取得済み（2eb0b809261d66717cd3060d02065f3b21e70802）。Qtを取得するCraft実行はしない。
 - 重要: KSMTP 26.08.3 loginjob.cpp:155以降で優先認証方式からLOGIN/PLAINへのfallbackがある。OAuthでは利用可能機構を検査してからジョブ開始し、欠如時はトークンを一切送らないテストが必須。
+- BuildSaslDependencies/BuildXOAuth2DependencyでSASL 2.1.28と3機構をDebug DLL構築済み。CyrusのGitソースには生成ファイルがないためSHA256固定の公式tarballを使用。上流nmakeは子ディレクトリで引数が継承されないため、lib/pluginsを個別実行する。
+- SASL単体テストにはWindowsのWSAStartupが必要。Qt Network経由ではなく生APIを呼ぶテストなので明示初期化している。全4 CTestターゲットが成功。
+- WinFlexBison 2.5.25（1176da2adaf972b2216b1ac8dd611e128fe80bc5）をMSVCでソースビルド済み。Solid 6.31.0のDebug DLL構築も成功（solid-build.log）。手順のスクリプト化は後続作業。

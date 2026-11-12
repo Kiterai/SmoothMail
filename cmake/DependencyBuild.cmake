@@ -28,14 +28,18 @@ function(smoothmail_dependency_command)
     endif()
 endfunction()
 
-function(smoothmail_build_dependency dependency)
+function(smoothmail_fetch_dependency dependency output_variable)
     string(JSON repository GET "${manifest}" "${dependency}" repository)
     string(JSON tag GET "${manifest}" "${dependency}" tag)
     string(JSON commit GET "${manifest}" "${dependency}" commit)
     set(source "${DEPENDENCY_ROOT}/src/${dependency}")
-    set(binary "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/${dependency}")
     if(NOT EXISTS "${source}")
-        smoothmail_dependency_command("${GIT_EXECUTABLE}" clone --depth 1 --branch "${tag}" "${repository}" "${source}")
+        # Fetch the commit rather than a moving branch or a potentially retagged
+        # release. Never change an existing checkout to another revision.
+        smoothmail_dependency_command("${GIT_EXECUTABLE}" init "${source}")
+        smoothmail_dependency_command("${GIT_EXECUTABLE}" -C "${source}" remote add origin "${repository}")
+        smoothmail_dependency_command("${GIT_EXECUTABLE}" -C "${source}" fetch --depth 1 origin "${commit}")
+        smoothmail_dependency_command("${GIT_EXECUTABLE}" -C "${source}" checkout --detach FETCH_HEAD)
     endif()
     execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${source}" rev-parse HEAD
         OUTPUT_VARIABLE actual OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE result)
@@ -47,6 +51,12 @@ function(smoothmail_build_dependency dependency)
     if(NOT result STREQUAL "0" OR NOT dirty STREQUAL "")
         message(FATAL_ERROR "${source} has modified tracked files; refusing to build.")
     endif()
+    set("${output_variable}" "${source}" PARENT_SCOPE)
+endfunction()
+
+function(smoothmail_build_dependency dependency)
+    smoothmail_fetch_dependency("${dependency}" source)
+    set(binary "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/${dependency}")
 
     # Invoke directly so the prefix search list remains a single argument.
     execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${binary}" -G Ninja

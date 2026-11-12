@@ -51,6 +51,25 @@ KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加え�
 
 KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。構築後、XOAUTH2を広告しないローカルサーバーへAUTHやトークンを送らないことを回帰テストします。
 
+## WindowsのSASLクライアント
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildSaslDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildXOAuth2Dependency.cmake
+cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_SASL=ON
+cmake --build --preset dev
+ctest --preset dev
+```
+
+MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してください。必要に応じて`-DCURL_EXECUTABLE=/path/to/curl.exe`を指定できます。スクリプトはWindowsのDebug/Release向けです。
+
+- Cyrus SASL 2.1.28は公式リリースアーカイブをSHA256検証して取得します。生成済みソースを含むアーカイブが必要なため、Gitソースとは別に展開します。
+- 必要なPLAIN/LOGINだけを構築・配置します。SASLデータベース・サーバー管理ツール・不要な機構は配布対象にしません。
+- 2.1.28にXOAUTH2は含まれないため、MITの`moriyoshi/cyrus-sasl-xoauth2`を実コミット固定で別途取得します。MSVC/API互換用ヘッダとクライアント専用エントリーを追加しますが、上流のプロトコル実装は変更しません。
+- プラグインは`build/deps/install/Debug/bin/sasl2`に配置します。テストはこのパスを明示指定し、グローバルのSASL設定やレジストリは変更しません。
+- SASL単体テストで3機構のロード、PLAIN資格情報、LOGINチャレンジ、XOAUTH2応答、未知の機構の拒否を確認しています。実サーバーの認証成功・TLS・OAuth認可フローを検証したという意味ではありません。
+- 各ライセンスはprefixの`share/licenses`へ配置します。全依存の配布監査は別途必要です。
+
 ## ライセンスと残る検証
 
 KMimeのライブラリソースにLGPL-2.0-or-later、KSMTPのライブラリソースにLGPL-2.1-or-laterとLGPL-2.0-or-laterを確認しています。CMakeのライセンスチェック引数だけで製品ライセンスを判定しないでください。
