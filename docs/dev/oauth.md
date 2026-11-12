@@ -36,6 +36,8 @@ smoothmail_google_probe.exe --client-id <Desktop appのclient ID> --email <テ�
 
 外部ブラウザで利用者が認可すると、コード交換→refresh→SSL/TLS接続のSMTP/IMAP XOAUTH2認証を順番に検証します。メール本文の読出し・送信・下書き追加は行いません。トークンはメモリ内のみで、資格情報ストア/DB/ファイルへ保存しません。プロトコルログ・TLS鍵ログを無効化し、ログには段階と成否だけを表示します。認可は最大5分、全体は最大7分です。通常のSafe Shell内でloopback/外部接続を拒否される場合、外側での実行には明示的な許可が必要です。
 
+実メール操作も検証するときだけ、追加で`--self-mail-test`を指定します。このモードは**指定したGmailアカウント自身への日本語テストメール1通と下書き1件を作成**します。続いてINBOX/下書きフォルダを本体の`MailService::synchronize()`でメモリ内に読み込み、今回だけのUUID付き件名、UTF-8本文、送信元/宛先、Message-ID、UID/UIDVALIDITYを照合します。他のメールの内容も同期対象になりますが、内容や件名一覧はログやファイルに保存しません。送信/APPENDは自動再試行せず、読込みだけ最大6回まで再確認します。第三者への送信や削除は行わず、作成したテストメール・下書きはサーバーに残します。全体上限は10分です。実認証のみの許可とは分けて、メール操作・同期読込みの許可を得てから実行してください。
+
 Google Desktopアプリの登録JSONに`client_secret`が含まれる場合、トークン交換に必要になることがあります。ローカルの`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`に設定して起動してください。チャットやGit管理ファイルには貼り付けません。`invalid_client`等は既知のエラーコードだけを表示し、Googleの生の応答文をログへ出しません。
 
 手動プローブでは`--registration-file <ローカルJSONパス>`も使用できます。Google CloudからダウンロードしたDesktop app用JSONの`installed.client_id`が指定IDと一致することを確認し、`installed.client_secret`をメモリ内でだけ利用します。ファイル本文は出力・コピーしません。登録JSONはリポジトリ外へ保存してください。

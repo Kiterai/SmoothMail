@@ -55,6 +55,7 @@
 - 修正版のoutside実行2ab8b7dc361144e1b3022cb694479673（log f77d55c3eb284c99b4dcd83f40f59a49）はAUTHORIZATION_CODE_EXCHANGE_OK / REFRESH_OK / SMTP_XOAUTH2=OK / IMAP_XOAUTH2=OK、exit0。Googleの実認可・refresh・TLS/XOAUTH2認証は成功済み。メールの読出し/送信/下書きや実Google token永続化はこのプローブの対象外で未検証。クライアント登録JSON内容・tokenは出力/コミットしていない。
 - ローカルbuild/launch-debug/start-google-dev.cmdを更新し、提供登録JSONをPowerShell内で内容非表示のまま解析・ID一致確認してclient_secretを子プロセス環境にのみ設定し、既存start-smoothmail.cmdを起動するよう設定。JSON自体はコピー/埋込みしない。通常GUIでGoogleを登録する際はこのランチャーを使う（GUIのアカウント追加/各プロトコル認可は利用者操作が必要）。ランチャー更新後の実GUI認可・永続化は未試験。
 - 本体mainでもquitLockEnabled=falseを設定し、トレイに隠れた間にMail KJobの完了がアプリ寿命を決めないよう保護。quitOnLastWindowClosedの既定は維持するため、トレイ未対応環境の通常close fallbackは従来どおり。明示的なtray Exitも維持。
+- 利用者の検証継続依頼でprobeに--self-mail-testを追加。明示opt-in時のみ自己宛のUUID付き日本語メール1通と下書き1件をsubmitし、INBOX/\Draftsをproduction synchronizeでメモリ読込みしてUTF-8件名/本文/from/to/Message-ID/UIDを照合。送信/APPEND再試行なし、読込のみ最大6回、削除/内容ログ/token保存なし。残る2件はuser mailbox上に保持。通常モードは従来の認証のみ。build/run-google-mail-test.cmd（ignored）から実行、メール操作/同期読込を含む別のoutside許可を要求。ビルドとホストCTest13成功、実メール検証の結果は後続で記録する。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。
