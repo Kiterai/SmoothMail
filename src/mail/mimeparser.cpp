@@ -74,12 +74,17 @@ MessageParseResult MimeParser::parse(const QByteArray &rawMessage)
         document.subject = subject->asUnicodeString();
     }
     if (const auto *from = message.from()) {
+        for (const auto &address : from->addresses()) document.fromAddresses.append(QString::fromUtf8(address));
         const auto mailboxes = from->mailboxes();
         if (!mailboxes.isEmpty()) {
             document.senderName = mailboxes.first().name();
             document.senderAddress = QString::fromUtf8(mailboxes.first().address());
         }
     }
+    if (const auto *reply = message.replyTo()) {
+        for (const auto &address : reply->addresses()) document.replyToAddresses.append(QString::fromUtf8(address));
+    }
+    if (const auto *date = message.date()) document.date = date->dateTime();
     if (const auto *to = message.to()) {
         const auto addresses = to->addresses();
         for (const auto &address : addresses) {

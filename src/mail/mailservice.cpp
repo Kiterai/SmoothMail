@@ -1,8 +1,13 @@
-#include "connectiontester.h"
+#include "mailservice.h"
+#include "mimeparser.h"
 
 #include <KIMAP/CapabilitiesJob>
 #include <KIMAP/LoginJob>
 #include <KIMAP/Session>
+#include <KIMAP/ListJob>
+#include <KIMAP/SelectJob>
+#include <KIMAP/StatusJob>
+#include <KIMAP/FetchJob>
 #include <KSMTP/LoginJob>
 #include <KSMTP/Session>
 #include <KLocalizedString>
@@ -12,6 +17,7 @@
 #include <QMutex>
 #include <QTimer>
 #include <QSslSocket>
+#include <functional>
 extern "C" {
 #include <sasl/sasl.h>
 }
@@ -118,7 +124,8 @@ QString testSmtp(const ServerSettings &settings, const QString &secret)
     return {};
 }
 
-QString testImap(const ServerSettings &settings, const QString &secret)
+QString testImap(const ServerSettings &settings, const QString &secret,
+                 const std::function<QString(KIMAP::Session &)> &work = {})
 {
     KIMAP::Session session(settings.host, settings.port);
     auto proxy = QSharedPointer<RejectCertificateErrors<KIMAP::SessionUiProxy>>::create();
@@ -158,31 +165,39 @@ QString testImap(const ServerSettings &settings, const QString &secret)
         return QStringLiteral("指定したTLS接続が確立されていません。");
     }
     if (session.state() != KIMAP::Session::Authenticated) return QStringLiteral("IMAP4認証済み状態になりませんでした。");
+    if (work) {
+        const auto workError = work(session);
+        session.close();
+        return workError;
+    }
     session.close();
     return {};
 }
 }
 
-ConnectionTester::ConnectionTester(QString plugins, QObject *parent)
+MailService::MailService(QString plugins, QObject *parent)
     : QObject(parent), m_worker(new QObject), m_pluginDirectory(std::move(plugins))
 {
     // KI18n installs an application event filter on first use. Initialize it
     // on the owning (GUI) thread, not from a mail worker's error path.
     KLocalizedString::setApplicationDomain("smoothmail");
+    qRegisterMetaType<QList<MailFolder>>();
+    qRegisterMetaType<QList<MailRecord>>();
     m_worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
-    connect(this, &ConnectionTester::finished, this, [this] { m_busy = false; });
+    connect(this, &MailService::finished, this, [this] { m_busy = false; });
+    connect(this, &MailService::synchronized, this, [this] { m_busy = false; });
     m_thread.start();
 }
 
-ConnectionTester::~ConnectionTester()
+MailService::~MailService()
 {
     m_thread.requestInterruption();
     m_thread.quit();
     m_thread.wait();
 }
 
-void ConnectionTester::test(const Account &account, const QString &smtpSecret, const QString &imapSecret)
+void MailService::test(const Account &account, const QString &smtpSecret, const QString &imapSecret)
 {
     if (m_busy) return;
     m_busy = true;
@@ -194,6 +209,95 @@ void ConnectionTester::test(const Account &account, const QString &smtpSecret, c
         const auto imapError = m_thread.isInterruptionRequested() ? QStringLiteral("中断しました。")
                                                                : testImap(account.imap, imapSecret);
         emit finished(smtpError, imapError);
+    }, Qt::QueuedConnection);
+}
+
+void MailService::synchronize(const Account &account, const QString &secret, const QString &requestedFolder)
+{
+    if (m_busy) return;
+    m_busy = true;
+    QMetaObject::invokeMethod(m_worker, [this, account, secret, requestedFolder] {
+        auto error = validateAccount(account);
+        if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
+        QList<MailFolder> folders;
+        QList<MailRecord> records;
+        QString selected = requestedFolder;
+        if (error.isEmpty()) error = testImap(account.imap, secret, [&](KIMAP::Session &session) -> QString {
+            KIMAP::ListJob listing(&session);
+            listing.setOption(KIMAP::ListJob::IncludeUnsubscribed);
+            connect(&listing, &KIMAP::ListJob::mailBoxesReceived, &listing,
+                [&](const QList<KIMAP::MailBoxDescriptor> &boxes, const QList<QList<QByteArray>> &flags) {
+                    for (qsizetype i = 0; i < boxes.size(); ++i) {
+                        folders.append({boxes.at(i).name, boxes.at(i).separator, flags.value(i), 0});
+                    }
+                });
+            auto jobError = runJob(listing);
+            if (!jobError.isEmpty()) return jobError;
+            QStringList selectable;
+            for (auto &folder : folders) {
+                bool noSelect = false;
+                for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") noSelect = true;
+                if (noSelect) continue;
+                selectable.append(folder.name);
+                KIMAP::StatusJob status(&session);
+                status.setMailBox(folder.name);
+                status.setDataItems({"UNSEEN"});
+                jobError = runJob(status);
+                if (!jobError.isEmpty()) return jobError;
+                for (const auto &item : status.status()) if (item.first == "UNSEEN") folder.unread = item.second;
+            }
+            if (selected.isEmpty()) selected = selectable.contains(QStringLiteral("INBOX")) ? QStringLiteral("INBOX") : selectable.value(0);
+            if (selected.isEmpty()) return {};
+            if (!selectable.contains(selected)) return QStringLiteral("選択フォルダが見つからないか、選択できません。");
+            KIMAP::SelectJob select(&session);
+            select.setMailBox(selected);
+            select.setOpenReadOnly(true); // Refresh must not modify messages or expunge deletions.
+            jobError = runJob(select);
+            if (!jobError.isEmpty()) return jobError;
+            if (select.uidValidity() <= 0) return QStringLiteral("UIDVALIDITYが不正です。");
+            if (!select.messageCount()) return {};
+            QMap<qint64, KIMAP::Message> headers;
+            KIMAP::FetchJob headerJob(&session);
+            headerJob.setUidBased(true);
+            headerJob.setSequenceSet(KIMAP::ImapSet(1, 0));
+            KIMAP::FetchJob::FetchScope headerScope;
+            headerScope.mode = KIMAP::FetchJob::FetchScope::FullHeaders;
+            headerJob.setScope(headerScope);
+            connect(&headerJob, &KIMAP::FetchJob::messagesAvailable, &headerJob,
+                [&](const QMap<qint64, KIMAP::Message> &items) {
+                    for (const auto &message : items) if (message.uid > 0) headers.insert(message.uid, message);
+                });
+            jobError = runJob(headerJob);
+            if (!jobError.isEmpty()) return jobError;
+            for (const auto &header : headers) {
+                if (m_thread.isInterruptionRequested()) return QStringLiteral("中断しました。");
+                if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
+                QByteArray raw;
+                KIMAP::FetchJob fetch(&session);
+                fetch.setUidBased(true);
+                fetch.setSequenceSet(KIMAP::ImapSet(header.uid));
+                KIMAP::FetchJob::FetchScope scope;
+                scope.mode = KIMAP::FetchJob::FetchScope::Full;
+                fetch.setScope(scope);
+                connect(&fetch, &KIMAP::FetchJob::messagesAvailable, &fetch,
+                    [&](const QMap<qint64, KIMAP::Message> &items) {
+                        for (const auto &item : items) {
+                            if (item.uid == header.uid && item.message) raw = item.message->encodedContent(KMime::NewlineType::CRLF);
+                        }
+                    });
+                jobError = runJob(fetch);
+                if (!jobError.isEmpty()) return jobError;
+                if (raw.isEmpty()) continue; // The message may have been expunged during this refresh.
+                const auto parsed = MimeParser::parse(raw);
+                if (!parsed.ok()) return parsed.error;
+                records.append({account.id, selected, select.uidValidity(), header.uid,
+                    header.flags.contains("\\Seen"), header.flags.contains("\\Flagged"), parsed.message});
+            }
+            return {};
+        });
+        // A failed snapshot must never replace previously displayed/cached mail.
+        if (!error.isEmpty()) records.clear();
+        emit synchronized(account.id, selected, folders, records, error);
     }, Qt::QueuedConnection);
 }
 } // namespace smoothmail

@@ -25,6 +25,9 @@
 - ConnectionTesterは専用QThreadでKIMAP/KSMTP接続テストを実行。KJob完了を最大30秒/中断監視、破棄時はworkerへinterruption。TLS証明書proxyは常にfalse。SMTPはNotAuthenticated状態とstrict proxyを根拠にTLS確立を判定して認証gateへ渡す。IMAPのTLS/STARTTLSはLoginJob内部の暗号化確立後CAPABILITY/認証方式検査に依存（API上pre-auth TLS単独jobがない）。平文IMAPは明示CAPABILITY後にpolicyで検査。job error+state+encryptionModeを成功条件とする。
 - Sandboxのconnectiontester 11 passed。信頼済みSSL/TLS・STARTTLS成功、未信頼証明書で認証送信ゼロも確認。tests/dataの鍵/証明書はOpenSSL生成の公開テスト用で製品へ含めない。初回KI18nはctorのGUI threadでsetApplicationDomainし、worker初期化によるQObjectイベントフィルタ警告を防止。アカウント画面の接続テストを実接続層へ接続し、テスト/保存中の設定編集を禁止。
 - core/threadingはアカウント内Message-ID照合、曖昧な重複ID拒否、In-Reply-To優先/References末尾fallback、循環/自己参照拒否と直線チェーン圧縮、返信ヘッダ生成、一意ID生成を提供。件名やReply-Toでは関連付けない。tst_threading7 passed（init/cleanup含む）。UIへのツリー反映は未接続。
+- ConnectionTesterはMailServiceへ改名し、認証後のLIST/STATUS/EXAMINE/UID FETCHでフォルダと完全メールを取得。ヘッダサイズを先に取得してMIME上限を検査する。失敗時は不完全snapshotを公開しない。ApplicationControllerがアカウントごとの更新を直列化、資格情報を必要時にreadする。選択フォルダ/F5/30秒更新、未読集計（子含む）/ソート/スレッド/閲覧へ接続。更新失敗時に既存表示を消さず、別アカウント更新で閲覧を切替えない。本文は引き続きソースの安全なプレインテキスト表示。
+- AccountRepositoryにfolder/messageキャッシュ追加。account/folder/UIDVALIDITY/UIDで保存し、snapshot単位のtransactionで旧UID・削除・フォルダ消失を反映。失敗はrollback。キャッシュMIME解析もDBworker内。起動時のreloadはGUIキューへ遅延させ、constructor直後のsignal購読前にloadedを失うraceを防止。
+- 既存+拡張ホストCTest11ターゲット成功。Sandbox connectiontester12 passed（メール2件/STATUS未読/本文/Reply-To/UIDVALIDITY変更後1件の取得）。最初の全体実行ではsyncが一度timeout、単独とその後の全体再実行は成功。testの待機上限は実jobの30秒を越える45秒へ変更。継続監視。persistent cache/GUI表示/失敗時表示保持はQt Testで検証済み。送信・下書き・添付保存・履歴・OAuth・アカウントdrag orderは未実装。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

@@ -7,6 +7,7 @@
 #include <QSslSocket>
 #include <QSslKey>
 #include <QSslCertificate>
+#include <QMap>
 
 class MailTestTcpServer final : public QTcpServer
 {
@@ -62,6 +63,9 @@ public:
     TlsMode tlsMode = TlsMode::None;
     QSslCertificate certificate;
     QSslKey privateKey;
+    bool provideMailbox = false;
+    qint64 uidValidity = 10;
+    QMap<qint64, QByteArray> messages;
 
     bool receivedAuthentication() const
     {
@@ -154,6 +158,32 @@ private:
                 m_waitingFor = 2;
                 write(m_protocol == Protocol::Imap ? imapEmptyChallenge : QByteArray("334 "));
             }
+        } else if (provideMailbox && command == "LIST") {
+            write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
+            write(m_tag + " OK list completed");
+        } else if (provideMailbox && command == "STATUS") {
+            write("* STATUS \"INBOX\" (UNSEEN " + QByteArray::number(messages.size()) + ')');
+            write(m_tag + " OK status completed");
+        } else if (provideMailbox && (command == "EXAMINE" || command == "SELECT")) {
+            write("* FLAGS (\\Seen \\Flagged)");
+            write("* " + QByteArray::number(messages.size()) + " EXISTS");
+            write("* OK [UIDVALIDITY " + QByteArray::number(uidValidity) + "] stable UIDs");
+            write(m_tag + " OK [READ-ONLY] selected");
+        } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "FETCH") {
+            const auto requested = fields.value(commandIndex + 2);
+            int sequence = 0;
+            for (auto item = messages.cbegin(); item != messages.cend(); ++item) {
+                ++sequence;
+                if (requested != "1:*" && requested.toLongLong() != item.key()) continue;
+                const bool headersOnly = line.contains("HEADER");
+                const auto raw = headersOnly ? item.value().left(item.value().indexOf("\r\n\r\n") + 4) : item.value();
+                write("* " + QByteArray::number(sequence) + " FETCH (UID " + QByteArray::number(item.key())
+                      + " RFC822.SIZE " + QByteArray::number(item.value().size()) + " FLAGS () "
+                      + (headersOnly ? "BODY[HEADER] {" : "BODY[] {") + QByteArray::number(raw.size()) + '}');
+                m_socket->write(raw);
+                write(")");
+            }
+            write(m_tag + " OK fetch completed");
         } else if (command == "QUIT" || command == "LOGOUT") {
             if (m_protocol == Protocol::Imap) {
                 write("* BYE localhost");

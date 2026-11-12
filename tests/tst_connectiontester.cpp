@@ -1,4 +1,4 @@
-#include "mail/connectiontester.h"
+#include "mail/mailservice.h"
 #include "mailtestserver.h"
 #include <QSignalSpy>
 #include <QFile>
@@ -7,6 +7,7 @@
 #include <QtTest>
 
 using namespace smoothmail;
+using ConnectionTester = MailService;
 class ConnectionTesterTest final : public QObject
 {
     Q_OBJECT
@@ -104,6 +105,45 @@ private slots:
             QVERIFY(smtp.authenticationResponses.isEmpty());
             QVERIFY(imap.authenticationResponses.isEmpty());
         }
+    }
+    void synchronizesMailboxAndUidValidity()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        server.provideMailbox = true;
+        const QByteArray raw = "From: sender@example.test\r\nTo: test@example.com\r\nReply-To: reply@example.test\r\n"
+            "Message-ID: <one@example.test>\r\nSubject: fixture\r\nDate: Thu, 12 Nov 2026 12:00:00 +0000\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n\r\nfixture body\r\n";
+        server.messages.insert(1, raw);
+        server.messages.insert(2, QByteArray(raw).replace("<one@", "<two@"));
+        QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("test@example.com"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test@example.com")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test@example.com"), AuthenticationMode::Plain, EncryptionMode::None}};
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+        QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, QStringLiteral("dummy"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 45000);
+        QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString()));
+        QCOMPARE(result.first().at(1).toString(), QStringLiteral("INBOX"));
+        const auto folders = qvariant_cast<QList<MailFolder>>(result.first().at(2));
+        QCOMPARE(folders.size(), 1);
+        QCOMPARE(folders.first().unread, 2);
+        const auto records = qvariant_cast<QList<MailRecord>>(result.first().at(3));
+        QCOMPARE(records.size(), 2);
+        QCOMPARE(records.first().uidValidity, 10);
+        QCOMPARE(records.first().document.replyToAddresses, QStringList{QStringLiteral("reply@example.test")});
+        QVERIFY(records.first().document.parts.first().text.contains(QStringLiteral("fixture body")));
+        result.clear();
+        server.uidValidity = 20;
+        server.messages.clear();
+        server.messages.insert(5, raw);
+        service.synchronize(account, QStringLiteral("dummy"), QStringLiteral("INBOX"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 45000);
+        QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString()));
+        const auto updated = qvariant_cast<QList<MailRecord>>(result.first().at(3));
+        QCOMPARE(updated.size(), 1);
+        QCOMPARE(updated.first().uidValidity, 20);
+        QCOMPARE(updated.first().uid, 5);
     }
 private:
     QSslConfiguration m_defaultSsl;

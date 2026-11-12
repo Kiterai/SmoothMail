@@ -19,6 +19,9 @@ set(SMOOTHMAIL_SASL_PLUGIN_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install/${CMAKE_BUILD_TYPE}/bin/sasl2"
     CACHE PATH "SASL mechanisms to test (never a global plugin path)")
 option(SMOOTHMAIL_BUILD_MIME "Build the KMime mail parser" ON)
+if(NOT SMOOTHMAIL_BUILD_MIME)
+    message(FATAL_ERROR "The application storage and mail service require SMOOTHMAIL_BUILD_MIME=ON.")
+endif()
 option(SMOOTHMAIL_TEST_SASL "Test installed SASL client mechanisms" OFF)
 option(SMOOTHMAIL_TEST_KDE_BASE "Test installed KI18n and KService libraries (without KIO)" OFF)
 option(SMOOTHMAIL_TEST_KIO "Test the locally patched KIOCore library" OFF)
@@ -43,17 +46,17 @@ add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
     src/storage/credentialstore.cpp src/storage/credentialstore.h)
 target_include_directories(smoothmail_storage PUBLIC src)
 target_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy Qt6::Core
-    PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain)
+    PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain smoothmail_mime)
 smoothmail_target_defaults(smoothmail_storage)
 add_library(smoothmail_threading STATIC src/core/threading.cpp src/core/threading.h)
 target_include_directories(smoothmail_threading PUBLIC src)
 target_link_libraries(smoothmail_threading PUBLIC Qt6::Core)
 smoothmail_target_defaults(smoothmail_threading)
 
-add_library(smoothmail_transport STATIC src/mail/connectiontester.cpp src/mail/connectiontester.h)
+add_library(smoothmail_transport STATIC src/mail/mailservice.cpp src/mail/mailservice.h)
 target_include_directories(smoothmail_transport PUBLIC src)
 target_link_libraries(smoothmail_transport PUBLIC smoothmail_storage
-    PRIVATE KPim6::IMAP KPim6::SMTP KF6::I18n Sasl2::Sasl2)
+    PRIVATE KPim6::IMAP KPim6::SMTP KF6::I18n Sasl2::Sasl2 smoothmail_mime)
 smoothmail_target_defaults(smoothmail_transport)
 
 if(SMOOTHMAIL_BUILD_MIME)
@@ -75,10 +78,10 @@ add_library(smoothmail_ui STATIC
     src/ui/safebodyview.h
 )
 target_include_directories(smoothmail_ui PUBLIC src)
-target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets smoothmail_storage)
+target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets smoothmail_storage smoothmail_threading)
 smoothmail_target_defaults(smoothmail_ui)
 
-qt_add_executable(smoothmail WIN32 src/main.cpp)
+qt_add_executable(smoothmail WIN32 src/main.cpp src/app/applicationcontroller.cpp src/app/applicationcontroller.h)
 target_link_libraries(smoothmail PRIVATE smoothmail_ui smoothmail_transport)
 smoothmail_target_defaults(smoothmail)
 
@@ -97,6 +100,9 @@ if(BUILD_TESTING)
     foreach(name IN ITEMS accountrepository credentialstore)
         add_executable(tst_${name} tests/tst_${name}.cpp)
         target_link_libraries(tst_${name} PRIVATE smoothmail_storage Qt6::Test)
+        if(name STREQUAL "accountrepository")
+            target_link_libraries(tst_${name} PRIVATE smoothmail_mime)
+        endif()
         smoothmail_target_defaults(tst_${name})
         add_test(NAME ${name} COMMAND tst_${name})
     endforeach()

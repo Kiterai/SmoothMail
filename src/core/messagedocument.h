@@ -4,6 +4,7 @@
 #include <QList>
 #include <QString>
 #include <QStringList>
+#include <QDateTime>
 
 namespace smoothmail {
 
@@ -30,6 +31,9 @@ struct MessageDocument
     QString subject;
     QString senderName;
     QString senderAddress;
+    QStringList fromAddresses;
+    QStringList replyToAddresses;
+    QDateTime date;
     QStringList recipients;
     QString headers;
     QList<MessagePart> parts;

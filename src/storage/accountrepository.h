@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/account.h"
+#include "core/mailrecord.h"
 #include <QObject>
 #include <QThread>
 
@@ -16,11 +17,18 @@ public:
     void reload();
     void insert(const Account &account);
     void reorder(const QStringList &accountIds);
+    void loadCache(const QString &accountId);
+    void saveSnapshot(const QString &accountId, const QString &folder, const QList<MailFolder> &folders,
+                      const QList<MailRecord> &messages);
 
 signals:
     void loaded(const QList<smoothmail::Account> &accounts);
     void inserted(const QString &id);
     void failed(const QString &operation, const QString &error);
+    void cacheLoaded(const QString &accountId, const QString &folder, const QList<smoothmail::MailFolder> &folders,
+                     const QList<smoothmail::MailRecord> &messages);
+    void snapshotSaved(const QString &accountId, const QString &folder, const QList<smoothmail::MailFolder> &folders,
+                       const QList<smoothmail::MailRecord> &messages);
 
 private:
     struct State;
