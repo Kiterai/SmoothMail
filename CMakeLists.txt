@@ -15,6 +15,8 @@ list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 find_package(Sasl2 REQUIRED)
 find_package(KPim6IMAP 6.8.3 CONFIG REQUIRED)
 find_package(KPim6SMTP 6.8.3 CONFIG REQUIRED)
+find_package(KF6KIO 6.31 CONFIG REQUIRED)
+include(cmake/ValidateMailDependencies.cmake)
 set(SMOOTHMAIL_SASL_PLUGIN_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install/${CMAKE_BUILD_TYPE}/bin/sasl2"
     CACHE PATH "SASL mechanisms to test (never a global plugin path)")

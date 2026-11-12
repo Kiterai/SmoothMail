@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 include("${CMAKE_CURRENT_LIST_DIR}/DependencyBuild.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/PrepareKioSource.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/ModifiedDependencyReceipt.cmake")
 if(NOT WIN32)
     message(FATAL_ERROR "This KIO bootstrap is currently validated for Windows only.")
 endif()
@@ -42,4 +43,5 @@ set(notices "${prefix}/share/licenses/kio")
 file(MAKE_DIRECTORY "${notices}")
 file(COPY "${pristine}/LICENSES" "${patch}" "${CMAKE_CURRENT_LIST_DIR}/../THIRD_PARTY_NOTICES.md"
     DESTINATION "${notices}")
+smoothmail_write_modified_receipt("${notices}" "${prefix}/bin/KF6KIOCore.dll" "${commit}" "${patch}")
 message(STATUS "Patched KIO installed. The development prefix is NOT a product distribution.")
