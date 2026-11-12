@@ -31,6 +31,8 @@
 
 ## 残る作業
 
+直近の利用者指定では、Microsoft実アカウント、GUIでのGoogle認証、配布用設定を後回しにしています。Windows SandboxのオフラインGUI確認と手元Debug起動環境の整備を実施し、今回のネイティブGUI4テストEXEは42 passed / 0 failed / 0 skippedでした。メイン/作成画面の下端切れと列ソートの二重トグルを修正済み。起動は`build/start-smoothmail.cmd`、本体は`build/local-run`です。詳細は`gui-checks.md`と`windows-launch.md`を参照してください。
+
 - 通常GUIでの実Googleアカウント追加→設定DB保存→再起動→自動更新の一連操作、およびMicrosoftの実認可・認証・実メール送受信の検証。Googleの本体サービス層による実認可・refresh・IMAP/SMTP認証・自己宛送受信・下書き読戻し・実tokenのOS保存/別プロセス復元は成功済みです。
 - 配布物の依存/ライセンス監査とクリーン環境検証。
 

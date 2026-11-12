@@ -7,6 +7,7 @@
 #include <QTreeView>
 #include <QtTest>
 #include <QMimeData>
+#include <QHeaderView>
 
 class MainWindowTest final : public QObject
 {
@@ -87,6 +88,27 @@ private slots:
         QVERIFY(body->toPlainText().contains(QStringLiteral("safe fixture body")));
         window.applySnapshot(account.id, root.folder, {}, {}, QStringLiteral("offline"));
         QCOMPARE(messages->model()->rowCount(), 1); // Failure preserves readable mail.
+    }
+    void sortOrderTogglesAndSurvivesRefresh()
+    {
+        smoothmail::MainWindow window(false);
+        smoothmail::Account account; account.id = QStringLiteral("sort"); account.email = QStringLiteral("sort@example.test");
+        window.setAccounts({account});
+        smoothmail::MailRecord first{account.id, QStringLiteral("INBOX"), 1, 1};
+        first.document.subject = QStringLiteral("Alpha");
+        auto second = first; second.uid = 2; second.document.subject = QStringLiteral("Zulu");
+        const QList<smoothmail::MailFolder> folders{{first.folder, u'/', {}, 0}};
+        window.applySnapshot(account.id, first.folder, folders, {first, second}, {});
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+        QMetaObject::invokeMethod(view->header(), "sectionClicked", Q_ARG(int, 3));
+        QCOMPARE(view->model()->index(0, 3).data().toString(), QStringLiteral("Alpha"));
+        QMetaObject::invokeMethod(view->header(), "sectionClicked", Q_ARG(int, 3));
+        QCOMPARE(view->model()->index(0, 3).data().toString(), QStringLiteral("Zulu"));
+        window.applySnapshot(account.id, first.folder, folders, {first, second}, {});
+        QCOMPARE(view->model()->index(0, 3).data().toString(), QStringLiteral("Zulu"));
+        QMetaObject::invokeMethod(view->header(), "sectionClicked", Q_ARG(int, 0));
+        QCOMPARE(view->header()->sortIndicatorSection(), 3);
+        QCOMPARE(view->header()->sortIndicatorOrder(), Qt::DescendingOrder);
     }
     void reordersOnlyAccounts()
     {

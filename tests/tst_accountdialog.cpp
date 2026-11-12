@@ -34,6 +34,13 @@ private slots:
         QVERIFY(dialog.height() < dialog.screen()->availableGeometry().height());
         const auto *buttons = dialog.findChild<QDialogButtonBox *>();
         QVERIFY(dialog.rect().contains(QRect(buttons->mapTo(&dialog, QPoint()), buttons->size())));
+        ComposeDialog compose({});
+        compose.show();
+        QCoreApplication::processEvents();
+        QVERIFY(compose.height() < compose.screen()->availableGeometry().height());
+        for (const auto *button : compose.findChildren<QPushButton *>()) {
+            QVERIFY(compose.rect().contains(QRect(button->mapTo(&compose, QPoint()), button->size())));
+        }
     }
     void validatesAndPreservesError()
     {

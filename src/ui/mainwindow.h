@@ -70,6 +70,8 @@ private:
     bool m_rebuilding = false;
     QLabel *m_lastUpdated = nullptr;
     QDateTime m_lastSuccess;
+    int m_sortColumn = 6;
+    Qt::SortOrder m_sortOrder = Qt::DescendingOrder;
     qint64 m_revealUid = 0, m_revealValidity = 0;
     bool m_exiting = false;
 };

@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QScreen>
 
 namespace smoothmail {
 ComposeDialog::ComposeDialog(ComposeData value, QWidget *parent)
@@ -19,7 +20,9 @@ ComposeDialog::ComposeDialog(ComposeData value, QWidget *parent)
     m_to->setObjectName(QStringLiteral("composeTo"));
     m_send->setObjectName(QStringLiteral("composeSend"));
     m_save->setObjectName(QStringLiteral("composeSave"));
-    setWindowTitle(QStringLiteral("新規メール")); resize(700, 600);
+    setWindowTitle(QStringLiteral("新規メール"));
+    const auto available = screen()->availableGeometry().size();
+    resize(qMin(700, available.width() - 80), qMin(600, available.height() - 80));
     auto *layout = new QVBoxLayout(this);
     auto *form = new QFormLayout;
     m_subject->setObjectName(QStringLiteral("composeSubject")); m_subject->setText(m_original.subject);

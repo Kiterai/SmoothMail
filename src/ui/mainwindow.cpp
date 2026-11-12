@@ -20,6 +20,7 @@
 #include <QTimer>
 #include <QItemSelectionModel>
 #include <QStyle>
+#include <QScreen>
 #include <algorithm>
 #include <functional>
 
@@ -46,7 +47,7 @@ QAction *pendingAction(QMenu *menu, const QString &text, const char *name)
     auto *action = menu->addAction(text);
     action->setObjectName(QLatin1String(name));
     action->setEnabled(false);
-    action->setStatusTip(QStringLiteral("この機能は未実装です。"));
+    action->setStatusTip(text);
     return action;
 }
 
@@ -57,7 +58,8 @@ MainWindow::MainWindow(bool enableSystemTray, QWidget *parent)
 {
     setWindowTitle(QStringLiteral("SmoothMail"));
     setWindowIcon(applicationIcon());
-    resize(1100, 760);
+    const auto available = screen()->availableGeometry().size();
+    resize(qMin(1100, available.width() - 80), qMin(760, available.height() - 80));
     createMenus();
     createPanes();
     m_lastUpdated = new QLabel(QStringLiteral("最終更新: 未更新"), this);
@@ -71,7 +73,7 @@ MainWindow::MainWindow(bool enableSystemTray, QWidget *parent)
             ? QStringLiteral("%1分前").arg(seconds / 60) : QStringLiteral("%1時間前").arg(seconds / 3600);
         m_lastUpdated->setText(QStringLiteral("最終更新: %1 (%2)").arg(m_lastSuccess.toString(QStringLiteral("yyyy/MM/dd HH:mm:ss")), ago));
     });
-    statusBar()->showMessage(QStringLiteral("開発中: メールサーバ接続は未実装です。"));
+    statusBar()->showMessage(QStringLiteral("アカウント設定を読み込み中..."));
     if (enableSystemTray && QSystemTrayIcon::isSystemTrayAvailable()) {
         createTray();
     }
@@ -172,15 +174,20 @@ void MainWindow::createPanes()
     messages->setUniformRowHeights(true);
     messages->header()->setStretchLastSection(true);
     messages->header()->setSectionsClickable(true);
+    messages->header()->setSortIndicator(m_sortColumn, m_sortOrder);
+    messages->header()->setSortIndicatorShown(true);
     messageModel->setSortRole(Qt::UserRole + 10);
-    connect(messages->header(), &QHeaderView::sectionClicked, this, [messages, messageModel](int section) {
-        if (section < 3) return;
+    connect(messages->header(), &QHeaderView::sectionClicked, this, [this, messages, messageModel](int section) {
         auto *header = messages->header();
-        const auto order = header->sortIndicatorSection() == section && header->sortIndicatorOrder() == Qt::AscendingOrder
-            ? Qt::DescendingOrder : Qt::AscendingOrder;
-        header->setSortIndicator(section, order);
-        header->setSortIndicatorShown(true);
-        messageModel->sort(section, order);
+        // QHeaderView may already have toggled its indicator before this
+        // signal. Keep independent state instead of toggling that state twice.
+        if (section >= 3) {
+            m_sortOrder = m_sortColumn == section && m_sortOrder == Qt::AscendingOrder
+                ? Qt::DescendingOrder : Qt::AscendingOrder;
+            m_sortColumn = section;
+            messageModel->sort(m_sortColumn, m_sortOrder);
+        }
+        header->setSortIndicator(m_sortColumn, m_sortOrder);
     });
 
     auto *viewer = new MessageViewer(vertical);
@@ -375,7 +382,7 @@ void MainWindow::rebuildMessages()
         if (parents.at(i) >= 0) rows[parents.at(i)].first()->appendRow(rows.at(i));
         else m_messageModel->appendRow(rows.at(i));
     }
-    m_messageModel->sort(6, Qt::DescendingOrder);
+    m_messageModel->sort(m_sortColumn, m_sortOrder);
     if (m_revealUid > 0) { previousUid = m_revealUid; previousValidity = m_revealValidity; previousAccount = m_accountId; previousFolder = m_folder; }
     for (qsizetype i = 0; i < m_visibleMessages.size(); ++i) {
         if (m_visibleMessages.at(i).uid == previousUid && m_visibleMessages.at(i).uidValidity == previousValidity

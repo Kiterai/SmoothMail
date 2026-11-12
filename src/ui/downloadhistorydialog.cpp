@@ -6,11 +6,14 @@
 #include <QFileInfo>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QScreen>
 
 namespace smoothmail {
 DownloadHistoryDialog::DownloadHistoryDialog(QWidget *parent) : QDialog(parent), m_view(new QTreeView(this)), m_model(new QStandardItemModel(this))
 {
-    setWindowTitle(QStringLiteral("ダウンロード履歴")); resize(900, 420);
+    setWindowTitle(QStringLiteral("ダウンロード履歴"));
+    const auto available = screen()->availableGeometry().size();
+    resize(qMin(900, available.width() - 80), qMin(420, available.height() - 80));
     auto *layout = new QVBoxLayout(this); layout->addWidget(m_view);
     m_model->setHorizontalHeaderLabels({QStringLiteral("元メッセージ"), QStringLiteral("保存日"), QStringLiteral("保存パス"), QStringLiteral("サイズ")});
     m_view->setModel(m_model); m_view->setRootIsDecorated(false);

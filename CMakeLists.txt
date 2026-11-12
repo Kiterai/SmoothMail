@@ -109,6 +109,18 @@ if(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE)
 endif()
 
 include(CTest)
+option(SMOOTHMAIL_BUILD_GUI_SMOKE "Build explicit native GUI workflow test for disposable Windows Sandbox only" OFF)
+if(SMOOTHMAIL_BUILD_GUI_SMOKE)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(tst_guismoke tests/tst_guismoke.cpp tests/mailtestserver.h
+        src/app/applicationcontroller.cpp src/app/applicationcontroller.h)
+    target_link_libraries(tst_guismoke PRIVATE smoothmail_ui smoothmail_transport smoothmail_auth Qt6::Test Qt6::Network)
+    smoothmail_target_defaults(tst_guismoke)
+    qt_add_resources(tst_guismoke "gui_test_tls" PREFIX "/test"
+        BASE "${CMAKE_CURRENT_SOURCE_DIR}/tests/data" FILES tests/data/tls-cert.pem tests/data/tls-key.pem)
+    # Deliberately not registered with CTest: dummy OS credentials/downloads
+    # and visible native windows are allowed only in the disposable guest.
+endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     if(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE)

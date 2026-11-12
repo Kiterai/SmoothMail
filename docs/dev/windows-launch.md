@@ -1,7 +1,9 @@
 # Windows開発用の起動設定
 
-現在の起動用フォルダは`build/launch-debug`です。
-`start-smoothmail.cmd`をダブルクリックして起動します。Qt SDKやKDE prefixをPATHへ追加する必要はありません。
+現在の起動用フォルダは`build/local-run`です。
+**`build/start-smoothmail.cmd`をダブルクリック**して起動します。フォルダ内の`build/local-run/start-smoothmail.cmd`や`smoothmail.exe`からも起動できます。Qt SDKやKDE prefixをPATHへ追加する必要はありません。
+
+今回の依頼ではWindows SandboxのGUI確認と手元起動用Debug環境だけを整備しています。Microsoft実アカウント、GUIでのGoogle認可、配布用Release設定は後回しです。新しい起動フォルダには登録JSON・秘密情報・GUIテストEXEを含めていません。以前の`build/launch-debug`とGoogle用ランチャーは上書きせず残しています。
 
 このフォルダは**Debugの開発用**です。Debug CRTを含むため、第三者への配布物ではありません。Release配布・完全なライセンス監査は別途必要です。Qt SDKは変更しません。
 
@@ -17,7 +19,7 @@ cmake ^
  -DDEPENDENCY_BIN="%CD%/build/deps/install/Debug/bin" ^
  -DNATIVE_BIN="%CD%/build/deps/native/x64-windows/debug/bin" ^
  -DSASL_DIR="%CD%/build/deps/install/Debug/bin/sasl2" ^
- -DDESTINATION="%CD%/build/launch-debug-new" ^
+ -DDESTINATION="%CD%/build/local-run-new" ^
  -DCONFIGURATION=Debug -P cmake/StageWindowsRuntime.cmake
 ```
 
@@ -34,9 +36,15 @@ cmake ^
 
 起動前に`SMOOTHMAIL_GOOGLE_CLIENT_ID`（必要なら公開Desktop登録情報の`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`）を設定します。詳細は`oauth.md`を参照してください。アカウント追加ではSMTPを`smtp.gmail.com:465`のSSL/TLS、IMAP4を`imap.gmail.com:993`のSSL/TLS、双方の認証をOAuth2/Googleにし、それぞれ外部ブラウザで認可します。通常のGoogleパスワードはこれらの欄へ入力しません。
 
-現在の開発用フォルダには`start-google-dev.cmd`も用意しています。提供された公開クライアントIDを設定し、`build`配下の利用者指定Desktop登録JSONをローカルで読み込み、そのプロセスの環境変数にclient_secretを渡して起動します（両ファイルともローカルの`build`配下のみ）。JSONの中身はランチャーへ埋め込まず、表示もしません。JSONを移動した場合はランチャー内の参照パスを変更してください。ブラウザでの利用者自身の認可と、アカウント追加操作は必要です。
+以前の`build/launch-debug`には`start-google-dev.cmd`も用意しています。提供された公開クライアントIDを設定し、`build`配下の利用者指定Desktop登録JSONをローカルで読み込み、そのプロセスの環境変数にclient_secretを渡して起動します（両ファイルともローカルの`build`配下のみ）。今回はこれを変更・実行していません。GUIでのGoogle認可を再開する際は、最新EXEと設定を改めて揃えて検証してください。
 
 ## 確認記録
+
+- 今回のGUI確認では、外部通信無効・SDK未導入のguestでネイティブGUIの4テストEXEが42 passed / 0 failed / 0 skipped。アカウント追加から合成送信/下書き/添付/履歴/30秒更新までを本体controller経由で確認しました。詳細は`gui-checks.md`。
+- 修正後に`windeployqt`と再帰import解決で`build/local-run`を新規作成。さらに別のSDK未導入guestへこのフォルダだけをコピーし、`C:\SmoothMail Local`という空白入りパス、WindowsだけのPATHで起動を確認しました。`runtime-sha256.txt`の全ハッシュと最新EXEの一致を確認済みです。
+- 実行環境に登録JSONやテストEXEが混入していないことを確認しました。ログは`build/local-run-stage.log`、実ロードDLL一覧は`build/gui-check/output/final-runtime-loaded-modules.txt`です。
+
+以下は過去の開発用ランタイムでの記録です。
 
 - 2026-11-13、SDK未導入の新しいWindows Sandboxに、この起動用フォルダだけをコピーし、PATHをWindowsのみにして`start-smoothmail.cmd`から起動できることを確認しました。
 - 追加のテスト用EXEとQt Test DLLだけを別フォルダへ置き、メール/Qt/SASLの実行依存にはこの起動用フォルダだけを使って合成通信テストを実行。TLS/STARTTLS、証明書拒否、XOAUTH2、同期、SMTP送信・下書きの14ケースが成功しました（失敗・スキップなし、init/cleanup含む）。`build/sandbox-mail-output/runtime-probe-results.txt`に記録しています。実Googleアカウントの認証ではありません。
