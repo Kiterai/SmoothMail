@@ -4,6 +4,7 @@
 
 #include <QCommandLineParser>
 #include <QDesktopServices>
+#include <QEventLoopLocker>
 #include <QGuiApplication>
 #include <QFile>
 #include <QJsonDocument>
@@ -23,6 +24,10 @@ int main(int argc, char **argv)
     qunsetenv("QT_SSLKEYLOGFILE");
     qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     QGuiApplication app(argc, argv);
+    // KJob owns a QEventLoopLocker. Releasing the last job can otherwise quit
+    // this windowless QGuiApplication before the worker completion is delivered.
+    QGuiApplication::setQuitOnLastWindowClosed(false);
+    QCoreApplication::setQuitLockEnabled(false);
     QCoreApplication::setApplicationName(QStringLiteral("SmoothMail Google OAuth probe"));
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Live Google OAuth + refresh + SMTP/IMAP authentication only. No mail is read or sent."));
@@ -30,7 +35,18 @@ int main(int argc, char **argv)
     parser.addOption({QStringLiteral("client-id"), QStringLiteral("Google Desktop OAuth client ID (not a password)."), QStringLiteral("id")});
     parser.addOption({QStringLiteral("email"), QStringLiteral("Test account to suggest in the consent browser."), QStringLiteral("address")});
     parser.addOption({QStringLiteral("registration-file"), QStringLiteral("Local downloaded Google Desktop client JSON; contents are never printed."), QStringLiteral("path")});
+    parser.addOption({QStringLiteral("self-test-lifecycle"), QStringLiteral("Offline lifecycle regression; no browser, credentials or network.")});
     parser.process(app);
+    if (parser.isSet(QStringLiteral("self-test-lifecycle"))) {
+        bool completed = false;
+        QTimer::singleShot(0, &app, [&] {
+            { QEventLoopLocker locker; }
+            QTimer::singleShot(50, &app, [&] { completed = true; app.exit(0); });
+        });
+        const int result = app.exec();
+        std::cout << (completed ? "PROBE_LIFECYCLE_OK" : "PROBE_INCOMPLETE") << std::endl;
+        return completed ? result : 1;
+    }
     const auto clientId = parser.value(QStringLiteral("client-id"));
     const auto email = parser.value(QStringLiteral("email"));
     if (!clientId.endsWith(QStringLiteral(".apps.googleusercontent.com")) || !email.endsWith(QStringLiteral("@gmail.com"))) {
@@ -54,19 +70,21 @@ int main(int argc, char **argv)
     smoothmail::OAuthClient authorization, refresh;
     smoothmail::MailService mail(qEnvironmentVariable("SMOOTHMAIL_SASL_PATH",
         QCoreApplication::applicationDirPath() + QStringLiteral("/sasl2")));
-    const auto fail = [&app](const QString &error) {
+    bool completed = false;
+    const auto finish = [&](int result) { completed = true; app.exit(result); };
+    const auto fail = [&](const QString &error) {
         // OAuthClient emits only application-generated errors, no raw response.
         std::cout << "OAUTH_FAILED: " << error.toUtf8().constData() << std::endl;
-        app.exit(1);
+        finish(1);
     };
     QObject::connect(&authorization, &smoothmail::OAuthClient::failed, &app, fail);
     QObject::connect(&refresh, &smoothmail::OAuthClient::failed, &app, fail);
-    QObject::connect(&authorization, &smoothmail::OAuthClient::authorizationUrlReady, &app, [&app](const QUrl &url) {
+    QObject::connect(&authorization, &smoothmail::OAuthClient::authorizationUrlReady, &app, [&](const QUrl &url) {
         std::cout << "BROWSER_CONSENT_REQUIRED: sign in with the test account and approve the Gmail permission in the opened browser.\n"
                      "Do not paste passwords, callback URLs or tokens into chat. Waiting up to five minutes." << std::endl;
         if (!QDesktopServices::openUrl(url)) {
             std::cout << "BROWSER_OPEN_FAILED" << std::endl;
-            app.exit(1);
+            finish(1);
         }
     });
     QObject::connect(&authorization, &smoothmail::OAuthClient::tokensReady, &app,
@@ -85,19 +103,24 @@ int main(int argc, char **argv)
             mail.test(account, tokens.accessToken, tokens.accessToken);
         });
     QObject::connect(&mail, &smoothmail::MailService::finished, &app,
-        [&app](const QString &smtpError, const QString &imapError) {
+        [&](const QString &smtpError, const QString &imapError) {
             // Do not print raw mail server response/error strings.
             std::cout << "SMTP_XOAUTH2=" << (smtpError.isEmpty() ? "OK" : "FAILED")
                       << "\nIMAP_XOAUTH2=" << (imapError.isEmpty() ? "OK" : "FAILED") << std::endl;
-            app.exit(smtpError.isEmpty() && imapError.isEmpty() ? 0 : 1);
+            finish(smtpError.isEmpty() && imapError.isEmpty() ? 0 : 1);
         });
-    QTimer::singleShot(7 * 60 * 1000, &app, [&app] {
+    QTimer::singleShot(7 * 60 * 1000, &app, [&] {
         std::cout << "PROBE_TIMEOUT" << std::endl;
-        app.exit(1);
+        finish(1);
     });
     QTimer::singleShot(0, &app, [&] {
         std::cout << "Starting live OAuth probe. No mail will be read or sent." << std::endl;
         authorization.authorize(QStringLiteral("google"), clientId, email, secret);
     });
-    return app.exec();
+    const int result = app.exec();
+    if (!completed) {
+        std::cout << "PROBE_INCOMPLETE: no terminal authentication result received." << std::endl;
+        return 1;
+    }
+    return result;
 }

@@ -40,7 +40,11 @@ Google Desktopアプリの登録JSONに`client_secret`が含まれる場合、�
 
 手動プローブでは`--registration-file <ローカルJSONパス>`も使用できます。Google CloudからダウンロードしたDesktop app用JSONの`installed.client_id`が指定IDと一致することを確認し、`installed.client_secret`をメモリ内でだけ利用します。ファイル本文は出力・コピーしません。登録JSONはリポジトリ外へ保存してください。
 
-2026-11-13の実検証では、テストユーザー追加後に認可応答を受け取りましたが、コード交換で`invalid_request`となりました。公開client IDと意図的に無効なダミーcode/verifierのみを送る`tests/manual/google_token_configuration.py`で、Googleが`client_secret is missing.`を返すことを確認済みです。このクライアントには登録時のclient_secretの設定が必要です。実トークン取得・更新・メール認証はまだ未確認です。
+2026-11-13の実検証では、テストユーザー追加後に認可応答を受け取りましたが、コード交換で`invalid_request`となりました。公開client IDと意図的に無効なダミーcode/verifierのみを送る`tests/manual/google_token_configuration.py`で、Googleが`client_secret is missing.`を返すことを確認済みです。このクライアントには登録時のclient_secretの設定が必要です。
+
+その後、利用者指定のローカルDesktop登録JSONを用いた実試験では、Googleでの認可コード交換・refreshが成功しました。ただしメール認証開始直後にウィンドウなしプローブが終了し、SMTP/IMAPの結果は未確認です。この実行のexit code 0だけをメール認証成功とは扱いません。KJobのQEventLoopLocker解放による自動終了を防ぐ設定と、明示的な最終結果がない終了を失敗とする保護を追加しました。`--self-test-lifecycle`は認証情報・ネットワーク・ブラウザを使わない回帰テストで、CTest対象です。
+
+**最新の再試験では実Google認証に成功しました。** 修正版プローブのログで`AUTHORIZATION_CODE_EXCHANGE_OK`、`REFRESH_OK`、`SMTP_XOAUTH2=OK`、`IMAP_XOAUTH2=OK`の全段階とexit code 0を確認しています（Safe Shell外・利用者の明示許可・ブラウザでの本人認可）。プローブはメール読出し・送信・下書き保存を行わず、tokenを永続化しません。そのため実メール操作や実Google tokenのOS保存・再起動復元の検証完了を意味しません。
 
 ### Googleで403 access_deniedになる場合
 

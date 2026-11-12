@@ -34,7 +34,7 @@ cmake ^
 
 起動前に`SMOOTHMAIL_GOOGLE_CLIENT_ID`（必要なら公開Desktop登録情報の`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`）を設定します。詳細は`oauth.md`を参照してください。アカウント追加ではSMTPを`smtp.gmail.com:465`のSSL/TLS、IMAP4を`imap.gmail.com:993`のSSL/TLS、双方の認証をOAuth2/Googleにし、それぞれ外部ブラウザで認可します。通常のGoogleパスワードはこれらの欄へ入力しません。
 
-現在の開発用フォルダには、提供された公開クライアントIDを設定して起動する`start-google-dev.cmd`も用意しています（ローカルの`build`配下のみ、秘密情報は含めません）。起動用EXEには登録情報エラーの診断改善も反映済みです。
+現在の開発用フォルダには`start-google-dev.cmd`も用意しています。提供された公開クライアントIDを設定し、`build`配下の利用者指定Desktop登録JSONをローカルで読み込み、そのプロセスの環境変数にclient_secretを渡して起動します（両ファイルともローカルの`build`配下のみ）。JSONの中身はランチャーへ埋め込まず、表示もしません。JSONを移動した場合はランチャー内の参照パスを変更してください。ブラウザでの利用者自身の認可と、アカウント追加操作は必要です。
 
 ## 確認記録
 

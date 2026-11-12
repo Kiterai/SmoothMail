@@ -6,6 +6,9 @@
 int main(int argc, char *argv[])
 {
     QApplication application(argc, argv);
+    // Mail KJobs must not decide application lifetime while the main window
+    // is hidden in the tray. Normal window close/tray Exit still govern quit.
+    QCoreApplication::setQuitLockEnabled(false);
     QCoreApplication::setOrganizationName(QStringLiteral("SmoothMail"));
     QCoreApplication::setApplicationName(QStringLiteral("SmoothMail"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
