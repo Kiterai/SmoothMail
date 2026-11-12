@@ -165,7 +165,7 @@ private slots:
         job->start();
         QTRY_COMPARE_WITH_TIMEOUT(result.count(), 1, 5000);
         QCOMPARE(job->error(), 0);
-        QCOMPARE(session.state(), KIMAP::Session::Authenticated);
+        QVERIFY2(session.state() == KIMAP::Session::Authenticated, qPrintable(job->errorText()));
         checkResponse(server, mode);
         delete job;
         session.close();

@@ -121,11 +121,19 @@ KIMAP／KSMTP 26.08.3（CMakeパッケージ版6.8.3）は指定Qt/MSVCでDebug�
 
 `mailtransport`はループバック限定の合成サーバーとダミー資格情報を使用します。PLAIN／LOGIN／XOAUTH2の通信、未広告のOAuth方式の拒否、STARTTLS非対応時の認証禁止を対象とし、認証成功ケースは明示的な非暗号化設定です。実サービス、TLSハンドシェイク・証明書検証、Google／MicrosoftのOAuth認可フローの検証ではありません。
 
-現在のSafe Shell内ではループバックTCP接続が拒否され、通信テストは未検証です（Pythonの最小接続でも`WinError 10013`）。テストはコンパイル済みですが、成功実績として扱わないでください。localhostが設定上許可されていても、この環境では接続できません。起動時の接続確認で早期に失敗させ、各ケースのタイムアウトを避けます。
+現在のSafe Shell内ではループバックTCP接続が拒否されます（Pythonの最小接続でも`WinError 10013`）。localhostが設定上許可されていても、この環境では接続できません。起動時の接続確認で早期に失敗させ、各ケースのタイムアウトを避けます。
+
+2026-11-13、別のWindows Sandbox（外部ネットワーク無効）内ではループバック通信を実行できました。結果は**10 passed／1 failed**（init／cleanupを含む）です。
+
+- 成功: SMTPのPLAIN／LOGIN／XOAUTH2、IMAPのPLAIN／LOGIN、SMTPでXOAUTH2が未広告の場合の認証禁止、両プロトコルのSTARTTLS非対応時の認証禁止。
+- 失敗: IMAPのXOAUTH2。合成サーバーの空チャレンジに対し、KIMAPは`Login failed, malformed reply from the server.`と表示し、セッションが未認証のままです。このとき`LoginJob::error()`は0でした。エラー値だけで認証成功と判定してはいけません。原因の修正と再検証は未完了です。
+- ログ: `build/sandbox-mail-output/mailtransport-results.txt`、終了コード1。再実行でも同じ結果でした。
+
+実行には、テストEXE・依存DLL・SASLプラグイン・Qt Debug DLL／TLSプラグイン・MSVC Debug CRT／Debug UCRTを`build/sandbox-mail-test`へ集め、読み取り専用共有からゲストの`C:\MailTest`へコピーしました。`SMOOTHMAIL_TEST_SASL_PATH`をゲストの`sasl2`に、`QT_PLUGIN_PATH`をゲストの実行ディレクトリに指定し、Qt Testの`-o`でログを書き込み可能な専用共有へ回収しました。これは開発用の検証セットで、製品配布物ではありません。特にDebug CRTは製品へ同梱しません。ゲストはログ回収後に終了済みです。
 
 ### 認証方式の切替に注意
 
-KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。XOAUTH2を広告しないローカルサーバーへAUTHやトークンを送らない回帰テストを追加していますが、上記の環境制約により通信検証は未完了です。
+KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。XOAUTH2を広告しないローカルサーバーへ、`authenticationDecision()`による拒否後にAUTHやトークンを送らない回帰テストはWindows Sandbox内で成功しました。本番接続への組込みは別途必要です。
 
 ## WindowsのSASLクライアント
 
