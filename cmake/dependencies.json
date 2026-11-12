@@ -1,0 +1,27 @@
+{
+  "extra-cmake-modules": {
+    "repository": "https://invent.kde.org/frameworks/extra-cmake-modules.git",
+    "tag": "v6.31.0",
+    "commit": "2958379fb49c71129f119ec17f88df0b5ea21550"
+  },
+  "kcodecs": {
+    "repository": "https://invent.kde.org/frameworks/kcodecs.git",
+    "tag": "v6.31.0",
+    "commit": "220095a518c36c1b7aa6b5f49996177617979031"
+  },
+  "kmime": {
+    "repository": "https://invent.kde.org/frameworks/kmime.git",
+    "tag": "v6.31.0",
+    "commit": "d28bed05be65e7f1234bb852ad81a67b13df53ea"
+  },
+  "kimap": {
+    "repository": "https://invent.kde.org/pim/kimap.git",
+    "tag": "v26.08.3",
+    "commit": "fe0df283d6745c5ad1e0478db0a74ea0a2205d5a"
+  },
+  "ksmtp": {
+    "repository": "https://invent.kde.org/pim/ksmtp.git",
+    "tag": "v26.08.3",
+    "commit": "f78c9bbcf690f5f829ccaf31921caec650579f20"
+  }
+}

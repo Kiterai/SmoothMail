@@ -13,6 +13,8 @@
 - サンドボックス内でcmdシェルを使用し、vcvars64.batをcallしてからQt付属のCMake/Ninjaを使用。Git Bashからcmd /cを渡すと引数変換でコマンドが実行されない場合があるため避ける。
 - CTest実行時はQt SDKのbinをPATHへ追加する。GUIテストはoffscreenであり、実トレイ操作の保証にはならない。
 - 本文ビューを含むDebugビルドとCTestの全2ターゲットが成功。ACL付与エラーはユーザによる追加readルールの削除後に解消。
+- テストの詳細ログはQt Testの`-o build/dev/name-results.txt,txt`で取得できる。Safe Shellのstdoutが空でもログを確認可能。mainwindowは6 passed、messageviewerは23 passed（init/cleanupを含む）。offscreenでフォント警告があるためピクセル外観の保証はしない。
+- `cmake/BuildMimeDependencies.cmake`でECM/KCodecs/KMime 6.31.0のDebug DLLを指定Qt SDKに対してビルド・ローカルインストール済み。ソースとprefixはbuild/deps配下。KIMAP/KSMTP 26.08.3はソース確認のみ、KIO/CoreAddons/I18n/SASL構築は未完了。
 
 ## 次の作業
 
