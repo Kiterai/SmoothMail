@@ -159,6 +159,14 @@ MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してく�
 
 ## ライセンスと残る検証
 
+秘密情報保存用のQtKeychainは、次の手順で指定Qt SDKに対して構築します（別Qtの取得なし）。
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildKeychainDependencies.cmake
+```
+
+0.15.0の固定ソースを無変更でDebug DLLとして構築済みです。アプリでは平文フォールバックを明示的に禁止します。Windowsバックエンドの動作検証は、ホストの資格情報を変更しないようWindows Sandbox内で行います。
+
 KMimeのライブラリソースにLGPL-2.0-or-later、KSMTPのライブラリソースにLGPL-2.1-or-laterとLGPL-2.0-or-laterを確認しています。CMakeのライセンスチェック引数だけで製品ライセンスを判定しないでください。
 
 全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。SASLの単体構築・機構ロードとKIMAP/KSMTP本体の構築は確認済みですが、TLS、実サービス認証、クリーン環境への配布は引き続き検証対象です。

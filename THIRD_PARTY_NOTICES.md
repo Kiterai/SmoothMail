@@ -33,6 +33,8 @@ KIOはファイルごとに許諾条件が異なります。対象2ファイル�
 
 ## その他の依存
 
+QtKeychain 0.15.0（`ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7`、https://github.com/frankosterfeld/qtkeychain）は変更せず指定Qt SDKで構築します。Frank Osterfeldほかの著作権表示と上流`COPYING`（BSD系の3条件）に従います。`share/licenses/qtkeychain`へCOPYINGと著作権表示を含む公開ヘッダを配置します。
+
 Qt、KMime、KIMAP、KSMTP、KDE Frameworks、Cyrus SASL、XOAUTH2プラグイン、GNU libintl/libiconv等は、それぞれの許諾条件に従います。バージョン・取得元は`cmake/dependencies.json`と`docs/dev/dependencies.md`、個別のライセンスは取得元ソースおよび各prefixのライセンス情報を参照してください。
 
 gettext/Flex/Bison等のビルド専用ツールと、アプリへリンクするライブラリは区別します。これらのツールを製品へ同梱する場合は、別途その配布条件を確認する必要があります。

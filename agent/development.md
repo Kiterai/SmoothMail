@@ -18,6 +18,8 @@
 
 ## 次の作業
 
+- QtKeychain 0.15.0（ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7）をBuildKeychainDependencies.cmakeでDebug構築済み（keychain-build.log）。Qt6Keychain::Qt6Keychain。COPYING/keychain.hをライセンス情報として配置。秘密情報jobにはsetInsecureFallback(false)必須。実OS資格情報のテストはguestのみで行う。
+
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。
 - 表示時にはQTextDocumentの正規化後の文字列で範囲計算する。CRLFとUTF-16サロゲートペアの回帰テストを維持する。

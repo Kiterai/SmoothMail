@@ -69,6 +69,11 @@
     "tag": "v26.08.3",
     "commit": "fe0df283d6745c5ad1e0478db0a74ea0a2205d5a"
   },
+  "qtkeychain": {
+    "repository": "https://github.com/frankosterfeld/qtkeychain.git",
+    "tag": "0.15.0",
+    "commit": "ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7"
+  },
   "ksmtp": {
     "repository": "https://invent.kde.org/pim/ksmtp.git",
     "tag": "v26.08.3",
