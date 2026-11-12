@@ -68,10 +68,9 @@ AccountDialog::AccountDialog(QWidget *parent)
     layout->addLayout(form);
     m_smtp = createServer(QStringLiteral("SMTP"), 465);
     m_imap = createServer(QStringLiteral("IMAP4"), 993);
-    auto *test = new QPushButton(QStringLiteral("接続テスト"), this);
-    test->setEnabled(false);
-    test->setToolTip(QStringLiteral("サーバ接続層を実装後に利用できます。"));
-    layout->addWidget(test);
+    m_test = new QPushButton(QStringLiteral("接続テスト"), this);
+    m_test->setObjectName(QStringLiteral("connectionTest"));
+    layout->addWidget(m_test);
     m_error->setObjectName(QStringLiteral("accountError"));
     m_error->setTextFormat(Qt::PlainText);
     m_error->setWordWrap(true);
@@ -86,10 +85,21 @@ AccountDialog::AccountDialog(QWidget *parent)
             m_error->setText(error);
             return;
         }
-        m_saving = true;
-        m_buttons->setEnabled(false);
+        setBusy(true);
         m_error->setText(QStringLiteral("秘密情報と設定を保存中..."));
         emit saveRequested(value, m_smtp.password->text(), m_imap.password->text());
+    });
+    connect(m_test, &QPushButton::clicked, this, [this] {
+        const auto value = account();
+        const auto error = validateAccount(value);
+        if (!error.isEmpty()) { m_error->setText(error); return; }
+        if (value.smtp.authentication == AuthenticationMode::OAuth2 || value.imap.authentication == AuthenticationMode::OAuth2) {
+            m_error->setText(QStringLiteral("OAuthの認可連携は準備中です。パスワードをトークンとして送信しません。"));
+            return;
+        }
+        setBusy(true);
+        m_error->setText(QStringLiteral("指定された設定で接続テスト中..."));
+        emit testRequested(value, m_smtp.password->text(), m_imap.password->text());
     });
 }
 
@@ -100,8 +110,7 @@ Account AccountDialog::account() const
 
 void AccountDialog::saveFinished(const QString &error)
 {
-    m_saving = false;
-    m_buttons->setEnabled(true);
+    setBusy(false);
     if (!error.isEmpty()) {
         m_error->setText(error);
         return;
@@ -111,11 +120,36 @@ void AccountDialog::saveFinished(const QString &error)
     accept();
 }
 
+void AccountDialog::testFinished(const QString &smtpError, const QString &imapError)
+{
+    setBusy(false);
+    QStringList errors;
+    if (!smtpError.isEmpty()) errors.append(QStringLiteral("SMTP接続に失敗しました。") + smtpError);
+    if (!imapError.isEmpty()) errors.append(QStringLiteral("IMAP4接続に失敗しました。") + imapError);
+    m_error->setText(errors.isEmpty() ? QStringLiteral("接続に成功しました。") : errors.join(u'\n'));
+}
+
 void AccountDialog::reject()
 {
     if (m_saving) return;
     m_smtp.password->clear();
     m_imap.password->clear();
     QDialog::reject();
+}
+
+void AccountDialog::setBusy(bool busy)
+{
+    m_saving = busy;
+    m_email->setEnabled(!busy);
+    m_buttons->setEnabled(!busy);
+    m_test->setEnabled(!busy);
+    for (const auto *fields : {&m_smtp, &m_imap}) {
+        fields->host->setEnabled(!busy);
+        fields->port->setEnabled(!busy);
+        fields->user->setEnabled(!busy);
+        fields->authentication->setEnabled(!busy);
+        fields->encryption->setEnabled(!busy);
+        fields->password->setEnabled(!busy && fields->authentication->currentData().toInt() != int(AuthenticationMode::OAuth2));
+    }
 }
 } // namespace smoothmail

@@ -7,6 +7,7 @@ class QSpinBox;
 class QComboBox;
 class QLabel;
 class QDialogButtonBox;
+class QPushButton;
 namespace smoothmail {
 class AccountDialog final : public QDialog
 {
@@ -15,8 +16,10 @@ public:
     explicit AccountDialog(QWidget *parent = nullptr);
     Account account() const;
     void saveFinished(const QString &error);
+    void testFinished(const QString &smtpError, const QString &imapError);
 signals:
     void saveRequested(const smoothmail::Account &account, const QString &smtpPassword, const QString &imapPassword);
+    void testRequested(const smoothmail::Account &account, const QString &smtpPassword, const QString &imapPassword);
 protected:
     void reject() override;
 private:
@@ -30,9 +33,11 @@ private:
         ServerSettings value() const;
     };
     ServerFields createServer(const QString &name, int port);
+    void setBusy(bool busy);
     QLineEdit *m_email;
     QLabel *m_error;
     QDialogButtonBox *m_buttons;
+    QPushButton *m_test = nullptr;
     ServerFields m_smtp;
     ServerFields m_imap;
     QString m_id;

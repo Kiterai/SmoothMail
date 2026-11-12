@@ -4,6 +4,20 @@
 #include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QSslSocket>
+#include <QSslKey>
+#include <QSslCertificate>
+
+class MailTestTcpServer final : public QTcpServer
+{
+protected:
+    void incomingConnection(qintptr descriptor) override
+    {
+        auto *socket = new QSslSocket(this);
+        if (!socket->setSocketDescriptor(descriptor)) { delete socket; return; }
+        addPendingConnection(socket);
+    }
+};
 
 // Synthetic loopback server for protocol tests, not a production mail server.
 class MailTestServer final : public QObject
@@ -11,14 +25,23 @@ class MailTestServer final : public QObject
 public:
     enum class Protocol { Imap, Smtp };
     enum class AuthenticationReply { Accept, Reject, Malformed };
+    enum class TlsMode { None, Implicit, StartTls };
 
     explicit MailTestServer(Protocol protocol, const QStringList &mechanisms, QObject *parent = nullptr)
         : QObject(parent), m_protocol(protocol), m_mechanisms(mechanisms)
     {
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
-            m_socket = m_server.nextPendingConnection();
-            m_socket->write(m_protocol == Protocol::Imap ? "* OK localhost ready\r\n"
-                                                         : "220 localhost ESMTP\r\n");
+            m_socket = qobject_cast<QSslSocket *>(m_server.nextPendingConnection());
+            m_socket->setLocalCertificate(certificate);
+            m_socket->setPrivateKey(privateKey);
+            m_socket->setPeerVerifyMode(QSslSocket::VerifyNone); // Test server does not require a client certificate.
+            m_socket->setProtocol(QSsl::TlsV1_2OrLater);
+            if (tlsMode == TlsMode::Implicit) {
+                connect(m_socket, &QSslSocket::encrypted, this, [this] { greeting(); });
+                m_socket->startServerEncryption();
+            } else {
+                greeting();
+            }
             connect(m_socket, &QTcpSocket::readyRead, this, [this] {
                 while (m_socket && m_socket->canReadLine()) {
                     const auto line = m_socket->readLine(1024 * 1024).trimmed();
@@ -36,6 +59,9 @@ public:
     QList<QByteArray> authenticationResponses;
     AuthenticationReply authenticationReply = AuthenticationReply::Accept;
     QByteArray imapEmptyChallenge = "+ ";
+    TlsMode tlsMode = TlsMode::None;
+    QSslCertificate certificate;
+    QSslKey privateKey;
 
     bool receivedAuthentication() const
     {
@@ -48,6 +74,10 @@ public:
     }
 
 private:
+    void greeting()
+    {
+        m_socket->write(m_protocol == Protocol::Imap ? "* OK localhost ready\r\n" : "220 localhost ESMTP\r\n");
+    }
     void write(const QByteArray &line) { m_socket->write(line + "\r\n"); }
 
     void success()
@@ -81,6 +111,7 @@ private:
         const auto command = fields.at(commandIndex).toUpper();
         if (command == "CAPABILITY") {
             QByteArray capabilities("* CAPABILITY IMAP4rev1");
+            if (tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) capabilities += " STARTTLS";
             for (const auto &mechanism : m_mechanisms) {
                 capabilities += " AUTH=" + mechanism.toLatin1();
             }
@@ -88,8 +119,13 @@ private:
             write(m_tag + " OK capabilities");
         } else if (command == "EHLO") {
             write("250-localhost");
+            if (tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) write("250-STARTTLS");
             write("250-AUTH " + m_mechanisms.join(u' ').toLatin1());
             write("250 SIZE 102400");
+        } else if (command == "STARTTLS" && tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) {
+            write(m_protocol == Protocol::Imap ? m_tag + " OK begin TLS" : QByteArray("220 begin TLS"));
+            m_socket->flush();
+            m_socket->startServerEncryption();
         } else if (command == "AUTH" || command == "AUTHENTICATE") {
             const int mechanismIndex = commandIndex + 1;
             if (fields.size() <= mechanismIndex) {
@@ -133,8 +169,8 @@ private:
 
     Protocol m_protocol;
     QStringList m_mechanisms;
-    QTcpServer m_server;
-    QPointer<QTcpSocket> m_socket;
+    MailTestTcpServer m_server;
+    QPointer<QSslSocket> m_socket;
     QByteArray m_tag;
     int m_waitingFor = 0;
 };

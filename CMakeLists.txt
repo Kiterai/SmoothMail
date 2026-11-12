@@ -10,6 +10,14 @@ set(CMAKE_AUTOMOC ON)
 # Qt is supplied by the developer. Do not fetch or install a second SDK.
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Sql)
 find_package(Qt6Keychain CONFIG REQUIRED)
+find_package(ECM 6.31 CONFIG REQUIRED)
+list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+find_package(Sasl2 REQUIRED)
+find_package(KPim6IMAP 6.8.3 CONFIG REQUIRED)
+find_package(KPim6SMTP 6.8.3 CONFIG REQUIRED)
+set(SMOOTHMAIL_SASL_PLUGIN_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install/${CMAKE_BUILD_TYPE}/bin/sasl2"
+    CACHE PATH "SASL mechanisms to test (never a global plugin path)")
 option(SMOOTHMAIL_BUILD_MIME "Build the KMime mail parser" ON)
 option(SMOOTHMAIL_TEST_SASL "Test installed SASL client mechanisms" OFF)
 option(SMOOTHMAIL_TEST_KDE_BASE "Test installed KI18n and KService libraries (without KIO)" OFF)
@@ -38,6 +46,12 @@ target_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy Qt6
     PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain)
 smoothmail_target_defaults(smoothmail_storage)
 
+add_library(smoothmail_transport STATIC src/mail/connectiontester.cpp src/mail/connectiontester.h)
+target_include_directories(smoothmail_transport PUBLIC src)
+target_link_libraries(smoothmail_transport PUBLIC smoothmail_storage
+    PRIVATE KPim6::IMAP KPim6::SMTP KF6::I18n Sasl2::Sasl2)
+smoothmail_target_defaults(smoothmail_transport)
+
 if(SMOOTHMAIL_BUILD_MIME)
     find_package(KF6Mime 6.31 CONFIG REQUIRED)
     add_library(smoothmail_mime STATIC src/mail/mimeparser.cpp src/mail/mimeparser.h)
@@ -61,7 +75,7 @@ target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets smoothmail_storage)
 smoothmail_target_defaults(smoothmail_ui)
 
 qt_add_executable(smoothmail WIN32 src/main.cpp)
-target_link_libraries(smoothmail PRIVATE smoothmail_ui)
+target_link_libraries(smoothmail PRIVATE smoothmail_ui smoothmail_transport)
 smoothmail_target_defaults(smoothmail)
 
 include(CTest)
@@ -137,6 +151,15 @@ if(BUILD_TESTING)
     endif()
 
     if(SMOOTHMAIL_TEST_MAIL)
+        add_executable(tst_connectiontester tests/tst_connectiontester.cpp tests/mailtestserver.h)
+        qt_add_resources(tst_connectiontester "test_tls" PREFIX "/test"
+            BASE "${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
+            FILES tests/data/tls-cert.pem tests/data/tls-key.pem)
+        target_link_libraries(tst_connectiontester PRIVATE smoothmail_transport Qt6::Test Qt6::Network)
+        smoothmail_target_defaults(tst_connectiontester)
+        add_test(NAME connectiontester COMMAND tst_connectiontester)
+        set_tests_properties(connectiontester PROPERTIES TIMEOUT 120
+            ENVIRONMENT "SMOOTHMAIL_TEST_SASL_PATH=${SMOOTHMAIL_SASL_PLUGIN_DIR}")
         find_package(ECM 6.31 CONFIG REQUIRED)
         list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
         find_package(Sasl2 REQUIRED)

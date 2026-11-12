@@ -22,6 +22,8 @@
 - Account/ServerSettingsは秘密情報を含まない値型。AccountRepositoryはQSQLITEを専用QThreadで作成/使用/破棄し、設定の検証/追加/再読込/並び順の原子的更新を提供。schema version>1は拒否、重複IDは上書きしない。CredentialStoreはQtKeychainの非同期read/write/remove、平文fallback=false、エラー文字列が空でも失敗扱い。ホストCTest9ターゲット成功（credentialstoreはopt-inなしでskip）。Windows SandboxでSMOOTHMAIL_TEST_KEYCHAIN=1の資格情報テスト4 passed（日本語/8192文字token/read/delete）とrepository5 passed。ログsandbox-mail-output/{credentialstore,accountrepository}-results.txt。ホストのOS資格情報は変更していない。
 - アカウント追加画面をmainへ接続。SSL/TLS既定、秘密情報はPassword echo mode。AccountRegistrarは毎回新しいUUIDで秘密を2件保存してからDBへ追加し、途中失敗時は両秘密を削除する。OAuthはまだ認可未実装のためパスワード代用を拒否する。接続テスト/同期は未接続。mainがAppLocalDataLocationへ設定DBを開くが、UI単体テストは永続データを開かない。
 - 追加画面後CTest10ターゲット成功。Sandboxでcredentialstore5 passed（50000文字の保存失敗後rollbackとDB非公開、正常追加も確認）。SQLite :memory: はファイルパスではないためmkpathしない。アカウント表示/保存エラーはプレインテキスト。OAuthの実認可にはGoogle/Microsoftアプリ登録とclient IDが必要で未提供。
+- ConnectionTesterは専用QThreadでKIMAP/KSMTP接続テストを実行。KJob完了を最大30秒/中断監視、破棄時はworkerへinterruption。TLS証明書proxyは常にfalse。SMTPはNotAuthenticated状態とstrict proxyを根拠にTLS確立を判定して認証gateへ渡す。IMAPのTLS/STARTTLSはLoginJob内部の暗号化確立後CAPABILITY/認証方式検査に依存（API上pre-auth TLS単独jobがない）。平文IMAPは明示CAPABILITY後にpolicyで検査。job error+state+encryptionModeを成功条件とする。
+- Sandboxのconnectiontester 11 passed。信頼済みSSL/TLS・STARTTLS成功、未信頼証明書で認証送信ゼロも確認。tests/dataの鍵/証明書はOpenSSL生成の公開テスト用で製品へ含めない。初回KI18nはctorのGUI threadでsetApplicationDomainし、worker初期化によるQObjectイベントフィルタ警告を防止。アカウント画面の接続テストを実接続層へ接続し、テスト/保存中の設定編集を禁止。
 
 - 次はKDE依存の構築・検証。指定Qt SDK以外のQtを取得・ビルドしない。第三者ソースとビルド成果物はGit対象外のbuild配下へ分離する。
 - 本文のURLポリシー（http/httpsのみ、userinfo禁止）は暫定仕様。URLデコード後の制御文字を拒否し、リンククリック時も再検査する。

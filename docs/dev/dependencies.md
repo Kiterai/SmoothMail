@@ -167,6 +167,14 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja
 
 0.15.0の固定ソースを無変更でDebug DLLとして構築済みです。アプリでは平文フォールバックを明示的に禁止します。Windowsバックエンドの動作検証は、ホストの資格情報を変更しないようWindows Sandbox内で行います。
 
+Windows SandboxでQtKeychainの日本語・8192文字の保存/読出し/削除、保存上限超過時のアカウント登録のロールバックを検証済みです。テスト実行には`SMOOTHMAIL_TEST_KEYCHAIN=1`が必要です。ホストでは既定でスキップし、実資格情報に触れません。
+
+アプリの接続テストでは、実行ファイル隣の`sasl2`を明示指定します。開発時は`SMOOTHMAIL_SASL_PATH`で配置先を明示的に指定できます。ディレクトリ欠如時は失敗とし、グローバルのプラグイン設定へ切り替えません。
+
+`connectiontester`は実アダプターを専用ワーカーで動かすテストです。Sandbox内で11 passed。PLAIN/LOGIN/XOAUTH2、未広告方式の拒否、STARTTLS非対応時の拒否、SSL/TLS・STARTTLSの信頼済み証明書での成功、未信頼証明書での失敗と秘密情報非送信を確認済みです。信頼証明書はテストプロセス内だけに追加し、OSの証明書ストアは変更しません。`tests/data/README.md`にダミー証明書・鍵の生成方法を記載しています。
+
+IMAPはライブラリAPI上、TLSハンドシェイクとログインを別ジョブに分離できません。そのためTLS/STARTTLSでは、証明書エラーを必ず拒否するproxyとKIMAP内部の暗号化確立後のCAPABILITY/機構チェックを利用します。平文を明示したIMAPとSMTPはLoginJobへ秘密を設定する前に`authenticationDecision()`で機構を検査します。成功判定はエラーコードだけでなくセッション状態と要求暗号化方式も確認します。
+
 KMimeのライブラリソースにLGPL-2.0-or-later、KSMTPのライブラリソースにLGPL-2.1-or-laterとLGPL-2.0-or-laterを確認しています。CMakeのライセンスチェック引数だけで製品ライセンスを判定しないでください。
 
 全推移依存・生成物・翻訳・同梱コードのライセンス監査は未完了です。配布前には告知、対応ソース提供、差替え可能性等を整備します。SASLの単体構築・機構ロードとKIMAP/KSMTP本体の構築は確認済みですが、TLS、実サービス認証、クリーン環境への配布は引き続き検証対象です。
