@@ -1,5 +1,15 @@
 # Windows SandboxのGUIチェック
 
+## UI仕様変更後の追加確認
+
+新しい実行記録は`build/ui-update-check/output/`です。従来ワークフローに加え、右クリック経由のアカウント編集、空の仮名フォルダ作成後の自動インライン入力、子フォルダ作成、改名、削除警告での取消/承認、アカウント削除とサーバメール不変を確認します。設定更新が失敗した際に既存のOS秘密情報が復元されるケースもguestだけでテストします。
+
+`tst_diagnostics`でWindows例外/C++terminateの出力を回収し、子プロセス強制停止からの次回起動検出も確認します。これは利用者の実メール同期クラッシュの再現ではありません。`tst_connectiontester`にはフォルダ操作の拒否、同期件数/単体サイズの安全上限、本文取得中の切断→再試行も追加しています。
+
+追加後のguest結果は8 EXEで**90 passed / 0 failed / 0 skipped**（init/cleanup含む）。mainwindow 10、accountdialog 7、messageviewer 24、connectiontester 17、mailtransport 15、oauthclient 8、diagnostics 5、guismoke 4です。ホストの非ネットワークCTest14対象とPython9テストも成功しています。ホストでは意図的クラッシュ2ケースを実行せず、guestで実行します。Microsoft実アカウント、Googleの実GUI認可、Release配布設定は引き続き対象外です。
+
+最新`build/local-run`だけを共有した別の新規guestでも、空白入り`C:\SmoothMail Local`・WindowsのみのPATHで通常起動を確認しました。トレイの「終了」後の診断を`build/ui-update-check/output/normal-app-diagnostics/`へ回収し、`session-start`/`session-clean-exit`と`.active`が残らないことを確認しました。両guestは確認後に終了済みです。
+
 ## 今回の範囲
 
 利用者の指定に従い、ネットワーク無効のWindows Sandboxで通常GUIとループバック合成サーバーを使用した操作を確認します。Microsoftの実アカウント、GUIでのGoogle認可、配布用Release設定は今回の対象外です。実アカウントの登録JSON・パスワード・tokenはguestへ共有しません。

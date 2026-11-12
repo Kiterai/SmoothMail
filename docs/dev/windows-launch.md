@@ -7,6 +7,8 @@
 
 このフォルダは**Debugの開発用**です。Debug CRTを含むため、第三者への配布物ではありません。Release配布・完全なライセンス監査は別途必要です。Qt SDKは変更しません。
 
+UI仕様変更と同期診断の実装後に`build/local-run`を再配置しました。直前の手元用フォルダは`build/local-run-before-ui-update`へ移動して保存しています。最新の配置ログは`build/local-run-ui-update-final-stage.log`、EXE/PDBの対応保存は`build/ui-update-check/symbols/`です。新しい診断ログの場所と読み方は`sync-diagnostics.md`を参照してください。
+
 ## 再作成
 
 x64 Native Tools Command Prompt（MSVC 2022）から、アプリをビルドした後に実行します。保存先は空のディレクトリを指定してください。既存ファイルを削除・上書きして再作成する動作はしません。下記はリポジトリルートからの例です。

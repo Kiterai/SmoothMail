@@ -8,6 +8,7 @@
 #include <QSslKey>
 #include <QSslCertificate>
 #include <QMap>
+#include <QSet>
 
 class MailTestTcpServer final : public QTcpServer
 {
@@ -91,6 +92,11 @@ public:
     bool changeMechanismsAfterTls = false;
     QStringList postTlsMechanisms;
     bool provideMailbox = false;
+    QSet<QByteArray> extraFolders;
+    bool rejectFolderChanges = false;
+    qint64 advertisedMessageCount = -1;
+    qint64 advertisedMessageSize = -1;
+    bool disconnectOnBodyFetch = false;
     qint64 uidValidity = 10;
     QMap<qint64, QByteArray> messages;
     bool provideDraftFolder = false;
@@ -197,16 +203,26 @@ private:
         } else if (provideMailbox && command == "LIST") {
             write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
             if (provideDraftFolder) write("* LIST (\\Drafts) \"/\" \"Drafts\"");
+            for (const auto &name : extraFolders) write("* LIST () \"/\" \"" + name + '"');
             write(m_tag + " OK list completed");
+        } else if (provideMailbox && (command == "CREATE" || command == "RENAME" || command == "DELETE")) {
+            if (rejectFolderChanges) { write(m_tag + " NO synthetic permission denied"); return; }
+            const auto names = line.split('"');
+            const auto source = names.value(1);
+            if (command == "CREATE") extraFolders.insert(source);
+            else if (command == "RENAME") { extraFolders.remove(source); extraFolders.insert(names.value(3)); }
+            else extraFolders.remove(source);
+            write(m_tag + " OK changed");
         } else if (provideMailbox && command == "STATUS") {
             write("* STATUS \"INBOX\" (UNSEEN " + QByteArray::number(messages.size()) + ')');
             write(m_tag + " OK status completed");
         } else if (provideMailbox && (command == "EXAMINE" || command == "SELECT")) {
             write("* FLAGS (\\Seen \\Flagged)");
-            write("* " + QByteArray::number(messages.size()) + " EXISTS");
+            write("* " + QByteArray::number(advertisedMessageCount < 0 ? messages.size() : advertisedMessageCount) + " EXISTS");
             write("* OK [UIDVALIDITY " + QByteArray::number(uidValidity) + "] stable UIDs");
             write(m_tag + " OK [READ-ONLY] selected");
         } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "FETCH") {
+            if (disconnectOnBodyFetch && !line.contains("HEADER")) { m_socket->disconnectFromHost(); return; }
             const auto requested = fields.value(commandIndex + 2);
             int sequence = 0;
             for (auto item = messages.cbegin(); item != messages.cend(); ++item) {
@@ -215,7 +231,7 @@ private:
                 const bool headersOnly = line.contains("HEADER");
                 const auto raw = headersOnly ? item.value().left(item.value().indexOf("\r\n\r\n") + 4) : item.value();
                 write("* " + QByteArray::number(sequence) + " FETCH (UID " + QByteArray::number(item.key())
-                      + " RFC822.SIZE " + QByteArray::number(item.value().size()) + " FLAGS () "
+                      + " RFC822.SIZE " + QByteArray::number(advertisedMessageSize < 0 ? item.value().size() : advertisedMessageSize) + " FLAGS () "
                       + (headersOnly ? "BODY[HEADER] {" : "BODY[] {") + QByteArray::number(raw.size()) + '}');
                 m_socket->write(raw);
                 write(")");

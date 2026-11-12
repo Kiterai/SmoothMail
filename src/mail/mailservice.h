@@ -16,12 +16,15 @@ public:
     void synchronize(const Account &account, const QString &imapSecret, const QString &folder = {});
     void submit(const Account &account, const QString &secret, const ComposeData &draft, bool saveAsDraft);
     bool busy() const { return m_busy; }
+    void changeFolder(const Account &account, const QString &secret, const QString &operation,
+                      const QString &source, const QString &destination);
 signals:
     void finished(const QString &smtpError, const QString &imapError);
     void synchronized(const QString &accountId, const QString &folder,
                       const QList<smoothmail::MailFolder> &folders,
                       const QList<smoothmail::MailRecord> &messages, const QString &error);
     void submissionFinished(const QString &accountId, bool savedAsDraft, const QString &error);
+    void folderChanged(const QString &accountId, const QString &error);
 private:
     QObject *m_worker;
     QThread m_thread;

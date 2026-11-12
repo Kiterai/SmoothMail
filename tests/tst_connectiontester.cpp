@@ -12,6 +12,74 @@ class ConnectionTesterTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void folderOperationsAndServerErrors()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        server.provideMailbox = true; QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("test@example.com"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+        QSignalSpy result(&service, &MailService::folderChanged);
+        service.changeFolder(account, QStringLiteral("dummy"), QStringLiteral("create"), {}, QStringLiteral("Parent"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000); QVERIFY(result.takeFirst().at(1).toString().isEmpty());
+        QVERIFY(server.extraFolders.contains("Parent"));
+        service.changeFolder(account, QStringLiteral("dummy"), QStringLiteral("rename"), QStringLiteral("Parent"), QStringLiteral("Renamed"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000); QVERIFY(result.takeFirst().at(1).toString().isEmpty());
+        QVERIFY(server.extraFolders.contains("Renamed")); QVERIFY(!server.extraFolders.contains("Parent"));
+        server.rejectFolderChanges = true;
+        service.changeFolder(account, QStringLiteral("dummy"), QStringLiteral("delete"), QStringLiteral("Renamed"), {});
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000); QVERIFY(!result.takeFirst().at(1).toString().isEmpty());
+        QVERIFY(server.extraFolders.contains("Renamed"));
+        server.rejectFolderChanges = false;
+        service.changeFolder(account, QStringLiteral("dummy"), QStringLiteral("delete"), QStringLiteral("Renamed"), {});
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000); QVERIFY(result.takeFirst().at(1).toString().isEmpty());
+        QVERIFY(server.extraFolders.isEmpty());
+    }
+    void mailboxSafetyLimitPreservesFailureSemantics()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        server.provideMailbox = true; server.advertisedMessageCount = 10001; QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("test@example.com"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+        QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, QStringLiteral("dummy"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000);
+        QVERIFY(result.first().at(4).toString().contains(QStringLiteral("10000")));
+        QVERIFY(qvariant_cast<QList<MailRecord>>(result.first().at(3)).isEmpty());
+        QVERIFY(!service.busy());
+        result.clear();
+        server.advertisedMessageCount = 1; server.advertisedMessageSize = 64 * 1024 * 1024 + 1;
+        server.messages.insert(1, "From: fixture@example.test\r\nSubject: bounded\r\n\r\nbody");
+        service.synchronize(account, QStringLiteral("dummy"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000);
+        QVERIFY(result.first().at(4).toString().contains(QStringLiteral("MIME")));
+        QVERIFY(qvariant_cast<QList<MailRecord>>(result.first().at(3)).isEmpty());
+    }
+    void disconnectDuringBodyFetchCanRetry()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        server.provideMailbox = true; server.disconnectOnBodyFetch = true;
+        server.messages.insert(1, "From: fixture@example.test\r\nSubject: retry\r\n\r\nbody");
+        QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("test@example.com"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+        QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, QStringLiteral("dummy"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 20000);
+        QVERIFY(!result.first().at(4).toString().isEmpty());
+        QVERIFY(qvariant_cast<QList<MailRecord>>(result.first().at(3)).isEmpty());
+        QVERIFY(!service.busy());
+        result.clear(); server.disconnectOnBodyFetch = false;
+        service.synchronize(account, QStringLiteral("dummy"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000);
+        QVERIFY(result.first().at(4).toString().isEmpty());
+        QCOMPARE(qvariant_cast<QList<MailRecord>>(result.first().at(3)).size(), 1);
+    }
     void init() { m_defaultSsl = QSslConfiguration::defaultConfiguration(); }
     void cleanup() { QSslConfiguration::setDefaultConfiguration(m_defaultSsl); }
     void connection_data()

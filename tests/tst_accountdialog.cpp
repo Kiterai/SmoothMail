@@ -15,6 +15,21 @@ class AccountDialogTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void editPreservesIdentityAndImapComesFirst()
+    {
+        AccountDialog dialog;
+        auto account = dialog.account(); account.id = QStringLiteral("edit-id"); account.email = QStringLiteral("edit@example.test");
+        account.imap.host = QStringLiteral("imap.example.test"); account.imap.user = account.email;
+        account.smtp.host = QStringLiteral("smtp.example.test"); account.smtp.user = account.email;
+        dialog.setAccount(account);
+        dialog.setSecret(false, QStringLiteral("dummy"));
+        QCOMPARE(dialog.account().id, account.id); QCOMPARE(dialog.account().imap.host, account.imap.host);
+        QCOMPARE(dialog.findChild<QLineEdit *>(QStringLiteral("IMAP4Password"))->text(), QStringLiteral("dummy"));
+        dialog.show(); QCoreApplication::processEvents();
+        auto *imap = dialog.findChild<QLineEdit *>(QStringLiteral("IMAP4Host"));
+        auto *smtp = dialog.findChild<QLineEdit *>(QStringLiteral("SMTPHost"));
+        QVERIFY(imap->mapTo(&dialog, QPoint()).y() < smtp->mapTo(&dialog, QPoint()).y());
+    }
     void defaultsAreEncryptedAndPasswordsMasked()
     {
         AccountDialog dialog;

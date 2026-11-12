@@ -17,6 +17,8 @@ public:
     ~AccountRepository() override;
     void reload();
     void insert(const Account &account);
+    void update(const Account &account);
+    void remove(const QString &id);
     void reorder(const QStringList &accountIds);
     void loadCache(const QString &accountId);
     void saveSnapshot(const QString &accountId, const QString &folder, const QList<MailFolder> &folders,
@@ -27,6 +29,7 @@ public:
 signals:
     void loaded(const QList<smoothmail::Account> &accounts);
     void inserted(const QString &id);
+    void removed(const QString &id);
     void failed(const QString &operation, const QString &error);
     void cacheLoaded(const QString &accountId, const QString &folder, const QList<smoothmail::MailFolder> &folders,
                      const QList<smoothmail::MailRecord> &messages);

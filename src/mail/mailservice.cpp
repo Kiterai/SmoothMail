@@ -1,5 +1,6 @@
 #include "mailservice.h"
 #include "mimeparser.h"
+#include "core/diagnostics.h"
 
 #include <KIMAP/CapabilitiesJob>
 #include <KIMAP/LoginJob>
@@ -9,6 +10,9 @@
 #include <KIMAP/StatusJob>
 #include <KIMAP/FetchJob>
 #include <KIMAP/AppendJob>
+#include <KIMAP/CreateJob>
+#include <KIMAP/RenameJob>
+#include <KIMAP/DeleteJob>
 #include <KSMTP/LoginJob>
 #include <KSMTP/Session>
 #include <KSMTP/SendJob>
@@ -59,7 +63,8 @@ QString runJob(KJob &job)
     timer.start(100);
     job.start();
     if (!completed) loop.exec();
-    if (!completed) return QStringLiteral("接続処理がタイムアウトまたは中断されました。");
+    if (!completed) { diagnostics::event("job-timeout-or-interrupted"); return QStringLiteral("接続処理がタイムアウトまたは中断されました。"); }
+    if (job.error()) diagnostics::event("job-error", job.error());
     if (job.error()) return job.errorText().isEmpty() ? QStringLiteral("認証に失敗しました。") : job.errorText().left(1024);
     return {};
 }
@@ -135,6 +140,7 @@ QString testSmtp(const ServerSettings &settings, const QString &secret,
 QString testImap(const ServerSettings &settings, const QString &secret,
                  const std::function<QString(KIMAP::Session &)> &work = {})
 {
+    diagnostics::event("imap-auth-start");
     KIMAP::Session session(settings.host, settings.port);
     auto proxy = QSharedPointer<RejectCertificateErrors<KIMAP::SessionUiProxy>>::create();
     session.setUiProxy(proxy);
@@ -173,6 +179,7 @@ QString testImap(const ServerSettings &settings, const QString &secret,
         return QStringLiteral("指定したTLS接続が確立されていません。");
     }
     if (session.state() != KIMAP::Session::Authenticated) return QStringLiteral("IMAP4認証済み状態になりませんでした。");
+    diagnostics::event("imap-auth-complete");
     if (work) {
         const auto workError = work(session);
         session.close();
@@ -229,12 +236,14 @@ void MailService::synchronize(const Account &account, const QString &secret, con
     if (m_busy) return;
     m_busy = true;
     QMetaObject::invokeMethod(m_worker, [this, account, secret, requestedFolder] {
+        diagnostics::event("sync-start");
         auto error = validateAccount(account, false);
         if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
         QList<MailFolder> folders;
         QList<MailRecord> records;
         QString selected = requestedFolder;
         if (error.isEmpty()) error = testImap(account.imap, secret, [&](KIMAP::Session &session) -> QString {
+            diagnostics::event("sync-list");
             KIMAP::ListJob listing(&session);
             listing.setOption(KIMAP::ListJob::IncludeUnsubscribed);
             connect(&listing, &KIMAP::ListJob::mailBoxesReceived, &listing,
@@ -245,8 +254,14 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 });
             auto jobError = runJob(listing);
             if (!jobError.isEmpty()) return jobError;
+            if (folders.size() > 10000) return QStringLiteral("フォルダ数が安全上限を超えています。");
+            for (const auto &folder : folders) {
+                if (folder.name.size() > 4096 || (!folder.separator.isNull() && folder.name.count(folder.separator) > 64))
+                    return QStringLiteral("フォルダの階層または名前が安全上限を超えています。");
+            }
             QStringList selectable;
             for (auto &folder : folders) {
+                diagnostics::event("sync-status");
                 bool noSelect = false;
                 for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") noSelect = true;
                 if (noSelect) continue;
@@ -262,12 +277,17 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             if (selected.isEmpty()) return {};
             if (!selectable.contains(selected)) return QStringLiteral("選択フォルダが見つからないか、選択できません。");
             KIMAP::SelectJob select(&session);
+            diagnostics::event("sync-select");
             select.setMailBox(selected);
             select.setOpenReadOnly(true); // Refresh must not modify messages or expunge deletions.
             jobError = runJob(select);
             if (!jobError.isEmpty()) return jobError;
             if (select.uidValidity() <= 0) return QStringLiteral("UIDVALIDITYが不正です。");
             if (!select.messageCount()) return {};
+            // Until incremental/on-demand loading exists, fail safely rather
+            // than retain an unbounded mailbox in the worker/UI/cache at once.
+            if (select.messageCount() > 10000) return QStringLiteral("フォルダの件数が安全上限（10000件）を超えています。分割して同期してください。");
+            diagnostics::event("sync-headers", select.messageCount());
             QMap<qint64, KIMAP::Message> headers;
             KIMAP::FetchJob headerJob(&session);
             headerJob.setUidBased(true);
@@ -281,9 +301,13 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 });
             jobError = runJob(headerJob);
             if (!jobError.isEmpty()) return jobError;
+            qint64 retainedBytes = 0;
             for (const auto &header : headers) {
                 if (m_thread.isInterruptionRequested()) return QStringLiteral("中断しました。");
                 if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
+                constexpr qint64 snapshotLimit = 128 * 1024 * 1024;
+                if (header.size > snapshotLimit - retainedBytes) return QStringLiteral("同期データが安全上限（128 MiB）を超えています。");
+                diagnostics::event("sync-fetch", records.size());
                 QByteArray raw;
                 KIMAP::FetchJob fetch(&session);
                 fetch.setUidBased(true);
@@ -300,6 +324,9 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 jobError = runJob(fetch);
                 if (!jobError.isEmpty()) return jobError;
                 if (raw.isEmpty()) continue; // The message may have been expunged during this refresh.
+                retainedBytes += raw.size();
+                if (retainedBytes > snapshotLimit) return QStringLiteral("同期データが安全上限（128 MiB）を超えています。");
+                diagnostics::event("sync-mime", raw.size());
                 const auto parsed = MimeParser::parse(raw);
                 if (!parsed.ok()) return parsed.error;
                 records.append({account.id, selected, select.uidValidity(), header.uid,
@@ -309,9 +336,40 @@ void MailService::synchronize(const Account &account, const QString &secret, con
         });
         // A failed snapshot must never replace previously displayed/cached mail.
         if (!error.isEmpty()) records.clear();
+        diagnostics::event(error.isEmpty() ? "sync-complete" : "sync-failed", records.size());
         QMetaObject::invokeMethod(this, [this, account, selected, folders, records, error] {
             m_busy = false;
             emit synchronized(account.id, selected, folders, records, error);
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+}
+
+void MailService::changeFolder(const Account &account, const QString &secret, const QString &operation,
+                              const QString &source, const QString &destination)
+{
+    if (m_busy) return;
+    m_busy = true;
+    QMetaObject::invokeMethod(m_worker, [this, account, secret, operation, source, destination] {
+        auto error = validateAccount(account, false);
+        if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
+        if (operation != QStringLiteral("create") && operation != QStringLiteral("rename") && operation != QStringLiteral("delete")) error = QStringLiteral("不正な操作です。");
+        const auto validName = [](const QString &name) {
+            return !name.isEmpty() && name.size() <= 4096 && !name.contains(u'\r') && !name.contains(u'\n') && !name.contains(QChar::Null);
+        };
+        if ((operation != QStringLiteral("create") && !validName(source))
+            || (operation != QStringLiteral("delete") && !validName(destination))) error = QStringLiteral("フォルダ名が不正です。");
+        if (error.isEmpty()) error = testImap(account.imap, secret, [&](KIMAP::Session &session) -> QString {
+            diagnostics::event("folder-operation");
+            if (operation == QStringLiteral("create")) {
+                KIMAP::CreateJob job(&session); job.setMailBox(destination); return runJob(job);
+            }
+            if (operation == QStringLiteral("rename")) {
+                KIMAP::RenameJob job(&session); job.setSourceMailBox(source); job.setDestinationMailBox(destination); return runJob(job);
+            }
+            KIMAP::DeleteJob job(&session); job.setMailBox(source); return runJob(job);
+        });
+        QMetaObject::invokeMethod(this, [this, account, error] {
+            m_busy = false; emit folderChanged(account.id, error);
         }, Qt::QueuedConnection);
     }, Qt::QueuedConnection);
 }

@@ -21,6 +21,11 @@
 #include <QItemSelectionModel>
 #include <QStyle>
 #include <QScreen>
+#include <QMessageBox>
+#include <QStyledItemDelegate>
+#include <QPersistentModelIndex>
+#include <QUuid>
+#include "core/diagnostics.h"
 #include <algorithm>
 #include <functional>
 
@@ -133,21 +138,62 @@ void MainWindow::createPanes()
     folders->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(folders, &QTreeView::customContextMenuRequested, this, [this, folders](const QPoint &position) {
         const auto index = folders->indexAt(position);
-        if (!index.isValid() || index.parent().isValid()) return;
+        if (!index.isValid()) return;
         const auto id = index.data(Qt::UserRole).toString();
+        const auto folder = index.data(Qt::UserRole + 1).toString();
         Account account;
         for (const auto &candidate : m_accounts) if (candidate.id == id) account = candidate;
         QMenu menu(this);
+        auto *create = menu.addAction(QStringLiteral("新規フォルダ"));
+        auto *edit = menu.addAction(folder.isEmpty() ? QStringLiteral("アカウントの編集") : QStringLiteral("名前の変更"));
+        auto *remove = menu.addAction(folder.isEmpty() ? QStringLiteral("アカウントの削除") : QStringLiteral("削除"));
+        menu.addSeparator();
         auto *smtp = menu.addAction(QStringLiteral("SMTPのOAuthを再認可"));
         auto *imap = menu.addAction(QStringLiteral("IMAP4のOAuthを再認可"));
         smtp->setEnabled(account.smtp.authentication == AuthenticationMode::OAuth2);
         imap->setEnabled(account.imap.authentication == AuthenticationMode::OAuth2);
+        smtp->setVisible(folder.isEmpty()); imap->setVisible(folder.isEmpty());
         const auto *chosen = menu.exec(folders->viewport()->mapToGlobal(position));
+        if (chosen == create) editFolder(index, true);
+        if (chosen == edit) { if (folder.isEmpty()) emit editAccountRequested(id); else editFolder(index, false); }
+        if (chosen == remove) {
+            QMessageBox warning(QMessageBox::Warning, QStringLiteral("削除の確認"),
+                folder.isEmpty() ? QStringLiteral("このアカウントの設定・保存済みメール・秘密情報をこのPCから削除します。サーバ上のメールとダウンロード済みファイルは削除しません。続けますか？")
+                    : QStringLiteral("このフォルダをサーバから削除します。メールが失われる可能性があります。子フォルダがある場合はサーバの規則により失敗することがあります。続けますか？"),
+                QMessageBox::Yes | QMessageBox::Cancel, this);
+            warning.setTextFormat(Qt::PlainText); warning.setDefaultButton(QMessageBox::Cancel);
+            if (warning.exec() == QMessageBox::Yes) {
+                if (folder.isEmpty()) emit deleteAccountRequested(id);
+                else emit folderOperationRequested(id, QStringLiteral("delete"), folder, {});
+            }
+        }
         if (chosen == smtp) emit reauthorizeRequested(id, QStringLiteral("smtp"));
         if (chosen == imap) emit reauthorizeRequested(id, QStringLiteral("imap"));
     });
+    connect(folderModel, &QStandardItemModel::itemChanged, this, [this](QStandardItem *item) {
+        if (m_rebuilding || !item->data(Qt::UserRole + 5).toBool()) return;
+        const auto id = item->data(Qt::UserRole).toString();
+        const auto source = item->data(Qt::UserRole + 1).toString();
+        const auto prefix = item->data(Qt::UserRole + 3).toString();
+        const auto separator = item->data(Qt::UserRole + 4).toString();
+        const auto name = item->text().trimmed();
+        item->setData(false, Qt::UserRole + 5);
+        if (name.isEmpty() || name.contains(u'\r') || name.contains(u'\n') || name.contains(QChar::Null)
+            || (!separator.isEmpty() && name.contains(separator))) {
+            statusBar()->showMessage(QStringLiteral("フォルダ名が不正です。"));
+        } else if (source != prefix + name) {
+            emit folderOperationRequested(id, QStringLiteral("rename"), source, prefix + name);
+        }
+        QTimer::singleShot(0, this, [this] { rebuildFolders(); });
+    });
+    connect(folders->itemDelegate(), &QAbstractItemDelegate::closeEditor, this, [this](QWidget *, QAbstractItemDelegate::EndEditHint) {
+        QTimer::singleShot(0, this, [this] { rebuildFolders(); });
+    });
     connect(folders->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex &index) {
         if (m_rebuilding || !index.isValid()) return;
+        // A context-menu click must not start a refresh that immediately makes
+        // its own edit/delete operation unavailable.
+        if (QApplication::mouseButtons().testFlag(Qt::RightButton)) return;
         const auto id = index.data(Qt::UserRole).toString();
         const auto name = index.data(Qt::UserRole + 1).toString();
         if (id.isEmpty()) return;
@@ -156,7 +202,7 @@ void MainWindow::createPanes()
         m_revealUid = 0; m_revealValidity = 0;
         findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!name.isEmpty());
         rebuildMessages();
-        emit refreshRequested(id, name);
+        if (!name.isEmpty()) emit refreshRequested(id, name);
     });
 
     auto *vertical = new QSplitter(Qt::Vertical, horizontal);
@@ -221,6 +267,11 @@ void MainWindow::enableAccountManagement(bool enabled)
 
 void MainWindow::setAccounts(const QList<Account> &accounts)
 {
+    for (const auto &old : m_accounts) {
+        bool present = false;
+        for (const auto &account : accounts) if (old.id == account.id) present = true;
+        if (!present) clearAccountCache(old.id);
+    }
     m_accounts = accounts;
     rebuildFolders();
     for (const auto *name : {"refreshAction", "autoRefreshAction", "threadAction"}) {
@@ -242,7 +293,14 @@ void MainWindow::setRefreshing(const QString &id, bool refreshing)
 void MainWindow::applySnapshot(const QString &id, const QString &folder, const QList<MailFolder> &folders,
                                const QList<MailRecord> &messages, const QString &error, bool remoteUpdate)
 {
-    if (!error.isEmpty()) { statusBar()->showMessage(QStringLiteral("更新に失敗しました: ") + error); return; }
+    if (!error.isEmpty()) {
+        if (m_pendingCreateId == id) cancelPendingFolderEdit();
+        m_syncErrors[id] = error; rebuildFolders();
+        diagnostics::event("snapshot-error");
+        statusBar()->showMessage(QStringLiteral("更新に失敗しました: ") + error); return;
+    }
+    if (remoteUpdate) m_syncErrors.remove(id);
+    diagnostics::event("snapshot-apply", messages.size());
     m_folderCache[id] = folders;
     QStringList present;
     for (const auto &item : folders) present.append(item.name);
@@ -254,6 +312,14 @@ void MainWindow::applySnapshot(const QString &id, const QString &folder, const Q
     if (remoteUpdate) m_lastSuccess = QDateTime::currentDateTime();
     rebuildFolders();
     if (visible) rebuildMessages();
+    if (remoteUpdate && m_pendingCreateId == id && present.contains(m_pendingCreateName)) {
+        const auto name = m_pendingCreateName;
+        cancelPendingFolderEdit();
+        QTimer::singleShot(0, this, [this, id, name] {
+            const auto matches = m_folders->match(m_folders->index(0, 0), Qt::UserRole + 1, name, -1, Qt::MatchExactly | Qt::MatchRecursive);
+            for (const auto &index : matches) if (index.data(Qt::UserRole).toString() == id) { editFolder(index, false); break; }
+        });
+    }
     if (visible && remoteUpdate && m_revealUid > 0) {
         m_revealUid = 0;
         statusBar()->showMessage(QStringLiteral("元メッセージが見つからないか、UIDVALIDITYが変更されています。"));
@@ -281,6 +347,9 @@ void MainWindow::rebuildFolders()
         root->setDragEnabled(true); root->setDropEnabled(false);
         root->setData(account.id, Qt::UserRole);
         if (m_refreshing.contains(account.id)) root->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+        else if (m_syncErrors.contains(account.id)) root->setIcon(style()->standardIcon(QStyle::SP_MessageBoxWarning));
+        if (m_syncErrors.contains(account.id)) root->setToolTip(QStringLiteral("<qt>")
+            + (QStringLiteral("直近の更新に失敗しました: ") + m_syncErrors.value(account.id)).toHtmlEscaped() + QStringLiteral("</qt>"));
         m_folders->appendRow(root);
         QHash<QString, QStandardItem *> items;
         QList<MailFolder> folders = m_folderCache.value(account.id);
@@ -319,6 +388,48 @@ void MainWindow::rebuildFolders()
     m_folderView->expandAll();
     if (selected.isValid()) m_folderView->setCurrentIndex(selected);
     m_rebuilding = false;
+}
+
+void MainWindow::clearAccountCache(const QString &id)
+{
+    m_mailCache.remove(id); m_folderCache.remove(id); m_syncErrors.remove(id); m_refreshing.remove(id);
+    if (m_accountId == id) {
+        m_accountId.clear(); m_folder.clear(); rebuildMessages();
+        findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(false);
+    }
+}
+
+void MainWindow::editFolder(const QModelIndex &index, bool create)
+{
+    const auto id = index.data(Qt::UserRole).toString();
+    const auto source = index.data(Qt::UserRole + 1).toString();
+    QChar separator;
+    for (const auto &folder : m_folderCache.value(id)) {
+        if (folder.name == source || source.isEmpty()) { separator = folder.separator; break; }
+    }
+    if (create && !source.isEmpty() && separator.isNull()) {
+        statusBar()->showMessage(QStringLiteral("このサーバのフォルダには子フォルダを作成できません。")); return;
+    }
+    if (create) {
+        // IMAP does not allow an unnamed mailbox. Create an empty, uniquely
+        // named mailbox first, then open inline rename after LIST confirms it.
+        const auto prefix = source.isEmpty() ? QString{} : source + separator;
+        m_pendingCreateId = id;
+        m_pendingCreateName = prefix + QStringLiteral("新しいフォルダ-") + QUuid::createUuid().toString(QUuid::WithoutBraces).left(8);
+        emit folderOperationRequested(id, QStringLiteral("create"), {}, m_pendingCreateName);
+        return;
+    }
+    m_rebuilding = true;
+    QStandardItem *item = m_folders->itemFromIndex(index);
+    QString prefix;
+    if (!separator.isNull() && source.contains(separator)) prefix = source.left(source.lastIndexOf(separator) + 1);
+    item->setText(source.mid(prefix.size()));
+    item->setData(prefix, Qt::UserRole + 3);
+    item->setData(separator.isNull() ? QString{} : QString(separator), Qt::UserRole + 4);
+    item->setEditable(true);
+    item->setData(true, Qt::UserRole + 5);
+    m_rebuilding = false;
+    m_folderView->expand(index); m_folderView->edit(item->index());
 }
 
 void MainWindow::rebuildMessages()

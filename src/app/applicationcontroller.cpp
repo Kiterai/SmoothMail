@@ -30,6 +30,10 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         for (const auto &account : m_accounts) existing.append(account.id);
         m_accounts = accounts;
         m_window->setAccounts(accounts);
+        if (!m_reloadId.isEmpty()) {
+            const auto id = m_reloadId; m_reloadId.clear();
+            m_window->clearAccountCache(id); refresh(id, {});
+        }
         for (const auto &account : accounts) if (!existing.contains(account.id)) {
             m_repository->loadCache(account.id);
             refresh(account.id, {});
@@ -64,6 +68,46 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_current = {}; processNext();
         });
     connect(window, &MainWindow::addAccountRequested, this, &ApplicationController::addAccount);
+    connect(window, &MainWindow::editAccountRequested, this, [this](const QString &id) {
+        if (canManage()) openAccount(id);
+    });
+    connect(window, &MainWindow::deleteAccountRequested, this, [this](const QString &id) {
+        if (!canManage()) return;
+        m_accountMutation = true; m_repository->remove(id);
+    });
+    connect(m_repository, &AccountRepository::removed, this, [this](const QString &id) {
+        m_authentication->invalidate(id); removeSecrets(id);
+    });
+    connect(m_repository, &AccountRepository::failed, this, [this](const QString &operation, const QString &) {
+        if (operation.startsWith(QStringLiteral("remove:"))) {
+            m_accountMutation = false;
+            m_window->statusBar()->showMessage(QStringLiteral("アカウントを削除できませんでした。")); processNext();
+        }
+    });
+    connect(window, &MainWindow::folderOperationRequested, this,
+        [this](const QString &id, const QString &operation, const QString &source, const QString &destination) {
+            if (!canManage()) { m_window->cancelPendingFolderEdit(); return; }
+            Account account;
+            for (const auto &candidate : m_accounts) if (candidate.id == id) account = candidate;
+            if (account.id.isEmpty()) return;
+            m_submissionWaiting = true;
+            const QPointer<ApplicationController> guard(this);
+            m_authentication->acquire(account, QStringLiteral("imap"), [guard, account, operation, source, destination](const QString &secret, const QString &error) {
+                if (!guard) return;
+                if (!error.isEmpty()) {
+                    guard->m_window->cancelPendingFolderEdit();
+                    guard->m_submissionWaiting = false; guard->m_window->statusBar()->showMessage(error); guard->processNext(); return;
+                }
+                guard->m_mail->changeFolder(account, secret, operation, source, destination);
+            });
+        });
+    connect(m_mail, &MailService::folderChanged, this, [this](const QString &id, const QString &error) {
+        m_submissionWaiting = false;
+        if (!error.isEmpty()) m_window->cancelPendingFolderEdit();
+        m_window->statusBar()->showMessage(error.isEmpty() ? QStringLiteral("フォルダを変更しました。") : QStringLiteral("フォルダを変更できません: ") + error);
+        if (error.isEmpty()) { m_window->clearAccountCache(id); refresh(id, {}); }
+        processNext();
+    });
     connect(m_authorization, &OAuthClient::authorizationUrlReady, this, [this](const QUrl &url) {
         if (!QDesktopServices::openUrl(url)) {
             m_authorization->cancel();
@@ -152,6 +196,18 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id));
     });
     connect(m_registrar, &AccountRegistrar::finished, this, [this](const QString &id, const QString &error) {
+        if (error.isEmpty() && !m_editedId.isEmpty()) {
+            m_authentication->invalidate(id); m_reloadId = id;
+            const auto account = m_dialog->account();
+            for (const auto &protocol : {QStringLiteral("smtp"), QStringLiteral("imap")}) {
+                const auto mode = protocol == QStringLiteral("smtp") ? account.smtp.authentication : account.imap.authentication;
+                const auto unused = mode == AuthenticationMode::OAuth2 ? AuthenticationMode::Plain : AuthenticationMode::OAuth2;
+                const QPointer<ApplicationController> guard(this);
+                m_credentials->remove(AccountRegistrar::secretKey(id, protocol, unused), [guard](const QString &, const QString &cleanupError) {
+                    if (guard && !cleanupError.isEmpty()) guard->m_window->statusBar()->showMessage(QStringLiteral("未使用の資格情報を削除できませんでした。OS資格情報を確認してください。"));
+                });
+            }
+        }
         if (m_dialog) m_dialog->saveFinished(error);
         Q_UNUSED(id);
     });
@@ -194,10 +250,63 @@ ApplicationController::~ApplicationController()
 
 void ApplicationController::addAccount()
 {
+    openAccount({});
+}
+bool ApplicationController::canManage()
+{
+    if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting || m_accountMutation || m_dialog || m_compose || m_authorization->busy()) {
+        m_window->statusBar()->showMessage(QStringLiteral("処理中です。完了後に再試行してください。")); return false;
+    }
+    return true;
+}
+void ApplicationController::removeSecrets(const QString &id, int index)
+{
+    if (index == 4) { m_accountMutation = false; processNext(); return; }
+    const auto key = AccountRegistrar::secretKey(id, index < 2 ? QStringLiteral("imap") : QStringLiteral("smtp"),
+        index % 2 ? AuthenticationMode::OAuth2 : AuthenticationMode::Plain);
+    const QPointer<ApplicationController> guard(this);
+    m_credentials->remove(key, [guard, id, index](const QString &, const QString &error) {
+        if (!guard) return;
+        if (!error.isEmpty()) {
+            auto *notice = new QMessageBox(QMessageBox::Warning, QStringLiteral("秘密情報の削除に失敗"),
+                QStringLiteral("アカウント設定は削除しましたが、OS資格情報の一部が残っています。資格情報マネージャーで削除してください。ID: ") + id, QMessageBox::Ok, guard->m_window);
+            notice->setTextFormat(Qt::PlainText); notice->setAttribute(Qt::WA_DeleteOnClose); notice->open();
+        }
+        guard->removeSecrets(id, index + 1);
+    });
+}
+void ApplicationController::openAccount(const QString &id)
+{
     if (m_dialog) { m_dialog->raise(); m_dialog->activateWindow(); return; }
     m_dialog = new AccountDialog(m_window);
+    m_editedId = id;
+    if (!id.isEmpty()) m_accountMutation = true;
+    connect(m_dialog, &QObject::destroyed, this, [this] {
+        m_editedId.clear(); m_accountMutation = false; processNext();
+    });
     m_dialog->setAttribute(Qt::WA_DeleteOnClose);
-    connect(m_dialog, &AccountDialog::saveRequested, m_registrar, &AccountRegistrar::add);
+    connect(m_dialog, &AccountDialog::saveRequested, this, [this](const Account &account, const QString &smtp, const QString &imap) {
+        if (m_editedId.isEmpty()) m_registrar->add(account, smtp, imap);
+        else m_registrar->edit(account, smtp, imap);
+    });
+    if (!id.isEmpty()) {
+        Account account;
+        for (const auto &candidate : m_accounts) if (candidate.id == id) account = candidate;
+        m_dialog->setAccount(account); m_dialog->setEnabled(false);
+        const QPointer<AccountDialog> dialog(m_dialog);
+        m_credentials->read(AccountRegistrar::secretKey(id, QStringLiteral("smtp"), account.smtp.authentication),
+            [this, dialog, account](const QString &secret, const QString &error) {
+                if (!dialog) return;
+                if (error.isEmpty()) dialog->setSecret(true, secret);
+                m_credentials->read(AccountRegistrar::secretKey(account.id, QStringLiteral("imap"), account.imap.authentication),
+                    [dialog, error](const QString &secret, const QString &imapError) {
+                        if (!dialog) return;
+                        if (imapError.isEmpty()) dialog->setSecret(false, secret);
+                        dialog->setEnabled(true);
+                        if (!error.isEmpty() || !imapError.isEmpty()) dialog->testFinished(error, imapError);
+                    });
+            });
+    }
     connect(m_dialog, &AccountDialog::oauthRequested, this, [this](bool smtp, const QString &provider, const QString &hint) {
         m_authorizingSmtp = smtp;
         m_authorizingClientId = qEnvironmentVariable(provider == QStringLiteral("google") ? "SMOOTHMAIL_GOOGLE_CLIENT_ID" : "SMOOTHMAIL_MICROSOFT_CLIENT_ID");
@@ -246,7 +355,7 @@ void ApplicationController::refresh(const QString &id, const QString &folder)
 
 void ApplicationController::processNext()
 {
-    if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting || m_queue.isEmpty()) return;
+    if (m_mail->busy() || !m_current.accountId.isEmpty() || m_submissionWaiting || m_accountMutation || m_queue.isEmpty()) return;
     m_current = m_queue.dequeue();
     Account account;
     for (const auto &candidate : m_accounts) if (candidate.id == m_current.accountId) account = candidate;

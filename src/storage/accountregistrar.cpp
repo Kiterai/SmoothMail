@@ -11,6 +11,7 @@ AccountRegistrar::AccountRegistrar(AccountRepository *repository, CredentialStor
         if (!m_busy || id != m_pending.id) return;
         m_busy = false;
         m_pending = {};
+        m_backup.clear(); m_editing = false;
         emit finished(id, {});
     });
     connect(repository, &AccountRepository::failed, this, [this](const QString &operation, const QString &error) {
@@ -42,6 +43,38 @@ void AccountRegistrar::add(Account account, const QString &smtpPassword, const Q
     }
     m_pending = account;
     m_busy = true;
+    m_editing = false;
+    store(account, smtpPassword, imapPassword);
+}
+
+void AccountRegistrar::edit(Account account, const QString &smtp, const QString &imap)
+{
+    if (m_busy) { emit finished(account.id, QStringLiteral("アカウントを保存中です。")); return; }
+    const auto error = validateAccount(account);
+    if (!error.isEmpty()) { emit finished(account.id, error); return; }
+    if ((account.smtp.authentication == AuthenticationMode::OAuth2 && refreshTokenFromGrant(smtp).isEmpty())
+        || (account.imap.authentication == AuthenticationMode::OAuth2 && refreshTokenFromGrant(imap).isEmpty())) {
+        emit finished(account.id, QStringLiteral("OAuthの認可が必要です。")); return;
+    }
+    m_pending = account; m_busy = true; m_editing = true; m_backup.clear();
+    const auto smtpKey = secretKey(account.id, QStringLiteral("smtp"), account.smtp.authentication);
+    const auto imapKey = secretKey(account.id, QStringLiteral("imap"), account.imap.authentication);
+    const QPointer<AccountRegistrar> guard(this);
+    m_credentials->read(smtpKey, [guard, account, smtp, imap, smtpKey, imapKey](const QString &value, const QString &error) {
+        if (!guard) return;
+        if (!error.isEmpty()) { guard->m_busy = false; emit guard->finished(account.id, error); return; }
+        guard->m_backup.insert(smtpKey, value);
+        guard->m_credentials->read(imapKey, [guard, account, smtp, imap, imapKey](const QString &value, const QString &error) {
+            if (!guard) return;
+            if (!error.isEmpty()) { guard->m_busy = false; guard->m_backup.clear(); emit guard->finished(account.id, error); return; }
+            guard->m_backup.insert(imapKey, value);
+            guard->store(account, smtp, imap);
+        }, true);
+    }, true);
+}
+
+void AccountRegistrar::store(const Account &account, const QString &smtpPassword, const QString &imapPassword)
+{
     const QPointer<AccountRegistrar> guard(this);
     m_credentials->write(secretKey(account.id, QStringLiteral("imap"), account.imap.authentication), imapPassword,
         [guard, smtpPassword](const QString &, const QString &error) {
@@ -54,6 +87,7 @@ void AccountRegistrar::add(Account account, const QString &smtpPassword, const Q
                 [guard](const QString &, const QString &error) {
                     if (!guard) return;
                     if (!error.isEmpty()) guard->rollback(error);
+                    else if (guard->m_editing) guard->m_repository->update(guard->m_pending);
                     else guard->m_repository->insert(guard->m_pending);
                 });
         });
@@ -61,6 +95,7 @@ void AccountRegistrar::add(Account account, const QString &smtpPassword, const Q
 
 void AccountRegistrar::rollback(const QString &error)
 {
+    if (m_editing) { restoreNext(m_backup.keys(), error); return; }
     const QPointer<AccountRegistrar> guard(this);
     m_credentials->remove(secretKey(m_pending.id, QStringLiteral("smtp"), m_pending.smtp.authentication),
         [guard, error](const QString &, const QString &smtpError) {
@@ -78,5 +113,20 @@ void AccountRegistrar::rollback(const QString &error)
                     emit guard->finished(id, message);
                 });
         });
+}
+void AccountRegistrar::restoreNext(QStringList keys, const QString &error)
+{
+    if (keys.isEmpty()) {
+        const auto id = m_pending.id;
+        m_busy = false; m_editing = false; m_pending = {}; m_backup.clear();
+        emit finished(id, error); return;
+    }
+    const auto key = keys.takeFirst();
+    const QPointer<AccountRegistrar> guard(this);
+    const auto completion = [guard, keys, error](const QString &, const QString &restoreError) {
+        if (guard) guard->restoreNext(keys, error + (restoreError.isEmpty() ? QString{} : QStringLiteral("\n秘密情報の復元に失敗しました。再設定が必要です。")));
+    };
+    if (m_backup.value(key).isEmpty()) m_credentials->remove(key, completion);
+    else m_credentials->write(key, m_backup.value(key), completion);
 }
 } // namespace smoothmail

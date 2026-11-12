@@ -99,8 +99,8 @@ AccountDialog::AccountDialog(QWidget *parent)
     auto *servers = new QWidget(scroll);
     m_serverLayout = new QVBoxLayout(servers);
     scroll->setWidget(servers); scroll->setWidgetResizable(true); layout->addWidget(scroll, 1);
-    m_smtp = createServer(QStringLiteral("SMTP"), 465);
     m_imap = createServer(QStringLiteral("IMAP4"), 993);
+    m_smtp = createServer(QStringLiteral("SMTP"), 465);
     m_test = new QPushButton(QStringLiteral("接続テスト"), this);
     m_test->setObjectName(QStringLiteral("connectionTest"));
     layout->addWidget(m_test);
@@ -140,6 +140,26 @@ AccountDialog::AccountDialog(QWidget *parent)
 Account AccountDialog::account() const
 {
     return {m_id, m_email->text().trimmed(), m_smtp.value(), m_imap.value()};
+}
+
+void AccountDialog::setAccount(const Account &value)
+{
+    m_id = value.id; m_email->setText(value.email);
+    setWindowTitle(QStringLiteral("アカウントの編集"));
+    const auto populate = [](ServerFields &fields, const ServerSettings &settings) {
+        fields.host->setText(settings.host); fields.port->setValue(settings.port); fields.user->setText(settings.user);
+        fields.authentication->setCurrentIndex(fields.authentication->findData(int(settings.authentication)));
+        fields.encryption->setCurrentIndex(fields.encryption->findData(int(settings.encryption)));
+        fields.provider->setCurrentIndex(fields.provider->findData(settings.oauthProvider));
+        fields.authorize->setProperty("clientId", settings.oauthClientId);
+    };
+    populate(m_imap, value.imap); populate(m_smtp, value.smtp);
+}
+void AccountDialog::setSecret(bool smtp, const QString &secret)
+{
+    auto &fields = smtp ? m_smtp : m_imap;
+    if (fields.value().authentication == AuthenticationMode::OAuth2) setOAuthGrant(smtp, secret);
+    else fields.password->setText(secret);
 }
 
 void AccountDialog::saveFinished(const QString &error)

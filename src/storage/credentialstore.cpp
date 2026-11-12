@@ -14,14 +14,14 @@ CredentialStore::CredentialStore(QObject *parent, QString service)
 {
 }
 
-void CredentialStore::read(const QString &key, Completion completion)
+void CredentialStore::read(const QString &key, Completion completion, bool allowMissing)
 {
     auto *job = new QKeychain::ReadPasswordJob(m_service, this);
     job->setInsecureFallback(false);
     job->setKey(key);
-    connect(job, &QKeychain::Job::finished, this, [job, completion](QKeychain::Job *) {
+    connect(job, &QKeychain::Job::finished, this, [job, completion, allowMissing](QKeychain::Job *) {
         completion(job->error() == QKeychain::NoError ? job->textData() : QString{},
-                   jobError(job));
+                   allowMissing && job->error() == QKeychain::EntryNotFound ? QString{} : jobError(job));
     });
     job->start();
 }

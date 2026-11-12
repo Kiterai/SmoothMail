@@ -14,6 +14,21 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void lastRemoteErrorSurvivesCacheAndRetry()
+    {
+        smoothmail::MainWindow window(false);
+        smoothmail::Account account; account.id = QStringLiteral("error"); account.email = QStringLiteral("error@example.test");
+        window.setAccounts({account});
+        auto *tree = window.findChild<QTreeView *>(QStringLiteral("folderTree"));
+        window.applySnapshot(account.id, {}, {}, {}, QStringLiteral("synthetic failure"));
+        QVERIFY(!tree->model()->index(0, 0).data(Qt::DecorationRole).value<QIcon>().isNull());
+        window.applySnapshot(account.id, {}, {}, {}, {}, false);
+        QVERIFY(tree->model()->index(0, 0).data(Qt::ToolTipRole).toString().contains(QStringLiteral("synthetic failure")));
+        window.setRefreshing(account.id, true); window.setRefreshing(account.id, false);
+        QVERIFY(!tree->model()->index(0, 0).data(Qt::DecorationRole).value<QIcon>().isNull());
+        window.applySnapshot(account.id, {}, {}, {}, {});
+        QVERIFY(tree->model()->index(0, 0).data(Qt::DecorationRole).value<QIcon>().isNull());
+    }
     void hasSpecifiedPanes()
     {
         smoothmail::MainWindow window(false);

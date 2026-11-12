@@ -25,6 +25,12 @@ public:
     ~ApplicationController() override;
 private:
     void addAccount();
+    void openAccount(const QString &id);
+    bool canManage();
+    void removeSecrets(const QString &id, int index = 0);
+    bool m_accountMutation = false;
+    QString m_editedId;
+    QString m_reloadId;
     void refresh(const QString &accountId, const QString &folder);
     void processNext();
     void compose(bool reply);

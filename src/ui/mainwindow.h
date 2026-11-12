@@ -27,6 +27,8 @@ public:
     void applySnapshot(const QString &accountId, const QString &folder, const QList<MailFolder> &folders,
                        const QList<MailRecord> &messages, const QString &error, bool remoteUpdate = true);
     void setRefreshing(const QString &accountId, bool refreshing);
+    void clearAccountCache(const QString &id);
+    void cancelPendingFolderEdit() { m_pendingCreateId.clear(); m_pendingCreateName.clear(); }
     QString selectedFolderFor(const QString &accountId) const { return m_accountId == accountId ? m_folder : QString{}; }
     QString selectedAccountId() const { return m_accountId; }
     std::optional<MailRecord> selectedMessage() const;
@@ -34,6 +36,9 @@ public:
     void enableHistory(bool enabled);
     void revealMessage(const QString &accountId, const QString &folder, qint64 uidValidity, qint64 uid);
 signals:
+    void editAccountRequested(const QString &id);
+    void deleteAccountRequested(const QString &id);
+    void folderOperationRequested(const QString &id, const QString &operation, const QString &source, const QString &destination);
     void addAccountRequested();
     void refreshAllRequested();
     void refreshRequested(const QString &accountId, const QString &folder);
@@ -48,6 +53,10 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    void editFolder(const QModelIndex &index, bool create);
+    QHash<QString, QString> m_syncErrors;
+    QString m_pendingCreateId;
+    QString m_pendingCreateName;
     void createMenus();
     void createPanes();
     void createTray();

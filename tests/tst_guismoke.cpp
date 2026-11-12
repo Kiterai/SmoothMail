@@ -4,6 +4,7 @@
 #include "ui/composedialog.h"
 #include "ui/downloadhistorydialog.h"
 #include "ui/mainwindow.h"
+#include "storage/accountregistrar.h"
 
 #include <QAction>
 #include <QApplication>
@@ -28,6 +29,9 @@
 #include <QTreeView>
 #include <QToolButton>
 #include <QTimer>
+#include <QUuid>
+#include <QMessageBox>
+#include <QContextMenuEvent>
 #include <QtTest>
 
 using namespace smoothmail;
@@ -54,6 +58,27 @@ class GuiSmokeTest final : public QObject
         const auto matches = view->model()->match(view->model()->index(0, 3), Qt::DisplayRole, subject, 1,
                                                 Qt::MatchExactly | Qt::MatchRecursive);
         return matches.isEmpty() ? QModelIndex{} : matches.first().siblingAtColumn(0);
+    }
+    static void contextAction(QTreeView *view, const QModelIndex &index, const QString &text)
+    {
+        QTimer::singleShot(100, view, [text] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu) return;
+            for (auto *action : menu->actions()) if (action->text() == text) {
+                menu->setActiveAction(action); QTest::keyClick(menu, Qt::Key_Return); return;
+            }
+            menu->close();
+        });
+        const auto position = view->visualRect(index).center();
+        // QTest's synthetic mouse events do not ask Windows to generate the
+        // separate WM_CONTEXTMENU event; send that Qt event explicitly.
+        QContextMenuEvent event(QContextMenuEvent::Mouse, position, view->viewport()->mapToGlobal(position));
+        QApplication::sendEvent(view->viewport(), &event);
+    }
+    static QModelIndex folderIndex(QTreeView *view, const QString &name)
+    {
+        const auto matches = view->model()->match(view->model()->index(0, 0), Qt::UserRole + 1, name, 1, Qt::MatchExactly | Qt::MatchRecursive);
+        return matches.value(0);
     }
 private slots:
     void initTestCase()
@@ -206,6 +231,83 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         capture(QStringLiteral("08-final-main"));
         QVERIFY(QFile::remove(path));
+        auto *folders = window.findChild<QTreeView *>(QStringLiteral("folderTree"));
+        const auto id = folders->model()->index(0, 0).data(Qt::UserRole).toString();
+        contextAction(folders, folders->model()->index(0, 0), QStringLiteral("アカウントの編集"));
+        QTRY_VERIFY(window.findChild<AccountDialog *>());
+        account = window.findChild<AccountDialog *>();
+        QTRY_VERIFY(account->isEnabled());
+        QCOMPARE(account->account().id, id);
+        QCOMPARE(account->findChild<QLineEdit *>(QStringLiteral("IMAP4Password"))->text(), QStringLiteral("sandbox-only-dummy"));
+        account->findChild<QLineEdit *>(QStringLiteral("accountEmail"))->setText(QStringLiteral("edited@example.test"));
+        capture(QStringLiteral("09-account-edit"));
+        QTest::mouseClick(account->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok), Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(account.isNull(), 15000);
+        QTRY_VERIFY(folders->model()->index(0, 0).data().toString().startsWith(QStringLiteral("edited@example.test")));
+        QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
+        contextAction(folders, folders->model()->index(0, 0), QStringLiteral("新規フォルダ"));
+        QTRY_VERIFY_WITH_TIMEOUT(folders->findChild<QLineEdit *>(), 15000);
+        auto *inlineEditor = folders->findChild<QLineEdit *>(); QVERIFY(inlineEditor);
+        inlineEditor->setText(QStringLiteral("Parent")); QTest::keyClick(inlineEditor, Qt::Key_Return);
+        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(folderIndex(folders, QStringLiteral("Parent")).isValid(), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
+        contextAction(folders, folderIndex(folders, QStringLiteral("Parent")), QStringLiteral("新規フォルダ"));
+        QTRY_VERIFY_WITH_TIMEOUT(folders->findChild<QLineEdit *>(), 15000);
+        inlineEditor = folders->findChild<QLineEdit *>(); QVERIFY(inlineEditor);
+        inlineEditor->setText(QStringLiteral("Child")); QTest::keyClick(inlineEditor, Qt::Key_Return);
+        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent/Child"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(folderIndex(folders, QStringLiteral("Parent/Child")).isValid(), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
+        contextAction(folders, folderIndex(folders, QStringLiteral("Parent/Child")), QStringLiteral("名前の変更"));
+        inlineEditor = folders->findChild<QLineEdit *>(); QVERIFY(inlineEditor);
+        inlineEditor->setText(QStringLiteral("Renamed")); QTest::keyClick(inlineEditor, Qt::Key_Return);
+        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent/Renamed"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(folderIndex(folders, QStringLiteral("Parent/Renamed")).isValid(), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
+        capture(QStringLiteral("10-folder-edit"));
+        // The warning defaults to Cancel; cancellation must issue no DELETE.
+        QTimer::singleShot(200, &window, [] { if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) box->reject(); });
+        contextAction(folders, folderIndex(folders, QStringLiteral("Parent/Renamed")), QStringLiteral("削除"));
+        QVERIFY(imap.extraFolders.contains("Parent/Renamed"));
+        QTimer::singleShot(200, &window, [] { if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) box->done(QMessageBox::Yes); });
+        contextAction(folders, folderIndex(folders, QStringLiteral("Parent/Renamed")), QStringLiteral("削除"));
+        QTRY_VERIFY_WITH_TIMEOUT(!imap.extraFolders.contains("Parent/Renamed"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
+        QTimer::singleShot(200, &window, [] { if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) box->done(QMessageBox::Yes); });
+        contextAction(folders, folders->model()->index(0, 0), QStringLiteral("アカウントの削除"));
+        QTRY_COMPARE_WITH_TIMEOUT(folders->model()->rowCount(), 0, 10000);
+        QCOMPARE(imap.messages.size(), 2); // Account deletion never deletes server mail.
+    }
+    void failedEditRestoresExistingCredentials()
+    {
+        AccountRepository repository(QStringLiteral(":memory:"));
+        CredentialStore credentials(nullptr, QStringLiteral("SmoothMail disposable registrar test"));
+        AccountRegistrar registrar(&repository, &credentials);
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("rollback@example.test"),
+            {QStringLiteral("smtp.example.test"), 465, QStringLiteral("test")},
+            {QStringLiteral("imap.example.test"), 993, QStringLiteral("test")}};
+        for (const auto &protocol : {QStringLiteral("smtp"), QStringLiteral("imap")}) {
+            bool done = false; QString error;
+            credentials.write(AccountRegistrar::secretKey(account.id, protocol), QStringLiteral("old-dummy"),
+                [&](const QString &, const QString &value) { error = value; done = true; });
+            QTRY_VERIFY(done); QVERIFY(error.isEmpty());
+        }
+        QSignalSpy result(&registrar, &AccountRegistrar::finished);
+        // No corresponding DB row: credentials are written, UPDATE fails,
+        // and both pre-existing OS values must be restored, not deleted.
+        registrar.edit(account, QStringLiteral("new-dummy"), QStringLiteral("new-dummy"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000);
+        QVERIFY(!result.first().at(1).toString().isEmpty());
+        for (const auto &protocol : {QStringLiteral("smtp"), QStringLiteral("imap")}) {
+            bool done = false; QString value, error;
+            const auto key = AccountRegistrar::secretKey(account.id, protocol);
+            credentials.read(key, [&](const QString &secret, const QString &failure) { value = secret; error = failure; done = true; });
+            QTRY_VERIFY(done); QVERIFY(error.isEmpty()); QCOMPARE(value, QStringLiteral("old-dummy"));
+            done = false;
+            credentials.remove(key, [&](const QString &, const QString &failure) { error = failure; done = true; });
+            QTRY_VERIFY(done); QVERIFY(error.isEmpty());
+        }
     }
 };
 QTEST_MAIN(GuiSmokeTest)

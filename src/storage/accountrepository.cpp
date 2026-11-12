@@ -1,6 +1,7 @@
 #include "accountrepository.h"
 #include "mail/mimeparser.h"
 #include "downloadfile.h"
+#include "core/diagnostics.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -143,6 +144,48 @@ void AccountRepository::insert(const Account &account)
     }, Qt::QueuedConnection);
 }
 
+void AccountRepository::update(const Account &account)
+{
+    QMetaObject::invokeMethod(m_worker, [this, account] {
+        auto &db = m_state->db;
+        const auto fail = [this, account](const QString &error) { emit failed(account.id, error); };
+        const auto error = validateAccount(account);
+        if (!error.isEmpty() || !m_state->error.isEmpty()) { fail(error.isEmpty() ? m_state->error : error); return; }
+        if (!db.transaction()) { fail(db.lastError().text()); return; }
+        QSqlQuery query(db);
+        query.prepare(QStringLiteral("UPDATE accounts SET config=? WHERE id=?"));
+        query.addBindValue(QJsonDocument(accountJson(account)).toJson(QJsonDocument::Compact));
+        query.addBindValue(account.id);
+        if (!query.exec() || query.numRowsAffected() != 1) { db.rollback(); fail(QStringLiteral("設定を更新できません。")); return; }
+        // Changed servers/users must never reuse another mailbox's UID cache.
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_folders")}) {
+            query.prepare(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=?"));
+            query.addBindValue(account.id);
+            if (!query.exec()) { db.rollback(); fail(query.lastError().text()); return; }
+        }
+        if (!db.commit()) { db.rollback(); fail(db.lastError().text()); return; }
+        emit inserted(account.id); reload();
+    }, Qt::QueuedConnection);
+}
+void AccountRepository::remove(const QString &id)
+{
+    QMetaObject::invokeMethod(m_worker, [this, id] {
+        auto &db = m_state->db;
+        const auto fail = [this, id](const QString &error) { emit failed(QStringLiteral("remove:") + id, error); };
+        if (!m_state->error.isEmpty()) { fail(m_state->error); return; }
+        if (!db.transaction()) { fail(db.lastError().text()); return; }
+        QSqlQuery query(db);
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_folders"), QStringLiteral("accounts")}) {
+            query.prepare(QStringLiteral("DELETE FROM ") + table + (table == QStringLiteral("accounts") ? QStringLiteral(" WHERE id=?") : QStringLiteral(" WHERE account=?")));
+            query.addBindValue(id);
+            if (!query.exec()) { db.rollback(); fail(query.lastError().text()); return; }
+        }
+        // Downloaded files and their history are intentionally preserved.
+        if (!db.commit()) { db.rollback(); fail(db.lastError().text()); return; }
+        emit removed(id); reload();
+    }, Qt::QueuedConnection);
+}
+
 void AccountRepository::reorder(const QStringList &ids)
 {
     QMetaObject::invokeMethod(m_worker, [this, ids] {
@@ -194,6 +237,7 @@ void AccountRepository::saveSnapshot(const QString &id, const QString &folder, c
                                      const QList<MailRecord> &messages)
 {
     QMetaObject::invokeMethod(m_worker, [this, id, folder, folders, messages] {
+        diagnostics::event("cache-save-start", messages.size());
         auto &db = m_state->db;
         const auto fail = [this, id](const QString &error) { emit failed(QStringLiteral("snapshot:") + id, error); };
         if (!m_state->error.isEmpty()) { fail(m_state->error); return; }
@@ -238,6 +282,7 @@ void AccountRepository::saveSnapshot(const QString &id, const QString &folder, c
         }
         if (!db.commit()) { const auto error = db.lastError().text(); db.rollback(); fail(error); return; }
         emit snapshotSaved(id, folder, folders, messages);
+        diagnostics::event("cache-save-complete", messages.size());
     }, Qt::QueuedConnection);
 }
 
@@ -257,7 +302,19 @@ void AccountRepository::loadCache(const QString &id)
             if (!flagJson.isArray()) { fail(QStringLiteral("保存済みフォルダ情報が不正です。")); return; }
             for (const auto &flag : flagJson.array()) flags.append(flag.toString().toLatin1());
             folders.append({query.value(0).toString(), query.value(1).toString().isEmpty() ? QChar{} : query.value(1).toString().at(0), flags, query.value(3).toLongLong()});
+            const auto &folder = folders.last();
+            if (folders.size() > 10000 || folder.name.size() > 4096
+                || (!folder.separator.isNull() && folder.name.count(folder.separator) > 64)) {
+                fail(QStringLiteral("保存済みフォルダの階層または数が安全上限を超えています。")); return;
+            }
         }
+        query.prepare(QStringLiteral("SELECT COUNT(*),COALESCE(SUM(length(raw)),0) FROM cache_messages WHERE account=?"));
+        query.addBindValue(id);
+        if (!query.exec() || !query.next()) { fail(query.lastError().text()); return; }
+        if (query.value(0).toLongLong() > 10000 || query.value(1).toLongLong() > 128 * 1024 * 1024) {
+            fail(QStringLiteral("保存済みメールが安全上限を超えています。サーバから必要なフォルダを再取得してください。")); return;
+        }
+        query.finish();
         for (const auto &folder : folders) {
             query.prepare(QStringLiteral("SELECT uidvalidity,uid,flags,raw FROM cache_messages WHERE account=? AND folder=? ORDER BY uid"));
             query.addBindValue(id); query.addBindValue(folder.name);

@@ -21,6 +21,24 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void updatesAndDeletesAccount()
+    {
+        AccountRepository repository(QStringLiteral(":memory:"));
+        QSignalSpy loaded(&repository, &AccountRepository::loaded);
+        QSignalSpy saved(&repository, &AccountRepository::inserted);
+        QSignalSpy removed(&repository, &AccountRepository::removed);
+        QSignalSpy failed(&repository, &AccountRepository::failed);
+        QTRY_VERIFY(!loaded.isEmpty()); loaded.clear();
+        auto account = makeAccount(QStringLiteral("edit@example.test"));
+        repository.insert(account); QTRY_COMPARE(saved.size(), 1); QTRY_VERIFY(!loaded.isEmpty()); loaded.clear();
+        account.imap.host = QStringLiteral("new.example.test");
+        repository.update(account); QTRY_COMPARE(saved.size(), 2); QTRY_VERIFY(!loaded.isEmpty());
+        auto values = qvariant_cast<QList<Account>>(loaded.takeLast().first());
+        QCOMPARE(values.first().id, account.id); QCOMPARE(values.first().imap.host, account.imap.host);
+        loaded.clear(); repository.remove(account.id); QTRY_COMPARE(removed.size(), 1); QTRY_VERIFY(!loaded.isEmpty());
+        QVERIFY(qvariant_cast<QList<Account>>(loaded.takeLast().first()).isEmpty());
+        repository.update(account); QTRY_COMPARE(failed.size(), 1);
+    }
     void validationAndJson()
     {
         const auto original = makeAccount(QStringLiteral("user@example.test"));

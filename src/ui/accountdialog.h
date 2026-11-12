@@ -16,6 +16,8 @@ class AccountDialog final : public QDialog
 public:
     explicit AccountDialog(QWidget *parent = nullptr);
     Account account() const;
+    void setAccount(const Account &account);
+    void setSecret(bool smtp, const QString &secret);
     void saveFinished(const QString &error);
     void testFinished(const QString &smtpError, const QString &imapError);
     void oauthFinished(bool smtp, const QString &grant, const QString &clientId, const QString &error);
