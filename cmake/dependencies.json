@@ -14,6 +14,41 @@
     "tag": "v6.31.0",
     "commit": "d28bed05be65e7f1234bb852ad81a67b13df53ea"
   },
+  "kcoreaddons": {
+    "repository": "https://invent.kde.org/frameworks/kcoreaddons.git",
+    "tag": "v6.31.0",
+    "commit": "911a815687a14389895df3e658235de2450bc294"
+  },
+  "kconfig": {
+    "repository": "https://invent.kde.org/frameworks/kconfig.git",
+    "tag": "v6.31.0",
+    "commit": "a25acdfb1f51c9d8af3426f03380a9de5c88817a"
+  },
+  "kcrash": {
+    "repository": "https://invent.kde.org/frameworks/kcrash.git",
+    "tag": "v6.31.0",
+    "commit": "9ee8786eeb2296199f91038f92e70af36f827e8e"
+  },
+  "ki18n": {
+    "repository": "https://invent.kde.org/frameworks/ki18n.git",
+    "tag": "v6.31.0",
+    "commit": "df98b98f001721f83ebf3e36b73e346f6d29670a"
+  },
+  "kservice": {
+    "repository": "https://invent.kde.org/frameworks/kservice.git",
+    "tag": "v6.31.0",
+    "commit": "3dd29f7847e88d3f45d833ce1a772738e73915e9"
+  },
+  "solid": {
+    "repository": "https://invent.kde.org/frameworks/solid.git",
+    "tag": "v6.31.0",
+    "commit": "e0164c17b4d94c11aaf02e9b37ab9d23e660b51e"
+  },
+  "kio": {
+    "repository": "https://invent.kde.org/frameworks/kio.git",
+    "tag": "v6.31.0",
+    "commit": "2dd4bdc916a6f46d297d8788f5b628181483315d"
+  },
   "kimap": {
     "repository": "https://invent.kde.org/pim/kimap.git",
     "tag": "v26.08.3",

@@ -21,6 +21,18 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja
 
 ## KIMAP / KSMTP
 
+### 構築済みの基礎Frameworks
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildFrameworkDependencies.cmake
+```
+
+MIME依存に加え、CoreAddons・KConfig・KCrash 6.31.0を構築します。QML/Pythonバインディング等の不要な機能は無効にします。Qt 6.12.0 / MSVC 2022でDebug DLLの構築・ローカルインストールを確認済みです。
+
+共通の取得・コミット確認・変更検出・ビルド処理は`cmake/DependencyBuild.cmake`へ集約しています。
+
+### 未完了の依存
+
 26.08.3のソースと実コミットを確認し、manifestに記録しました。**上記のMIME専用bootstrapではビルドしません。**
 
 上流CMakeで以下の直接依存を確認しています。
@@ -32,6 +44,12 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja
 | KMime | Qt Core、KCodecs |
 
 KIMAP/KSMTPの要求はQt 6.9以降、Frameworks 6.25以降、CMake 3.29以降です。ただし今回選んだKMime/KCodecs 6.31.0はQt 6.10以降・CMake 3.30以降が必要です。
+
+KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加えてKService・Solid・KCrashが必要です。`KIOCORE_ONLY=ON`でも上流configureはKService/Solidを要求します。Solidにはビルド時のFlex/Bisonも必要です。ソースとコミットは確認済みですが、これらの残る構築はまだ完了していません。
+
+### 認証方式の切替に注意
+
+KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方式が広告されていない場合にLOGIN/PLAINを選ぶ実装です。アプリ側ではログインジョブの開始前に、サーバーが設定された方式を広告しているか確認する必要があります。特にOAuthトークンを別方式へ自動送信してはいけません。構築後、XOAUTH2を広告しないローカルサーバーへAUTHやトークンを送らないことを回帰テストします。
 
 ## ライセンスと残る検証
 
