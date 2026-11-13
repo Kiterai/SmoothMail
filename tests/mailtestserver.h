@@ -97,6 +97,7 @@ public:
     bool changeMechanismsAfterTls = false;
     QStringList postTlsMechanisms;
     bool provideMailbox = false;
+    bool duplicateInboxListing = false;
     QSet<QByteArray> extraFolders;
     bool rejectFolderChanges = false;
     qint64 advertisedMessageCount = -1;
@@ -233,6 +234,7 @@ private:
             }
         } else if (provideMailbox && command == "LIST") {
             write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
+            if (duplicateInboxListing) write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
             if (provideDraftFolder) write("* LIST (\\Drafts) \"/\" \"Drafts\"");
             for (const auto &name : extraFolders) write("* LIST () \"/\" \"" + name + '"');
             write(m_tag + " OK list completed");

@@ -250,8 +250,10 @@ void MailService::synchronize(const Account &account, const QString &secret, con
     m_busy = true;
     m_syncAccount = account.id; m_cancelSync = false;
     QMetaObject::invokeMethod(m_worker, [this, account, secret, requestedFolder, cache, mode] {
+        const diagnostics::OperationScope operation(diagnostics::nextOperation());
         const CancellationScope cancellation(&m_cancelSync);
         diagnostics::event("sync-start");
+        diagnostics::event("sync-mode", int(mode));
         auto error = validateAccount(account, false);
         if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
         if (error.isEmpty() && cache) error = cache->prepareSync(account);
@@ -267,12 +269,15 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             listing.setOption(KIMAP::ListJob::IncludeUnsubscribed);
             connect(&listing, &KIMAP::ListJob::mailBoxesReceived, &listing,
                 [&](const QList<KIMAP::MailBoxDescriptor> &boxes, const QList<QList<QByteArray>> &flags) {
+                    diagnostics::event("sync-list-batch", boxes.size());
+                    if (boxes.size() != flags.size()) diagnostics::event("sync-list-flags-count-mismatch", flags.size());
                     for (qsizetype i = 0; i < boxes.size(); ++i) {
                         folders.append({boxes.at(i).name, boxes.at(i).separator, flags.value(i), 0});
                     }
                 });
             auto jobError = runJob(listing);
             if (!jobError.isEmpty()) return jobError;
+            diagnostics::event("sync-list-complete", folders.size());
             if (folders.size() > 10000) return QStringLiteral("フォルダ数が安全上限を超えています。");
             for (const auto &folder : folders) {
                 if (folder.name.size() > 4096 || (!folder.separator.isNull() && folder.name.count(folder.separator) > 64))
@@ -360,7 +365,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             if (selected.isEmpty()) selected = selectable.contains(QStringLiteral("INBOX")) ? QStringLiteral("INBOX") : selectable.value(0);
             if (selected.isEmpty()) {
                 if (!cache) return {};
-                auto error = cache->beginSync(account.id, {}, 0);
+                auto error = cache->beginSync(account.id, {}, 0, {}, diagnostics::currentOperation());
                 return error.isEmpty() ? cache->commitSync(folders, 0) : error;
             }
             if (!selectable.contains(selected)) {
@@ -439,7 +444,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 if (recentUids.size() > total) return QStringLiteral("差分検索中にメール一覧が変化しました。");
             }
             if (cache) {
-                jobError = cache->beginSync(account.id, selected, validity, boundary);
+                jobError = cache->beginSync(account.id, selected, validity, boundary, diagnostics::currentOperation());
                 if (!jobError.isEmpty()) return jobError;
             }
             qint64 retainedBytes = 0, batchBytes = 0, completed = 0;

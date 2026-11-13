@@ -56,7 +56,7 @@ public:
     void cancelPendingReads() { ++m_pageRequest; ++m_bodyRequest; }
     // Called by the mail worker only, never the GUI. Blocking calls provide
     // backpressure: at most one bounded batch is awaiting SQLite at a time.
-    QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {});
+    QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {}, quint64 operation = 0);
     QString stageMessages(const QList<MailRecord> &messages);
     QString reuseMessage(qint64 uid, bool seen, bool important, bool &found);
     QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount);

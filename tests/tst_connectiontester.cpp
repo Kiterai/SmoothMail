@@ -8,6 +8,10 @@
 #include <QElapsedTimer>
 #include "storage/accountrepository.h"
 #include "core/diagnostics.h"
+#include <QTemporaryDir>
+#include <QScopeGuard>
+#include <QDir>
+#include <QRegularExpression>
 
 using namespace smoothmail;
 using ConnectionTester = MailService;
@@ -22,6 +26,30 @@ private slots:
         if (!output.isEmpty()) QVERIFY(diagnostics::start(output + QStringLiteral("/transport-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
+    void duplicateFolderFailureHasCorrelatedPrivateDiagnosticsAndCanRetry()
+    {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid()); const auto output = qEnvironmentVariable("SMOOTHMAIL_GUI_OUTPUT");
+        const auto directory = output.isEmpty() ? temporary.path() : output + QStringLiteral("/transport-diagnostics");
+        if (output.isEmpty()) QVERIFY(diagnostics::start(directory));
+        const auto finishSession = qScopeGuard([&] { if (output.isEmpty()) diagnostics::finish(); });
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; server.duplicateInboxListing = true; QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("private-account@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")}, {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, QStringLiteral("dummy-private-secret"), {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QCOMPARE(result.first().at(4).toString(), QStringLiteral("フォルダ情報が不正です。"));
+        QByteArray log;
+        for (const auto &name : QDir(directory).entryList({QStringLiteral("*.log")}, QDir::Files)) { QFile file(QDir(directory).filePath(name)); QVERIFY(file.open(QIODevice::ReadOnly)); log += file.readAll(); }
+        const auto match = QRegularExpression(QStringLiteral("folder-metadata-invalid source=sync-commit total=2 empty_count=0 duplicate_count=1 negative_unread_count=0[^\\n]* op=(\\d+)")).match(QString::fromUtf8(log));
+        QVERIFY(match.hasMatch()); const auto suffix = " op=" + match.captured(1).toUtf8();
+        QVERIFY(log.contains("sync-start" + suffix)); QVERIFY(log.contains("sync-list-complete 2" + suffix));
+        QVERIFY(log.contains("sync-cache-rollback" + suffix)); QVERIFY(log.contains("sync-cache-failed" + suffix)); QVERIFY(log.contains("sync-failed 0" + suffix));
+        for (const auto &secret : {account.id.toUtf8(), account.email.toUtf8(), QByteArray("dummy-private-secret"), QByteArray("INBOX"), QByteArray("127.0.0.1")}) QVERIFY(!log.contains(secret));
+        server.duplicateInboxListing = false; result.clear();
+        service.synchronize(account, QStringLiteral("dummy-private-secret"), {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+    }
     void nativeMoveRemapsFlagsAndSupportsReverseMove_data()
     {
         QTest::addColumn<bool>("supported"); QTest::addColumn<bool>("mapping");

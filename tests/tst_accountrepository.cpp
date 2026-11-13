@@ -9,6 +9,8 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include "core/diagnostics.h"
+#include <QScopeGuard>
 
 using namespace smoothmail;
 namespace {
@@ -24,6 +26,57 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void folderMetadataErrorsAreDiagnosableWithoutPrivateNames_data()
+    {
+        QTest::addColumn<int>("reason"); QTest::addColumn<bool>("streaming");
+        for (int reason = 0; reason < 4; ++reason) for (const bool streaming : {false, true}) QTest::newRow(qPrintable(QStringLiteral("reason-%1-%2").arg(reason).arg(streaming ? QStringLiteral("sync") : QStringLiteral("snapshot")))) << reason << streaming;
+    }
+    void folderMetadataErrorsAreDiagnosableWithoutPrivateNames()
+    {
+        QFETCH(int, reason); QFETCH(bool, streaming);
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        QVERIFY(diagnostics::start(directory.path())); const auto finishSession = qScopeGuard([] { diagnostics::finish(); });
+        AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("private-account@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), failed(&repository, &AccountRepository::failed), cached(&repository, &AccountRepository::cacheLoaded);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const QList<MailFolder> original{{QStringLiteral("INBOX"), u'/', {}, 0}};
+        repository.saveSnapshot(account.id, QStringLiteral("INBOX"), original, {}); QTRY_COMPARE(saved.size(), 1);
+        const MailFolder named{QStringLiteral("private-folder-sentinel"), u'/', {}, 0};
+        QList<MailFolder> invalid;
+        if (reason == 0) invalid = {{QString{}, u'/', {"\\Noselect"}, 0}};
+        if (reason == 1) invalid = {named, named, named};
+        if (reason == 2) { auto negative = named; negative.unread = -7; invalid = {negative}; }
+        if (reason == 3) invalid = {{QString{}, u'/', {"\\Noselect"}, -7}, named, named};
+        diagnostics::OperationId operation = 0;
+        if (streaming) {
+            operation = diagnostics::nextOperation();
+            QVERIFY(repository.beginSync(account.id, QStringLiteral("INBOX"), 10, {}, operation).isEmpty());
+            QCOMPARE(repository.commitSync(invalid, 0), QStringLiteral("フォルダ情報が不正です。")); repository.abortSync();
+        } else {
+            repository.saveSnapshot(account.id, QStringLiteral("INBOX"), invalid, {}); QTRY_COMPARE(failed.size(), 1);
+            QCOMPARE(failed.first().at(1).toString(), QStringLiteral("フォルダ情報が不正です。")); QCOMPARE(saved.size(), 1);
+        }
+        repository.loadCache(account.id, true); QTRY_COMPARE(cached.size(), 1);
+        const auto folders = qvariant_cast<QList<MailFolder>>(cached.first().at(2)); QCOMPARE(folders.size(), 1); QCOMPARE(folders.first().name, QStringLiteral("INBOX"));
+        QByteArray log;
+        for (const auto &name : QDir(directory.path()).entryList({QStringLiteral("*.log")}, QDir::Files)) { QFile file(directory.filePath(name)); QVERIFY(file.open(QIODevice::ReadOnly)); log += file.readAll(); }
+        const QByteArray source = streaming ? "sync-commit" : "snapshot";
+        const auto index = log.indexOf("folder-metadata-invalid source=" + source); QVERIFY(index >= 0);
+        const auto line = log.mid(index).split('\n').first();
+        QVERIFY(line.contains("total=" + QByteArray::number(invalid.size())));
+        QVERIFY(line.contains(QByteArray("empty_count=") + (reason == 0 || reason == 3 ? "1" : "0")));
+        QVERIFY(line.contains(QByteArray("duplicate_count=") + (reason == 1 ? "2" : reason == 3 ? "1" : "0")));
+        QVERIFY(line.contains(QByteArray("negative_unread_count=") + (reason >= 2 ? "1" : "0")));
+        if (reason == 0 || reason == 3) QVERIFY(line.contains("first_empty_index=1 first_empty_noselect=1"));
+        if (reason == 1) QVERIFY(line.contains("first_duplicate_index=2 duplicate_of_index=1"));
+        if (reason == 3) QVERIFY(line.contains("first_duplicate_index=3 duplicate_of_index=2"));
+        if (reason >= 2) QVERIFY(line.contains("first_negative_unread=-7"));
+        if (streaming) {
+            const auto suffix = " op=" + QByteArray::number(operation);
+            QVERIFY(line.endsWith(suffix)); QVERIFY(log.contains("sync-cache-rollback" + suffix)); QVERIFY(log.contains("sync-cache-failed" + suffix));
+        } else { QVERIFY(log.contains("cache-save-rollback op=")); QVERIFY(log.contains("cache-save-failed op=")); }
+        for (const auto &secret : {account.id.toUtf8(), account.email.toUtf8(), named.name.toUtf8()}) QVERIFY(!log.contains(secret));
+    }
     void movesKeepCollidingMessagesDistinctAndUndoAcrossAcknowledgement()
     {
         AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("moves@example.test"));
