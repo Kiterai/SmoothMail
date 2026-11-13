@@ -6,6 +6,9 @@
 #include <QtTest>
 #include "mail/mimeparser.h"
 #include "storage/downloadfile.h"
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QTemporaryDir>
 
 using namespace smoothmail;
 namespace {
@@ -21,6 +24,77 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void upgradesV1CacheWithoutLoadingAllBodies()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("v1.sqlite"));
+        const auto account = makeAccount(QStringLiteral("upgrade@example.test"));
+        const auto parsed = MimeParser::parse("From: fixture@example.test\r\nSubject: legacy\r\n\r\nlegacy searchable body"); QVERIFY(parsed.ok());
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved);
+            repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+            repository.saveSnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 1}}, {{account.id, QStringLiteral("INBOX"), 7, 42, false, true, parsed.message}});
+            QTRY_COMPARE(saved.size(), 1);
+        }
+        const auto connection = QUuid::createUuid().toString();
+        {
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection); db.setDatabaseName(path); QVERIFY(db.open());
+            QSqlQuery query(db); QVERIFY(query.exec(QStringLiteral("DROP TABLE cache_index"))); QVERIFY(query.exec(QStringLiteral("PRAGMA user_version=1"))); db.close();
+        }
+        QSqlDatabase::removeDatabase(connection);
+        {
+            AccountRepository repository(path); QSignalSpy cached(&repository, &AccountRepository::cacheLoaded), pages(&repository, &AccountRepository::pageLoaded), bodies(&repository, &AccountRepository::messageLoaded);
+            repository.loadCache(account.id, true); QTRY_COMPARE(cached.size(), 1); QVERIFY(qvariant_cast<QList<MailRecord>>(cached.first().at(3)).isEmpty());
+            MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX"); query.text = QStringLiteral("SEARCHABLE");
+            repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+            const auto page = qvariant_cast<MailPage>(pages.first().first()); QVERIFY2(page.error.isEmpty(), qPrintable(page.error)); QCOMPARE(page.total, 1);
+            QCOMPARE(page.messages.first().uid, 42); QVERIFY(page.messages.first().document.rawSource.isEmpty());
+            repository.loadMessage(page.messages.first()); QTRY_COMPARE(bodies.size(), 1);
+            QCOMPARE(qvariant_cast<MailRecord>(bodies.first().first()).document.rawSource, parsed.message.rawSource);
+        }
+    }
+    void pagesSearchAndStreamingRollback()
+    {
+        AccountRepository repository(QStringLiteral(":memory:"));
+        const auto account = makeAccount(QStringLiteral("pages@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted);
+        QSignalSpy saved(&repository, &AccountRepository::snapshotSaved);
+        QSignalSpy pages(&repository, &AccountRepository::pageLoaded);
+        QSignalSpy bodies(&repository, &AccountRepository::messageLoaded);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        QList<MailRecord> records;
+        for (int i = 1; i <= 234; ++i) {
+            const auto raw = "From: Sender <sender@example.test>\r\nSubject: " + QByteArray::number(i).rightJustified(3, '0')
+                + "\r\nMessage-ID: <" + QByteArray::number(i) + "@example.test>\r\n\r\n" + (i == 234 ? "needle body" : "ordinary body");
+            const auto parsed = MimeParser::parse(raw); QVERIFY(parsed.ok());
+            records.append({account.id, QStringLiteral("INBOX"), 10, i, bool(i % 3), !(i % 2), parsed.message});
+        }
+        const QList<MailFolder> folders{{QStringLiteral("INBOX"), u'/', {}, 78}};
+        repository.saveSnapshot(account.id, QStringLiteral("INBOX"), folders, records); QTRY_COMPARE(saved.size(), 1);
+        MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX"); query.sortColumn = 3; query.order = Qt::AscendingOrder; query.page = 2;
+        repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        auto page = qvariant_cast<MailPage>(pages.takeFirst().first());
+        QCOMPARE(page.total, 234); QCOMPARE(page.messages.size(), 100); QCOMPARE(page.messages.first().uid, 101);
+        QVERIFY(page.messages.first().document.rawSource.isEmpty()); QVERIFY(page.messages.first().document.parts.isEmpty());
+        query.page = 999; repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.query.page, 3); QCOMPARE(page.messages.size(), 34);
+        query.text = QStringLiteral("NEEDLE"); repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().uid, 234);
+        repository.loadMessage(page.messages.first()); QTRY_COMPARE(bodies.size(), 1);
+        QVERIFY(qvariant_cast<MailRecord>(bodies.first().first()).document.parts.first().text.contains(QStringLiteral("needle")));
+        query.text.clear(); query.unreadOnly = true; query.importantOnly = true;
+        repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 39);
+        query.unreadOnly = false; query.importantOnly = false; query.revealUid = 201; query.revealValidity = 10;
+        repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.query.page, 3);
+        QVERIFY(repository.beginSync(account.id, QStringLiteral("INBOX"), 20).isEmpty());
+        auto changed = records.first(); changed.uidValidity = 20;
+        QVERIFY(repository.stageMessages({changed}).isEmpty());
+        QVERIFY(!repository.commitSync(folders, 2).isEmpty()); repository.abortSync();
+        query.revealUid = 0; query.page = 1;
+        repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 234); QCOMPARE(page.messages.first().uidValidity, 10);
+        QVERIFY(repository.beginSync(account.id, QStringLiteral("INBOX"), 20).isEmpty());
+        QVERIFY(repository.stageMessages({changed}).isEmpty()); QVERIFY(repository.commitSync(folders, 1).isEmpty()); repository.abortSync();
+        repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().uidValidity, 20);
+    }
     void updatesAndDeletesAccount()
     {
         AccountRepository repository(QStringLiteral(":memory:"));

@@ -1,5 +1,19 @@
 # Windows SandboxのGUIチェック
 
+## 大量メール・ページ表示の追加検証
+
+最新記録は`build/paging-check/output-round2/`です。ネットワーク無効のWindows Sandboxのループバック合成サーバーで、1万34件の初回同期・キャッシュ本文再利用・途中切断時の旧公開保持と、15 MiB級9通（原文合計135 MiB超）の同期を確認しました。本文の取得窓は最大100件、通常8 MiB単位です。
+
+9 EXEで**104 passed / 0 failed / 0 skipped**（init/cleanup含む）。mainwindow 11、accountdialog 7、messageviewer 24、accountrepository 10、connectiontester 19、mailtransport 15、oauthclient 8、diagnostics 5、guismoke 5です。最後に追加したv1キャッシュ移行テストを含むaccountrepositoryは単独で再実行しています。ホスト非ネットワークCTest14対象とPython9テストも成功しました。
+
+ネイティブGUIでは1万34件を100件/ページで表示し、101ページ目の34件、フォルダ全体からの本文検索、0件/1件での入力無効、重要/未読のサーバ反映と拒否時の非変更、未読集計、最新クエリ優先、ページ外の元メールへの移動、同期中のGUIタイマー継続を確認しました。スクリーンショットは`screenshots/11-large-mailbox-last-page.png`と`12-large-mailbox-filter-and-flags.png`です。
+
+`memory-samples.txt`にはguest内のテストプロセスのWorking Set/Peak Working Set/Private Bytesを採取しています。合成サーバーとfixture、135 MiB級データを保持するテスト用インメモリSQLiteも含む値であり、製品のメモリ使用保証値ではありません。設計上の保持単位・残る制約・検索/スレッドのページ境界規則は`large-mailboxes.md`を参照してください。
+
+初回の単通取得による検証は往復回数が多かったため中断してguestを破棄し、本文のサイズ制限付き一括取得へ改善してから上記を再検証しました。実アカウントや認証登録JSONはどのguestにも共有していません。
+
+SDKなし・WindowsのみのPATHで通常アプリの空状態起動とトレイ終了も確認し、`normal-app-diagnostics/`に正常終了ログを回収しました。この作業で起動した2つのSandboxは両方とも終了済みです。
+
 ## UI仕様変更後の追加確認
 
 新しい実行記録は`build/ui-update-check/output/`です。従来ワークフローに加え、右クリック経由のアカウント編集、空の仮名フォルダ作成後の自動インライン入力、子フォルダ作成、改名、削除警告での取消/承認、アカウント削除とサーバメール不変を確認します。設定更新が失敗した際に既存のOS秘密情報が復元されるケースもguestだけでテストします。

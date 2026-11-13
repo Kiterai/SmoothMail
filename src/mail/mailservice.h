@@ -6,6 +6,7 @@
 #include <QThread>
 
 namespace smoothmail {
+class AccountRepository;
 class MailService final : public QObject
 {
     Q_OBJECT
@@ -13,7 +14,8 @@ public:
     explicit MailService(QString saslPluginDirectory, QObject *parent = nullptr);
     ~MailService() override;
     void test(const Account &account, const QString &smtpSecret, const QString &imapSecret);
-    void synchronize(const Account &account, const QString &imapSecret, const QString &folder = {});
+    void synchronize(const Account &account, const QString &imapSecret, const QString &folder = {}, AccountRepository *cache = nullptr);
+    void setMessageFlag(const Account &account, const QString &secret, const MailRecord &identity, bool importantFlag, bool enabled);
     void submit(const Account &account, const QString &secret, const ComposeData &draft, bool saveAsDraft);
     bool busy() const { return m_busy; }
     void changeFolder(const Account &account, const QString &secret, const QString &operation,
@@ -25,6 +27,8 @@ signals:
                       const QList<smoothmail::MailRecord> &messages, const QString &error);
     void submissionFinished(const QString &accountId, bool savedAsDraft, const QString &error);
     void folderChanged(const QString &accountId, const QString &error);
+    void syncProgress(const QString &accountId, qint64 completed, qint64 total);
+    void messageFlagChanged(const smoothmail::MailRecord &identity, bool importantFlag, bool enabled, const QString &error);
 private:
     QObject *m_worker;
     QThread m_thread;

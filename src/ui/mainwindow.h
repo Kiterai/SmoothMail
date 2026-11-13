@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include "core/account.h"
 #include "core/mailrecord.h"
+#include "core/mailpage.h"
 #include <QHash>
 #include <QSet>
 #include <optional>
@@ -12,6 +13,10 @@ class QSystemTrayIcon;
 class QStandardItemModel;
 class QTreeView;
 class QLabel;
+class QLineEdit;
+class QSpinBox;
+class QCheckBox;
+class QProgressBar;
 
 namespace smoothmail {
 
@@ -35,6 +40,11 @@ public:
     void setEditingState(bool undoAvailable, bool redoAvailable);
     void enableHistory(bool enabled);
     void revealMessage(const QString &accountId, const QString &folder, qint64 uidValidity, qint64 uid);
+    void setPagedStorage(bool enabled) { m_pagedStorage = enabled; }
+    void requestPage(bool reset = false);
+    void applyPage(const MailPage &page);
+    void displayLoadedMessage(const MailRecord &message, const QString &error);
+    void showSyncProgress(const QString &id, qint64 done, qint64 total);
 signals:
     void editAccountRequested(const QString &id);
     void deleteAccountRequested(const QString &id);
@@ -48,6 +58,9 @@ signals:
     void historyRequested();
     void downloadRequested(const smoothmail::MailRecord &message, const QString &partId);
     void reauthorizeRequested(const QString &accountId, const QString &protocol);
+    void pageRequested(const smoothmail::MailQuery &query);
+    void messageRequested(const smoothmail::MailRecord &identity);
+    void messageFlagRequested(const smoothmail::MailRecord &identity, bool importantFlag, bool enabled);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -83,6 +96,15 @@ private:
     Qt::SortOrder m_sortOrder = Qt::DescendingOrder;
     qint64 m_revealUid = 0, m_revealValidity = 0;
     bool m_exiting = false;
+    bool m_pagedStorage = false;
+    quint64 m_queryGeneration = 0;
+    QString m_filterText;
+    QLineEdit *m_filter = nullptr;
+    QSpinBox *m_page = nullptr;
+    QCheckBox *m_importantOnly = nullptr, *m_unreadOnly = nullptr;
+    QProgressBar *m_filterProgress = nullptr;
+    QLabel *m_pageRange = nullptr, *m_pageCount = nullptr;
+    std::optional<MailRecord> m_loadedMessage;
 };
 
 } // namespace smoothmail

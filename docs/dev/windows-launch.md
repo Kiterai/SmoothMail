@@ -7,7 +7,9 @@
 
 このフォルダは**Debugの開発用**です。Debug CRTを含むため、第三者への配布物ではありません。Release配布・完全なライセンス監査は別途必要です。Qt SDKは変更しません。
 
-UI仕様変更と同期診断の実装後に`build/local-run`を再配置しました。直前の手元用フォルダは`build/local-run-before-ui-update`へ移動して保存しています。最新の配置ログは`build/local-run-ui-update-final-stage.log`、EXE/PDBの対応保存は`build/ui-update-check/symbols/`です。新しい診断ログの場所と読み方は`sync-diagnostics.md`を参照してください。
+大量メールの分割同期/ページ表示への変更後も`build/start-smoothmail.cmd`が最新の`build/local-run`を起動します。更新直前のランタイムは`build/local-run-before-paging`に保存しました。配置ログは`build/local-run-paging-stage.log`、対応するEXE/PDBは`build/paging-check/symbols/`です。全配置ハッシュ・最新EXEとの一致・登録JSON/テストEXEの非混入を確認しています。SQLiteキャッシュのv2移行と旧版への切戻しの注意は`large-mailboxes.md`を参照してください。
+
+以前のUI仕様変更時の手元用フォルダは`build/local-run-before-ui-update`に保存しています。その時点の配置ログは`build/local-run-ui-update-final-stage.log`、EXE/PDBの対応保存は`build/ui-update-check/symbols/`です。新しい診断ログの場所と読み方は`sync-diagnostics.md`を参照してください。
 
 ## 再作成
 

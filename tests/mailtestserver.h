@@ -9,6 +9,7 @@
 #include <QSslCertificate>
 #include <QMap>
 #include <QSet>
+#include <limits>
 
 class MailTestTcpServer final : public QTcpServer
 {
@@ -34,6 +35,7 @@ public:
     {
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
             m_socket = qobject_cast<QSslSocket *>(m_server.nextPendingConnection());
+            m_socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
             m_socket->setLocalCertificate(certificate);
             m_socket->setPrivateKey(privateKey);
             m_socket->setPeerVerifyMode(QSslSocket::VerifyNone); // Test server does not require a client certificate.
@@ -97,6 +99,10 @@ public:
     qint64 advertisedMessageCount = -1;
     qint64 advertisedMessageSize = -1;
     bool disconnectOnBodyFetch = false;
+    QMap<qint64, QList<QByteArray>> messageFlags;
+    bool rejectFlagChanges = false;
+    int fullFetchCount = 0;
+    int maximumHeaderWindow = 0;
     qint64 uidValidity = 10;
     QMap<qint64, QByteArray> messages;
     bool provideDraftFolder = false;
@@ -214,24 +220,56 @@ private:
             else extraFolders.remove(source);
             write(m_tag + " OK changed");
         } else if (provideMailbox && command == "STATUS") {
-            write("* STATUS \"INBOX\" (UNSEEN " + QByteArray::number(messages.size()) + ')');
+            qint64 unseen = 0;
+            for (auto it = messages.cbegin(); it != messages.cend(); ++it) if (!messageFlags.value(it.key()).contains("\\Seen")) ++unseen;
+            write("* STATUS \"INBOX\" (UNSEEN " + QByteArray::number(unseen) + ')');
             write(m_tag + " OK status completed");
         } else if (provideMailbox && (command == "EXAMINE" || command == "SELECT")) {
             write("* FLAGS (\\Seen \\Flagged)");
             write("* " + QByteArray::number(advertisedMessageCount < 0 ? messages.size() : advertisedMessageCount) + " EXISTS");
             write("* OK [UIDVALIDITY " + QByteArray::number(uidValidity) + "] stable UIDs");
-            write(m_tag + " OK [READ-ONLY] selected");
-        } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "FETCH") {
+            write("* OK [UIDNEXT " + QByteArray::number(messages.isEmpty() ? 1 : messages.lastKey() + 1) + "] next UID");
+            write(m_tag + (command == "EXAMINE" ? " OK [READ-ONLY] selected" : " OK [READ-WRITE] selected"));
+        } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "STORE") {
+            if (rejectFlagChanges) { write(m_tag + " NO synthetic store rejected"); return; }
+            const auto uid = fields.value(commandIndex + 2).toLongLong();
+            if (messages.contains(uid)) {
+                const auto flag = line.contains("\\Flagged") ? QByteArray("\\Flagged") : QByteArray("\\Seen");
+                auto &flags = messageFlags[uid];
+                if (line.contains("+FLAGS")) { if (!flags.contains(flag)) flags.append(flag); }
+                else flags.removeAll(flag);
+                write("* 1 FETCH (UID " + QByteArray::number(uid) + " FLAGS (" + flags.join(' ') + "))");
+            }
+            write(m_tag + " OK store completed");
+        } else if (provideMailbox && (command == "FETCH" || (command == "UID" && fields.value(commandIndex + 1) == "FETCH"))) {
             if (disconnectOnBodyFetch && !line.contains("HEADER")) { m_socket->disconnectFromHost(); return; }
-            const auto requested = fields.value(commandIndex + 2);
+            const bool uidBased = command == "UID";
+            const auto requested = fields.value(commandIndex + (uidBased ? 2 : 1));
+            const auto range = requested.split(':');
+            const auto first = range.value(0).toLongLong();
+            const auto last = range.size() > 1 ? (range.value(1) == "*" ? std::numeric_limits<qint64>::max() : range.value(1).toLongLong()) : first;
+            QList<QPair<qint64, qint64>> intervals;
+            for (const auto &interval : requested.split(',')) {
+                const auto ends = interval.split(':'); const auto low = ends.value(0).toLongLong();
+                const auto high = ends.size() > 1 ? (ends.value(1) == "*" ? std::numeric_limits<qint64>::max() : ends.value(1).toLongLong()) : low;
+                intervals.append({low, high});
+            }
+            if (line.contains("HEADER")) maximumHeaderWindow = qMax(maximumHeaderWindow, int(qMin<qint64>(100000, last - first + 1)));
             int sequence = 0;
-            for (auto item = messages.cbegin(); item != messages.cend(); ++item) {
+            auto begin = uidBased && !requested.contains(',') && range.size() == 1 ? messages.constFind(first) : messages.cbegin();
+            for (auto item = begin; item != messages.cend(); ++item) {
                 ++sequence;
-                if (requested != "1:*" && requested.toLongLong() != item.key()) continue;
+                const auto position = uidBased ? item.key() : sequence;
+                bool included = false;
+                for (const auto &interval : intervals) {
+                    if (position >= interval.first && position <= interval.second) { included = true; break; }
+                }
+                if (!included) continue;
                 const bool headersOnly = line.contains("HEADER");
+                if (!headersOnly) ++fullFetchCount;
                 const auto raw = headersOnly ? item.value().left(item.value().indexOf("\r\n\r\n") + 4) : item.value();
                 write("* " + QByteArray::number(sequence) + " FETCH (UID " + QByteArray::number(item.key())
-                      + " RFC822.SIZE " + QByteArray::number(advertisedMessageSize < 0 ? item.value().size() : advertisedMessageSize) + " FLAGS () "
+                      + " RFC822.SIZE " + QByteArray::number(advertisedMessageSize < 0 ? item.value().size() : advertisedMessageSize) + " FLAGS (" + messageFlags.value(item.key()).join(' ') + ") "
                       + (headersOnly ? "BODY[HEADER] {" : "BODY[] {") + QByteArray::number(raw.size()) + '}');
                 m_socket->write(raw);
                 write(")");

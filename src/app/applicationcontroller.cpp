@@ -23,6 +23,34 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
       m_mail(new MailService(plugins, this)), m_authentication(new AuthenticationBroker(m_credentials, this)),
       m_authorization(new OAuthClient(this))
 {
+    window->setPagedStorage(true);
+    connect(window, &MainWindow::pageRequested, m_repository, &AccountRepository::loadPage);
+    connect(m_repository, &AccountRepository::pageLoaded, window, &MainWindow::applyPage);
+    connect(window, &MainWindow::messageRequested, m_repository, &AccountRepository::loadMessage);
+    connect(m_repository, &AccountRepository::messageLoaded, window, &MainWindow::displayLoadedMessage);
+    connect(m_mail, &MailService::syncProgress, window, &MainWindow::showSyncProgress);
+    connect(window, &MainWindow::messageFlagRequested, this, [this](const MailRecord &identity, bool importantFlag, bool enabled) {
+        if (!canManage()) return;
+        Account account; for (const auto &candidate : m_accounts) if (candidate.id == identity.accountId) account = candidate;
+        if (account.id.isEmpty()) return;
+        m_submissionWaiting = true;
+        const QPointer<ApplicationController> guard(this);
+        m_authentication->acquire(account, QStringLiteral("imap"), [guard, account, identity, importantFlag, enabled](const QString &secret, const QString &error) {
+            if (!guard) return;
+            if (!error.isEmpty()) { guard->m_submissionWaiting = false; guard->m_window->statusBar()->showMessage(error); guard->processNext(); return; }
+            guard->m_mail->setMessageFlag(account, secret, identity, importantFlag, enabled);
+        });
+    });
+    connect(m_mail, &MailService::messageFlagChanged, this, [this](const MailRecord &identity, bool importantFlag, bool enabled, const QString &error) {
+        if (!error.isEmpty()) { m_submissionWaiting = false; m_window->statusBar()->showMessage(error); processNext(); return; }
+        m_repository->updateFlags(identity, importantFlag ? identity.seen : enabled, importantFlag ? enabled : identity.important);
+    });
+    connect(m_repository, &AccountRepository::flagsUpdated, this, [this](const MailRecord &identity, const QString &error) {
+        m_submissionWaiting = false;
+        if (error.isEmpty()) { m_repository->loadCache(identity.accountId, true); m_window->requestPage(); }
+        else { m_window->statusBar()->showMessage(error); refresh(identity.accountId, identity.folder); }
+        processNext();
+    });
     window->enableAccountManagement(true);
     window->enableHistory(true);
     connect(m_repository, &AccountRepository::loaded, this, [this](const QList<Account> &accounts) {
@@ -35,7 +63,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_window->clearAccountCache(id); refresh(id, {});
         }
         for (const auto &account : accounts) if (!existing.contains(account.id)) {
-            m_repository->loadCache(account.id);
+            m_repository->loadCache(account.id, true);
             refresh(account.id, {});
         }
     });
@@ -219,7 +247,11 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders,
                const QList<MailRecord> &messages, const QString &error) {
             if (error.isEmpty()) {
-                m_repository->saveSnapshot(id, folder, folders, messages);
+                // The mail worker already atomically published the disk-backed
+                // batches. Never send the complete mailbox through the GUI.
+                m_window->setRefreshing(id, false);
+                m_window->applySnapshot(id, folder, folders, {}, {});
+                m_current = {}; processNext();
             } else {
                 m_authentication->invalidate(id);
                 m_window->setRefreshing(id, false);
@@ -240,6 +272,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
 ApplicationController::~ApplicationController()
 {
     // Stop mail workers before dependencies and the GUI callbacks disappear.
+    m_repository->cancelPendingReads();
     delete m_mail;
     delete m_authorization;
     delete m_authentication;
@@ -372,7 +405,7 @@ void ApplicationController::processNext()
                 guard->processNext();
                 return;
             }
-            guard->m_mail->synchronize(account, secret, guard->m_current.folder);
+            guard->m_mail->synchronize(account, secret, guard->m_current.folder, guard->m_repository);
         });
 }
 

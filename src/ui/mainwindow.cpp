@@ -25,6 +25,14 @@
 #include <QStyledItemDelegate>
 #include <QPersistentModelIndex>
 #include <QUuid>
+#include <QLineEdit>
+#include <QSpinBox>
+#include <QCheckBox>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QSignalBlocker>
 #include "core/diagnostics.h"
 #include <algorithm>
 #include <functional>
@@ -200,14 +208,34 @@ void MainWindow::createPanes()
         m_accountId = id;
         m_folder = name;
         m_revealUid = 0; m_revealValidity = 0;
+        if (m_pagedStorage) { m_loadedMessage.reset(); requestPage(true); }
         findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!name.isEmpty());
-        rebuildMessages();
+        if (!m_pagedStorage) rebuildMessages();
         if (!name.isEmpty()) emit refreshRequested(id, name);
     });
 
     auto *vertical = new QSplitter(Qt::Vertical, horizontal);
     vertical->setObjectName(QStringLiteral("mailSplitter"));
-    auto *messages = new QTreeView(vertical);
+    auto *listPane = new QWidget(vertical);
+    auto *listLayout = new QVBoxLayout(listPane); listLayout->setContentsMargins(0, 0, 0, 0);
+    auto *toolbar = new QHBoxLayout;
+    m_filter = new QLineEdit(listPane); m_filter->setObjectName(QStringLiteral("mailFilter")); m_filter->setPlaceholderText(QStringLiteral("検索文字列")); m_filter->setMaximumWidth(180);
+    auto *search = new QPushButton(QStringLiteral("検索"), listPane); search->setObjectName(QStringLiteral("mailSearch"));
+    m_importantOnly = new QCheckBox(QStringLiteral("重要のみ"), listPane); m_importantOnly->setObjectName(QStringLiteral("importantOnly"));
+    m_unreadOnly = new QCheckBox(QStringLiteral("未読のみ"), listPane); m_unreadOnly->setObjectName(QStringLiteral("unreadOnly"));
+    m_filterProgress = new QProgressBar(listPane); m_filterProgress->setObjectName(QStringLiteral("filterProgress")); m_filterProgress->setRange(0, 0); m_filterProgress->setMaximumWidth(60); m_filterProgress->hide();
+    m_pageRange = new QLabel(QStringLiteral("0 - 0 / 0件"), listPane); m_pageRange->setObjectName(QStringLiteral("pageRange"));
+    m_page = new QSpinBox(listPane); m_page->setObjectName(QStringLiteral("mailPage")); m_page->setRange(1, 1); m_page->setEnabled(false); m_page->setKeyboardTracking(false);
+    m_pageCount = new QLabel(QStringLiteral("/ 1"), listPane); m_pageCount->setObjectName(QStringLiteral("pageCount"));
+    toolbar->addWidget(m_filter, 1); toolbar->addWidget(search); toolbar->addWidget(m_importantOnly); toolbar->addWidget(m_unreadOnly); toolbar->addWidget(m_filterProgress);
+    toolbar->addStretch(); toolbar->addWidget(m_pageRange); toolbar->addWidget(m_page); toolbar->addWidget(m_pageCount);
+    listLayout->addLayout(toolbar);
+    const auto applyFilter = [this] { m_filterText = m_filter->text(); requestPage(true); };
+    connect(search, &QPushButton::clicked, this, applyFilter); connect(m_filter, &QLineEdit::returnPressed, this, applyFilter);
+    connect(m_importantOnly, &QCheckBox::toggled, this, [this] { requestPage(true); });
+    connect(m_unreadOnly, &QCheckBox::toggled, this, [this] { requestPage(true); });
+    connect(m_page, &QSpinBox::valueChanged, this, [this] { requestPage(); });
+    auto *messages = new QTreeView(listPane); listLayout->addWidget(messages);
     m_messageView = messages;
     messages->setObjectName(QStringLiteral("messageList"));
     auto *messageModel = new QStandardItemModel(messages);
@@ -231,7 +259,7 @@ void MainWindow::createPanes()
             m_sortOrder = m_sortColumn == section && m_sortOrder == Qt::AscendingOrder
                 ? Qt::DescendingOrder : Qt::AscendingOrder;
             m_sortColumn = section;
-            messageModel->sort(m_sortColumn, m_sortOrder);
+            if (m_pagedStorage) requestPage(true); else messageModel->sort(m_sortColumn, m_sortOrder);
         }
         header->setSortIndicator(m_sortColumn, m_sortOrder);
     });
@@ -249,7 +277,22 @@ void MainWindow::createPanes()
         const int record = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
         findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(index.isValid());
         if (!index.isValid() || record < 0 || record >= m_visibleMessages.size()) { viewer->clear(); return; }
-        viewer->displayMessage(m_visibleMessages.at(record).document);
+        if (m_pagedStorage) {
+            const auto &identity = m_visibleMessages.at(record);
+            if (m_loadedMessage && m_loadedMessage->accountId == identity.accountId && m_loadedMessage->folder == identity.folder
+                && m_loadedMessage->uidValidity == identity.uidValidity && m_loadedMessage->uid == identity.uid) viewer->displayMessage(m_loadedMessage->document);
+            else {
+                m_loadedMessage.reset(); viewer->clear(); findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(false);
+                emit messageRequested(identity);
+            }
+        } else viewer->displayMessage(m_visibleMessages.at(record).document);
+    });
+    connect(messages, &QTreeView::clicked, this, [this](const QModelIndex &index) {
+        if (index.column() > 1) return;
+        const int row = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
+        if (row < 0 || row >= m_visibleMessages.size()) return;
+        const auto identity = m_visibleMessages.at(row);
+        emit messageFlagRequested(identity, index.column() == 0, index.column() == 0 ? !identity.important : !identity.seen);
     });
     horizontal->setSizes({250, 850});
     vertical->setSizes({300, 400});
@@ -305,13 +348,13 @@ void MainWindow::applySnapshot(const QString &id, const QString &folder, const Q
     QStringList present;
     for (const auto &item : folders) present.append(item.name);
     for (const auto &cached : m_mailCache[id].keys()) if (!present.contains(cached)) m_mailCache[id].remove(cached);
-    m_mailCache[id][folder] = messages;
+    if (!m_pagedStorage) m_mailCache[id][folder] = messages;
     const bool visible = m_accountId.isEmpty() || (m_accountId == id && (m_folder.isEmpty() || m_folder == folder));
     if (visible) { m_accountId = id; m_folder = folder; }
     findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!m_accountId.isEmpty() && !m_folder.isEmpty());
     if (remoteUpdate) m_lastSuccess = QDateTime::currentDateTime();
     rebuildFolders();
-    if (visible) rebuildMessages();
+    if (visible) { if (m_pagedStorage) requestPage(); else rebuildMessages(); }
     if (remoteUpdate && m_pendingCreateId == id && present.contains(m_pendingCreateName)) {
         const auto name = m_pendingCreateName;
         cancelPendingFolderEdit();
@@ -320,7 +363,7 @@ void MainWindow::applySnapshot(const QString &id, const QString &folder, const Q
             for (const auto &index : matches) if (index.data(Qt::UserRole).toString() == id) { editFolder(index, false); break; }
         });
     }
-    if (visible && remoteUpdate && m_revealUid > 0) {
+    if (!m_pagedStorage && visible && remoteUpdate && m_revealUid > 0) {
         m_revealUid = 0;
         statusBar()->showMessage(QStringLiteral("元メッセージが見つからないか、UIDVALIDITYが変更されています。"));
         return;
@@ -333,7 +376,56 @@ std::optional<MailRecord> MainWindow::selectedMessage() const
     const auto index = m_messageView->currentIndex();
     const int record = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
     if (!index.isValid() || record < 0 || record >= m_visibleMessages.size()) return std::nullopt;
-    return m_visibleMessages.at(record);
+    const auto &identity = m_visibleMessages.at(record);
+    if (m_pagedStorage && m_loadedMessage && m_loadedMessage->accountId == identity.accountId && m_loadedMessage->folder == identity.folder
+        && m_loadedMessage->uidValidity == identity.uidValidity && m_loadedMessage->uid == identity.uid) return m_loadedMessage;
+    return identity;
+}
+
+void MainWindow::requestPage(bool reset)
+{
+    if (!m_pagedStorage) return;
+    if (m_accountId.isEmpty() || m_folder.isEmpty()) {
+        ++m_queryGeneration; m_filterProgress->hide(); m_loadedMessage.reset(); m_mailCache.clear();
+        { const QSignalBlocker block(m_page); m_page->setRange(1, 1); m_page->setValue(1); m_page->setEnabled(false); }
+        m_pageRange->setText(QStringLiteral("0 - 0 / 0件")); m_pageCount->setText(QStringLiteral("/ 1")); rebuildMessages(); return;
+    }
+    if (reset) { const QSignalBlocker block(m_page); m_page->setValue(1); }
+    MailQuery query; query.accountId = m_accountId; query.folder = m_folder; query.text = m_filterText;
+    query.page = m_page->value(); query.sortColumn = m_sortColumn; query.order = m_sortOrder;
+    query.importantOnly = m_importantOnly->isChecked(); query.unreadOnly = m_unreadOnly->isChecked(); query.generation = ++m_queryGeneration;
+    query.revealUid = m_revealUid; query.revealValidity = m_revealValidity;
+    m_filterProgress->show(); emit pageRequested(query);
+}
+void MainWindow::applyPage(const MailPage &page)
+{
+    if (page.query.generation != m_queryGeneration || page.query.accountId != m_accountId || page.query.folder != m_folder) return;
+    m_filterProgress->hide();
+    if (!page.error.isEmpty()) { statusBar()->showMessage(QStringLiteral("検索に失敗しました: ") + page.error); return; }
+    const auto pages = qMax<qint64>(1, (page.total + MailPageSize - 1) / MailPageSize);
+    { const QSignalBlocker block(m_page); m_page->setRange(1, int(pages)); m_page->setValue(page.query.page); m_page->setEnabled(pages > 1); }
+    m_pageCount->setText(QStringLiteral("/ %1").arg(pages));
+    const auto start = page.total ? qint64(page.query.page - 1) * MailPageSize + 1 : 0;
+    m_pageRange->setText(QStringLiteral("%1 - %2 / %3件").arg(start).arg(page.total ? start + page.messages.size() - 1 : 0).arg(page.total));
+    m_mailCache.clear(); m_mailCache[m_accountId][m_folder] = page.messages;
+    rebuildMessages();
+    if (page.query.revealUid > 0 && m_revealUid > 0) {
+        m_revealUid = 0; statusBar()->showMessage(QStringLiteral("元メッセージが見つからないか、UIDVALIDITYが変更されています。"));
+    }
+}
+void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &error)
+{
+    const auto selected = selectedMessage();
+    if (!selected || selected->accountId != message.accountId || selected->folder != message.folder
+        || selected->uidValidity != message.uidValidity || selected->uid != message.uid) return;
+    if (!error.isEmpty()) { statusBar()->showMessage(error); return; }
+    m_loadedMessage = message; findChild<MessageViewer *>()->displayMessage(message.document);
+    findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(true);
+}
+void MainWindow::showSyncProgress(const QString &id, qint64 done, qint64 total)
+{
+    for (const auto &account : m_accounts) if (account.id == id)
+        statusBar()->showMessage(QStringLiteral("%1 のデータを取得中... %2 / %3件").arg(account.email).arg(done).arg(total));
 }
 
 void MainWindow::rebuildFolders()
@@ -392,9 +484,11 @@ void MainWindow::rebuildFolders()
 
 void MainWindow::clearAccountCache(const QString &id)
 {
+    if (m_accountId == id) { ++m_queryGeneration; m_loadedMessage.reset(); }
     m_mailCache.remove(id); m_folderCache.remove(id); m_syncErrors.remove(id); m_refreshing.remove(id);
     if (m_accountId == id) {
         m_accountId.clear(); m_folder.clear(); rebuildMessages();
+        if (m_pagedStorage) requestPage();
         findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(false);
     }
 }
@@ -493,7 +587,7 @@ void MainWindow::rebuildMessages()
         if (parents.at(i) >= 0) rows[parents.at(i)].first()->appendRow(rows.at(i));
         else m_messageModel->appendRow(rows.at(i));
     }
-    m_messageModel->sort(m_sortColumn, m_sortOrder);
+    if (!m_pagedStorage) m_messageModel->sort(m_sortColumn, m_sortOrder);
     if (m_revealUid > 0) { previousUid = m_revealUid; previousValidity = m_revealValidity; previousAccount = m_accountId; previousFolder = m_folder; }
     for (qsizetype i = 0; i < m_visibleMessages.size(); ++i) {
         if (m_visibleMessages.at(i).uid == previousUid && m_visibleMessages.at(i).uidValidity == previousValidity
@@ -520,6 +614,11 @@ void MainWindow::enableHistory(bool enabled)
 void MainWindow::revealMessage(const QString &id, const QString &folder, qint64 validity, qint64 uid)
 {
     m_accountId = id; m_folder = folder; m_revealUid = uid; m_revealValidity = validity;
+    if (m_pagedStorage) {
+        m_filter->clear(); m_filterText.clear();
+        { const QSignalBlocker a(m_importantOnly), b(m_unreadOnly); m_importantOnly->setChecked(false); m_unreadOnly->setChecked(false); }
+        rebuildFolders(); requestPage(true); return;
+    }
     rebuildFolders(); rebuildMessages();
     emit refreshRequested(id, folder);
 }

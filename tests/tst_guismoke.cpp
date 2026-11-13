@@ -5,6 +5,7 @@
 #include "ui/downloadhistorydialog.h"
 #include "ui/mainwindow.h"
 #include "storage/accountregistrar.h"
+#include "mail/mimeparser.h"
 
 #include <QAction>
 #include <QApplication>
@@ -32,6 +33,8 @@
 #include <QUuid>
 #include <QMessageBox>
 #include <QContextMenuEvent>
+#include <QCheckBox>
+#include <QProgressBar>
 #include <QtTest>
 
 using namespace smoothmail;
@@ -152,16 +155,16 @@ private slots:
         auto root = subjectIndex(messages, subject); QVERIFY(root.isValid());
         messages->setCurrentIndex(root);
         auto *body = window.findChild<QTextBrowser *>(QStringLiteral("messageBody"));
-        QVERIFY(body->toPlainText().contains(QStringLiteral("Sandbox plain body")));
+        QTRY_VERIFY(body->toPlainText().contains(QStringLiteral("Sandbox plain body")));
         auto *headersButton = window.findChild<QToolButton *>(QStringLiteral("headerToggle"));
         QVERIFY(headersButton); QTest::mouseClick(headersButton, Qt::LeftButton);
         capture(QStringLiteral("03-populated-main-headers"));
         auto *header = messages->header();
         const QPoint subjectHeader(header->sectionViewportPosition(3) + header->sectionSize(3) / 2, header->height() / 2);
         QTest::mouseClick(header->viewport(), Qt::LeftButton, Qt::NoModifier, subjectHeader);
-        QCOMPARE(messages->model()->index(0, 3).data().toString(), subject);
+        QTRY_COMPARE(messages->model()->index(0, 3).data().toString(), subject);
         QTest::mouseClick(header->viewport(), Qt::LeftButton, Qt::NoModifier, subjectHeader);
-        QCOMPARE(messages->model()->index(0, 3).data().toString(), QStringLiteral("Sandbox reply"));
+        QTRY_COMPARE(messages->model()->index(0, 3).data().toString(), QStringLiteral("Sandbox reply"));
         action(window, "threadAction")->setChecked(true);
         QCOMPARE(messages->model()->rowCount(), 1);
         QCOMPARE(messages->model()->rowCount(messages->model()->index(0, 0)), 1);
@@ -173,6 +176,7 @@ private slots:
         action(window, "autoRefreshAction")->setChecked(false);
         QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         messages->setCurrentIndex(subjectIndex(messages, subject));
+        QTRY_VERIFY(action(window, "replyAction")->isEnabled());
         action(window, "replyAction")->trigger();
         QPointer<ComposeDialog> compose = window.findChild<ComposeDialog *>();
         QVERIFY(compose); QVERIFY(QTest::qWaitForWindowExposed(compose));
@@ -278,6 +282,85 @@ private slots:
         contextAction(folders, folders->model()->index(0, 0), QStringLiteral("アカウントの削除"));
         QTRY_COMPARE_WITH_TIMEOUT(folders->model()->rowCount(), 0, 10000);
         QCOMPARE(imap.messages.size(), 2); // Account deletion never deletes server mail.
+    }
+    void paginatesAndFiltersLargeMailboxWithoutBlockingGui()
+    {
+        constexpr int count = 10034;
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true;
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("large@example.test"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), 0, QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        QList<MailRecord> records;
+        for (int i = 1; i <= count; ++i) {
+            const auto raw = "From: Large <fixture@example.test>\r\nSubject: Large " + QByteArray::number(i).rightJustified(5, '0')
+                + "\r\nMessage-ID: <large-" + QByteArray::number(i) + "@example.test>\r\n\r\n" + (i == count ? "unique needle body" : "ordinary body");
+            server.messages.insert(i, raw);
+            auto &flags = server.messageFlags[i]; if (i % 3) flags.append("\\Seen"); if (!(i % 2)) flags.append("\\Flagged");
+            const auto parsed = MimeParser::parse(raw); QVERIFY(parsed.ok());
+            records.append({account.id, QStringLiteral("INBOX"), 10, i, bool(i % 3), !(i % 2), parsed.message});
+        }
+        QVERIFY(server.listen()); account.imap.port = server.port();
+        QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("large.sqlite"));
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved);
+            repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+            repository.saveSnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, count / 3}}, records);
+            QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 30000);
+        }
+        records.clear();
+        CredentialStore credentials;
+        for (const auto &protocol : {QStringLiteral("imap"), QStringLiteral("smtp")}) {
+            bool done = false; QString error;
+            credentials.write(AccountRegistrar::secretKey(account.id, protocol), QStringLiteral("sandbox-only-dummy"), [&](const QString &, const QString &value) { error = value; done = true; });
+            QTRY_VERIFY(done); QVERIFY(error.isEmpty());
+        }
+        {
+            MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+            int ticks = 0; QTimer heartbeat; heartbeat.setInterval(10); connect(&heartbeat, &QTimer::timeout, &window, [&] { ++ticks; }); heartbeat.start();
+            window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+            auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+            auto *page = window.findChild<QSpinBox *>(QStringLiteral("mailPage"));
+            auto *range = window.findChild<QLabel *>(QStringLiteral("pageRange"));
+            QTRY_COMPARE_WITH_TIMEOUT(view->model()->rowCount(), 100, 30000);
+            QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 240000);
+            QVERIFY(ticks > 5); QCOMPARE(server.fullFetchCount, 0); // Cache restoration did not load all bodies.
+            auto *folders = window.findChild<QTreeView *>(QStringLiteral("folderTree"));
+            QTRY_VERIFY(folders->model()->index(0, 0).data().toString().endsWith(QStringLiteral("(3344)")));
+            QCOMPARE(page->maximum(), 101); QVERIFY(page->isEnabled());
+            QTest::mouseClick(page, Qt::LeftButton); QTest::keyClick(page, Qt::Key_A, Qt::ControlModifier); QTest::keyClicks(page, "101"); QTest::keyClick(page, Qt::Key_Return);
+            QTRY_COMPARE(view->model()->rowCount(), 34); QCOMPARE(range->text(), QStringLiteral("10001 - 10034 / 10034件"));
+            capture(QStringLiteral("11-large-mailbox-last-page"));
+            auto *filter = window.findChild<QLineEdit *>(QStringLiteral("mailFilter"));
+            auto *search = window.findChild<QPushButton *>(QStringLiteral("mailSearch"));
+            filter->setText(QStringLiteral("UNIQUE NEEDLE")); QTest::mouseClick(search, Qt::LeftButton);
+            QVERIFY(window.findChild<QProgressBar *>(QStringLiteral("filterProgress"))->isVisible());
+            QTRY_COMPARE(view->model()->rowCount(), 1); QCOMPARE(range->text(), QStringLiteral("1 - 1 / 1件")); QVERIFY(!page->isEnabled());
+            view->setCurrentIndex(view->model()->index(0, 3));
+            auto *body = window.findChild<QTextBrowser *>(QStringLiteral("messageBody"));
+            QTRY_VERIFY(body->toPlainText().contains(QStringLiteral("unique needle body")));
+            const auto clickBadge = [&](int column) { const auto index = view->model()->index(0, column); QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, view->visualRect(index).center()); };
+            clickBadge(0); QTRY_VERIFY(!server.messageFlags.value(count).contains("\\Flagged")); QTRY_VERIFY(view->model()->index(0, 0).data().toString().isEmpty());
+            clickBadge(1); QTRY_VERIFY(!server.messageFlags.value(count).contains("\\Seen")); QTRY_COMPARE(view->model()->index(0, 1).data().toString(), QStringLiteral("●"));
+            QTRY_VERIFY(folders->model()->index(0, 0).data().toString().endsWith(QStringLiteral("(3345)")));
+            server.rejectFlagChanges = true; clickBadge(0);
+            QTRY_VERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("failed")));
+            QVERIFY(view->model()->index(0, 0).data().toString().isEmpty()); server.rejectFlagChanges = false;
+            capture(QStringLiteral("12-large-mailbox-filter-and-flags"));
+            filter->clear(); QTest::mouseClick(search, Qt::LeftButton);
+            auto *important = window.findChild<QCheckBox *>(QStringLiteral("importantOnly"));
+            auto *unread = window.findChild<QCheckBox *>(QStringLiteral("unreadOnly"));
+            important->setChecked(true); unread->setChecked(true);
+            QTRY_COMPARE(range->text(), QStringLiteral("1 - 100 / 1672件"));
+            // Stale intermediate query results cannot overwrite the latest filter.
+            filter->setText(QStringLiteral("absent fixture")); QTest::mouseClick(search, Qt::LeftButton);
+            QTRY_COMPARE(range->text(), QStringLiteral("0 - 0 / 0件")); QCOMPARE(view->model()->rowCount(), 0); QVERIFY(!page->isEnabled());
+            window.revealMessage(account.id, QStringLiteral("INBOX"), 10, 1);
+            QTRY_VERIFY(window.selectedMessage().has_value()); QTRY_COMPARE(window.selectedMessage()->uid, 1);
+            QCOMPARE(page->value(), 101); // Source navigation can cross pages and clear filters.
+        }
+        for (const auto &protocol : {QStringLiteral("imap"), QStringLiteral("smtp")}) {
+            bool done = false; credentials.remove(AccountRegistrar::secretKey(account.id, protocol), [&](const QString &, const QString &) { done = true; }); QTRY_VERIFY(done);
+        }
     }
     void failedEditRestoresExistingCredentials()
     {

@@ -8,12 +8,44 @@
 #include <QtTest>
 #include <QMimeData>
 #include <QHeaderView>
+#include <QSpinBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QCheckBox>
 
 class MainWindowTest final : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void paginationIgnoresStaleResultsAndResetsFilters()
+    {
+        using namespace smoothmail;
+        MainWindow window(false); window.setPagedStorage(true);
+        Account account; account.id = QStringLiteral("pages"); account.email = QStringLiteral("pages@example.test"); window.setAccounts({account});
+        QSignalSpy requests(&window, &MainWindow::pageRequested);
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {});
+        QCOMPARE(requests.size(), 1);
+        MailPage initial; initial.query = qvariant_cast<MailQuery>(requests.last().first()); initial.total = 234;
+        for (int i = 1; i <= 100; ++i) { MailRecord row{account.id, QStringLiteral("INBOX"), 10, i}; row.document.subject = QString::number(i); initial.messages.append(row); }
+        window.applyPage(initial);
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+        auto *page = window.findChild<QSpinBox *>(QStringLiteral("mailPage"));
+        auto *range = window.findChild<QLabel *>(QStringLiteral("pageRange"));
+        QCOMPARE(view->model()->rowCount(), 100); QCOMPARE(page->maximum(), 3); QCOMPARE(range->text(), QStringLiteral("1 - 100 / 234件"));
+        page->setValue(3); QCOMPARE(requests.size(), 2);
+        MailPage last = initial; last.query = qvariant_cast<MailQuery>(requests.last().first()); last.messages = last.messages.mid(0, 34);
+        window.applyPage(last); QCOMPARE(view->model()->rowCount(), 34); QCOMPARE(range->text(), QStringLiteral("201 - 234 / 234件"));
+        window.applyPage(initial); QCOMPARE(view->model()->rowCount(), 34); QCOMPARE(page->value(), 3);
+        window.findChild<QLineEdit *>(QStringLiteral("mailFilter"))->setText(QStringLiteral("日本語")); QCOMPARE(requests.size(), 2);
+        window.findChild<QPushButton *>(QStringLiteral("mailSearch"))->click();
+        auto query = qvariant_cast<MailQuery>(requests.last().first()); QCOMPARE(query.text, QStringLiteral("日本語")); QCOMPARE(query.page, 1);
+        window.findChild<QCheckBox *>(QStringLiteral("importantOnly"))->setChecked(true);
+        query = qvariant_cast<MailQuery>(requests.last().first()); QVERIFY(query.importantOnly);
+        MailPage empty; empty.query = query; window.applyPage(empty);
+        QCOMPARE(range->text(), QStringLiteral("0 - 0 / 0件")); QVERIFY(!page->isEnabled()); QCOMPARE(view->model()->rowCount(), 0);
+    }
     void lastRemoteErrorSurvivesCacheAndRetry()
     {
         smoothmail::MainWindow window(false);
