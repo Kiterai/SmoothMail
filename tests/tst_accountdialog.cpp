@@ -62,8 +62,12 @@ private slots:
         AccountDialog dialog;
         auto *buttons = dialog.findChild<QDialogButtonBox *>();
         QSignalSpy submitted(&dialog, &AccountDialog::saveRequested);
+        auto *test = dialog.findChild<QPushButton *>(QStringLiteral("connectionTest"));
+        QVERIFY(test->font().bold()); QCOMPARE(test->text(), QStringLiteral("接続テスト: 未"));
+        QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
         buttons->button(QDialogButtonBox::Ok)->click();
         QVERIFY(submitted.isEmpty());
+        test->click();
         QVERIFY(!dialog.findChild<QLabel *>(QStringLiteral("accountError"))->text().isEmpty());
         dialog.findChild<QLineEdit *>(QStringLiteral("accountEmail"))->setText(QStringLiteral("test@example.test"));
         for (const auto &prefix : {QStringLiteral("SMTP"), QStringLiteral("IMAP4")}) {
@@ -71,6 +75,9 @@ private slots:
             dialog.findChild<QLineEdit *>(prefix + QStringLiteral("User"))->setText(QStringLiteral("test@example.test"));
             dialog.findChild<QLineEdit *>(prefix + QStringLiteral("Password"))->setText(QStringLiteral("dummy"));
         }
+        QSignalSpy tested(&dialog, &AccountDialog::testRequested), oauth(&dialog, &AccountDialog::oauthRequested);
+        test->click(); QCOMPARE(tested.size(), 1); QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
+        dialog.testFinished({}, {}); QCOMPARE(test->text(), QStringLiteral("接続テスト: ✓")); QVERIFY(buttons->button(QDialogButtonBox::Ok)->isEnabled());
         buttons->button(QDialogButtonBox::Ok)->click();
         QCOMPARE(submitted.size(), 1);
         QVERIFY(!buttons->isEnabled());
@@ -79,16 +86,35 @@ private slots:
         QCOMPARE(dialog.findChild<QLabel *>(QStringLiteral("accountError"))->text(), QStringLiteral("permission denied"));
         auto *auth = dialog.findChild<QComboBox *>(QStringLiteral("SMTPAuthentication"));
         auth->setCurrentIndex(auth->findData(int(AuthenticationMode::OAuth2)));
+        QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled()); QCOMPARE(test->text(), QStringLiteral("接続テスト: 未"));
+        QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("SMTPOAuthAuthorize")));
         QVERIFY(dialog.findChild<QLineEdit *>(QStringLiteral("SMTPPassword"))->text().isEmpty());
         QVERIFY(!dialog.findChild<QLineEdit *>(QStringLiteral("SMTPPassword"))->isEnabled());
         const auto grant = QStringLiteral("{\"kind\":\"oauth-refresh-v1\",\"refresh_token\":\"dummy-refresh\"}");
+        test->click(); QCOMPARE(oauth.size(), 1); QCOMPARE(tested.size(), 1);
         dialog.oauthFinished(true, grant, QStringLiteral("dummy-client"), {});
+        QCOMPARE(tested.size(), 2); QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
+        dialog.testFinished({}, {});
         QCOMPARE(dialog.account().smtp.oauthProvider, QStringLiteral("google"));
         QCOMPARE(dialog.account().smtp.oauthClientId, QStringLiteral("dummy-client"));
         buttons->button(QDialogButtonBox::Ok)->click();
         QCOMPARE(submitted.size(), 2);
         QCOMPARE(submitted.last().at(1).toString(), grant);
         dialog.saveFinished(QStringLiteral("test error"));
+        dialog.findChild<QLineEdit *>(QStringLiteral("SMTPHost"))->setText(QStringLiteral("changed.example.test")); QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
+    }
+    void oauthTestChainsProtocolsAndCancellationCannotEnableSave()
+    {
+        AccountDialog dialog; auto value = dialog.account(); value.email = QStringLiteral("oauth@example.test");
+        for (auto *server : {&value.smtp, &value.imap}) { server->host = QStringLiteral("mail.example.test"); server->user = value.email; server->authentication = AuthenticationMode::OAuth2; server->oauthProvider = QStringLiteral("google"); }
+        dialog.setAccount(value);
+        QSignalSpy oauth(&dialog, &AccountDialog::oauthRequested), tested(&dialog, &AccountDialog::testRequested), cancelled(&dialog, &AccountDialog::oauthCancelled);
+        auto *button = dialog.findChild<QPushButton *>(QStringLiteral("connectionTest")); auto *buttons = dialog.findChild<QDialogButtonBox *>();
+        button->click(); QCOMPARE(oauth.size(), 1); QVERIFY(oauth.first().first().toBool());
+        dialog.oauthFinished(true, QStringLiteral("dummy-grant"), QStringLiteral("dummy-client"), {}); QCOMPARE(oauth.size(), 2); QVERIFY(!oauth.last().first().toBool()); QVERIFY(tested.isEmpty());
+        dialog.oauthFinished(false, {}, {}, QStringLiteral("cancelled")); QVERIFY(button->isEnabled()); QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
+        button->click(); QCOMPARE(oauth.size(), 3); buttons->button(QDialogButtonBox::Cancel)->click(); QCOMPARE(cancelled.size(), 1);
+        dialog.oauthFinished(false, QStringLiteral("late-grant"), QStringLiteral("dummy-client"), {}); dialog.testFinished({}, {}); QVERIFY(tested.isEmpty()); QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
     }
     void composePreservesInputOnFailure()
     {

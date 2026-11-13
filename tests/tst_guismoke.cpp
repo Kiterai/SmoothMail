@@ -193,7 +193,8 @@ private slots:
         QPointer<AccountDialog> account = window.findChild<AccountDialog *>();
         QVERIFY(account); QVERIFY(QTest::qWaitForWindowExposed(account));
         auto *buttons = account->findChild<QDialogButtonBox *>();
-        QTest::mouseClick(buttons->button(QDialogButtonBox::Ok), Qt::LeftButton);
+        QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
+        QTest::mouseClick(account->findChild<QPushButton *>(QStringLiteral("connectionTest")), Qt::LeftButton);
         QVERIFY(!account->findChild<QLabel *>(QStringLiteral("accountError"))->text().isEmpty());
         capture(QStringLiteral("02-account-validation"));
         account->findChild<QLineEdit *>(QStringLiteral("accountEmail"))->setText(QStringLiteral("gui@example.test"));
@@ -306,6 +307,9 @@ private slots:
         QCOMPARE(account->account().id, id);
         QCOMPARE(account->findChild<QLineEdit *>(QStringLiteral("IMAP4Password"))->text(), QStringLiteral("sandbox-only-dummy"));
         account->findChild<QLineEdit *>(QStringLiteral("accountEmail"))->setText(QStringLiteral("edited@example.test"));
+        QVERIFY(!account->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->isEnabled());
+        QTest::mouseClick(account->findChild<QPushButton *>(QStringLiteral("connectionTest")), Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(account->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->isEnabled(), 15000);
         capture(QStringLiteral("09-account-edit"));
         QTest::mouseClick(account->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok), Qt::LeftButton);
         QTRY_VERIFY_WITH_TIMEOUT(account.isNull(), 15000);
@@ -383,6 +387,8 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(smtp.deliveredMessages.size(), 1, 10000); QTRY_VERIFY(compose.isNull()); QCOMPARE(oldServer.pausedHeaderCount(), 1);
         contextAction(folders, folders->model()->index(0, 0), QStringLiteral("アカウントの編集")); QPointer<AccountDialog> dialog = window.findChild<AccountDialog *>(); QVERIFY(dialog); QTRY_VERIFY(dialog->isEnabled());
         dialog->findChild<QSpinBox *>(QStringLiteral("IMAP4Port"))->setValue(nextServer.port()); dialog->findChild<QLineEdit *>(QStringLiteral("accountEmail"))->setText(QStringLiteral("changed@example.test"));
+        QTest::mouseClick(dialog->findChild<QPushButton *>(QStringLiteral("connectionTest")), Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->isEnabled(), 15000); nextServer.commands.clear();
         QTest::mouseClick(dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok), Qt::LeftButton); QTRY_VERIFY(dialog.isNull());
         QTRY_VERIFY(folders->model()->index(0, 0).data().toString().startsWith(QStringLiteral("changed@example.test"))); QVERIFY(nextServer.commands.isEmpty());
         oldServer.resumeHeaders(); QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000); QVERIFY(nextServer.commands.isEmpty());

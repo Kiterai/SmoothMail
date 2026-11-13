@@ -38,12 +38,15 @@ private:
         QComboBox *authentication;
         QComboBox *encryption;
         QComboBox *provider;
-        QPushButton *authorize;
+        QString oauthGrant;
+        QString clientId;
         ServerSettings value() const;
         QString secret() const;
     };
     ServerFields createServer(const QString &name, int port);
     void setBusy(bool busy);
+    void invalidateTest();
+    void continueTest();
     QLineEdit *m_email;
     QLabel *m_error;
     QDialogButtonBox *m_buttons;
@@ -54,5 +57,8 @@ private:
     QString m_id;
     bool m_saving = false;
     bool m_authorizing = false;
+    bool m_testing = false;
+    bool m_testPassed = false;
+    bool m_authorizingSmtp = false;
 };
 } // namespace smoothmail

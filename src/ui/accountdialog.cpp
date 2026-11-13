@@ -11,19 +11,42 @@
 #include <QVBoxLayout>
 #include <QScrollArea>
 #include <QScreen>
+#include <QStylePainter>
+#include <QStyleOptionButton>
 
 namespace smoothmail {
+namespace {
+class ConnectionTestButton final : public QPushButton
+{
+public:
+    using QPushButton::QPushButton;
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QStylePainter painter(this); QStyleOptionButton option; initStyleOption(&option); option.text.clear();
+        painter.drawControl(QStyle::CE_PushButton, option);
+        const QString label = QStringLiteral("接続テスト: "), status = property("testPassed").toBool() ? QStringLiteral("✓") : QStringLiteral("未");
+        auto content = style()->subElementRect(QStyle::SE_PushButtonContents, &option, this);
+        const int width = fontMetrics().horizontalAdvance(label), total = width + fontMetrics().horizontalAdvance(status);
+        const int x = content.center().x() - total / 2;
+        painter.setPen(option.palette.color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::ButtonText));
+        painter.drawText(QRect(x, content.top(), width, content.height()), Qt::AlignVCenter | Qt::AlignLeft, label);
+        painter.setPen(property("testPassed").toBool() ? QColor(QStringLiteral("#008000")) : QColor(QStringLiteral("#c00000")));
+        painter.drawText(QRect(x + width, content.top(), total - width + 2, content.height()), Qt::AlignVCenter | Qt::AlignLeft, status);
+    }
+};
+}
 ServerSettings AccountDialog::ServerFields::value() const
 {
     return {host->text().trimmed(), quint16(port->value()), user->text(),
             static_cast<AuthenticationMode>(authentication->currentData().toInt()),
             static_cast<EncryptionMode>(encryption->currentData().toInt()),
-            provider->currentData().toString(), authorize->property("clientId").toString()};
+            provider->currentData().toString(), clientId};
 }
 
 QString AccountDialog::ServerFields::secret() const
 {
-    return authentication->currentData().toInt() == int(AuthenticationMode::OAuth2) ? authorize->property("oauthGrant").toString() : password->text();
+    return authentication->currentData().toInt() == int(AuthenticationMode::OAuth2) ? oauthGrant : password->text();
 }
 
 AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int defaultPort)
@@ -31,7 +54,7 @@ AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int
     auto *box = new QGroupBox(name, this);
     auto *form = new QFormLayout(box);
     ServerFields fields{new QLineEdit(box), new QSpinBox(box), new QLineEdit(box), new QLineEdit(box),
-                        new QComboBox(box), new QComboBox(box), new QComboBox(box), new QPushButton(QStringLiteral("OAuthで認可"), box)};
+                        new QComboBox(box), new QComboBox(box), new QComboBox(box), {}, {}};
     fields.host->setObjectName(name + QStringLiteral("Host"));
     fields.port->setObjectName(name + QStringLiteral("Port"));
     fields.user->setObjectName(name + QStringLiteral("User"));
@@ -56,27 +79,20 @@ AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int
     fields.provider->addItem(QStringLiteral("Google"), QStringLiteral("google"));
     fields.provider->addItem(QStringLiteral("Microsoft"), QStringLiteral("microsoft"));
     form->addRow(QStringLiteral("OAuthプロバイダ"), fields.provider);
-    form->addRow(fields.authorize);
-    fields.provider->setEnabled(false); fields.authorize->setEnabled(false);
-    fields.authorize->setObjectName(name + QStringLiteral("OAuthAuthorize"));
+    fields.provider->setEnabled(false);
     connect(fields.authentication, &QComboBox::currentIndexChanged, this, [fields] {
         const auto password = fields.authentication->currentData().toInt() != int(AuthenticationMode::OAuth2);
         fields.password->setEnabled(password);
-        fields.provider->setEnabled(!password); fields.authorize->setEnabled(!password);
-        fields.authorize->setProperty("oauthGrant", QString{}); fields.authorize->setProperty("clientId", QString{});
+        fields.provider->setEnabled(!password);
         if (!password) fields.password->clear();
     });
-    connect(fields.provider, &QComboBox::currentIndexChanged, this, [fields] {
-        fields.authorize->setProperty("oauthGrant", QString{}); fields.authorize->setProperty("clientId", QString{});
-    });
-    connect(fields.user, &QLineEdit::textEdited, this, [fields] {
-        fields.authorize->setProperty("oauthGrant", QString{}); fields.authorize->setProperty("clientId", QString{});
-    });
-    connect(fields.authorize, &QPushButton::clicked, this, [this, fields, name] {
-        fields.authorize->setProperty("oauthGrant", QString{}); fields.authorize->setProperty("clientId", QString{});
-        m_authorizing = true; setBusy(true); m_error->setText(QStringLiteral("外部ブラウザでOAuth認可を完了してください。"));
-        emit oauthRequested(name == QStringLiteral("SMTP"), fields.provider->currentData().toString(), fields.user->text());
-    });
+    const auto clearGrant = [this, name] { auto &server = name == QStringLiteral("SMTP") ? m_smtp : m_imap; server.oauthGrant.clear(); server.clientId.clear(); invalidateTest(); };
+    connect(fields.authentication, &QComboBox::currentIndexChanged, this, clearGrant);
+    connect(fields.provider, &QComboBox::currentIndexChanged, this, clearGrant);
+    connect(fields.user, &QLineEdit::textChanged, this, clearGrant);
+    for (auto *input : {fields.host, fields.user, fields.password}) connect(input, &QLineEdit::textChanged, this, &AccountDialog::invalidateTest);
+    connect(fields.port, &QSpinBox::valueChanged, this, &AccountDialog::invalidateTest);
+    connect(fields.encryption, &QComboBox::currentIndexChanged, this, &AccountDialog::invalidateTest);
     m_serverLayout->addWidget(box);
     return fields;
 }
@@ -101,7 +117,8 @@ AccountDialog::AccountDialog(QWidget *parent)
     scroll->setWidget(servers); scroll->setWidgetResizable(true); layout->addWidget(scroll, 1);
     m_imap = createServer(QStringLiteral("IMAP4"), 993);
     m_smtp = createServer(QStringLiteral("SMTP"), 465);
-    m_test = new QPushButton(QStringLiteral("接続テスト"), this);
+    m_test = new ConnectionTestButton(QStringLiteral("接続テスト: 未"), this);
+    auto testFont = m_test->font(); testFont.setBold(true); m_test->setFont(testFont);
     m_test->setObjectName(QStringLiteral("connectionTest"));
     layout->addWidget(m_test);
     m_error->setObjectName(QStringLiteral("accountError"));
@@ -110,8 +127,11 @@ AccountDialog::AccountDialog(QWidget *parent)
     layout->addWidget(m_error);
     m_buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("決定"));
     layout->addWidget(m_buttons);
+    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
+    connect(m_email, &QLineEdit::textChanged, this, &AccountDialog::invalidateTest);
     connect(m_buttons, &QDialogButtonBox::rejected, this, &AccountDialog::reject);
     connect(m_buttons, &QDialogButtonBox::accepted, this, [this] {
+        if (!m_testPassed || m_saving) return;
         const auto value = account();
         const auto error = validateAccount(value);
         if (!error.isEmpty()) {
@@ -124,16 +144,9 @@ AccountDialog::AccountDialog(QWidget *parent)
     });
     connect(m_test, &QPushButton::clicked, this, [this] {
         const auto value = account();
-        const auto error = validateAccount(value);
+        const auto error = validateAccount(value, false);
         if (!error.isEmpty()) { m_error->setText(error); return; }
-        if ((value.smtp.authentication == AuthenticationMode::OAuth2 && m_smtp.secret().isEmpty())
-            || (value.imap.authentication == AuthenticationMode::OAuth2 && m_imap.secret().isEmpty())) {
-            m_error->setText(QStringLiteral("先にOAuthの認可を完了してください。"));
-            return;
-        }
-        setBusy(true);
-        m_error->setText(QStringLiteral("指定された設定で接続テスト中..."));
-        emit testRequested(value, m_smtp.secret(), m_imap.secret());
+        invalidateTest(); m_testing = true; setBusy(true); continueTest();
     });
 }
 
@@ -151,7 +164,7 @@ void AccountDialog::setAccount(const Account &value)
         fields.authentication->setCurrentIndex(fields.authentication->findData(int(settings.authentication)));
         fields.encryption->setCurrentIndex(fields.encryption->findData(int(settings.encryption)));
         fields.provider->setCurrentIndex(fields.provider->findData(settings.oauthProvider));
-        fields.authorize->setProperty("clientId", settings.oauthClientId);
+        fields.clientId = settings.oauthClientId;
     };
     populate(m_imap, value.imap); populate(m_smtp, value.smtp);
 }
@@ -176,6 +189,12 @@ void AccountDialog::saveFinished(const QString &error)
 
 void AccountDialog::testFinished(const QString &smtpError, const QString &imapError)
 {
+    if (m_authorizing) return;
+    if (!m_testing) { if (!smtpError.isEmpty() || !imapError.isEmpty()) { invalidateTest(); m_error->setText(smtpError + u'\n' + imapError); } return; }
+    m_testing = false; m_testPassed = smtpError.isEmpty() && imapError.isEmpty();
+    if (!smtpError.isEmpty() && m_smtp.value().authentication == AuthenticationMode::OAuth2) m_smtp.oauthGrant.clear();
+    if (!imapError.isEmpty() && m_imap.value().authentication == AuthenticationMode::OAuth2) m_imap.oauthGrant.clear();
+    m_test->setProperty("testPassed", m_testPassed); m_test->setText(m_testPassed ? QStringLiteral("接続テスト: ✓") : QStringLiteral("接続テスト: 未"));
     setBusy(false);
     QStringList errors;
     if (!smtpError.isEmpty()) errors.append(QStringLiteral("SMTP接続に失敗しました。") + smtpError);
@@ -185,7 +204,7 @@ void AccountDialog::testFinished(const QString &smtpError, const QString &imapEr
 
 void AccountDialog::reject()
 {
-    if (m_authorizing) { emit oauthCancelled(); m_authorizing = false; setBusy(false); }
+    if (m_authorizing) { m_authorizing = false; m_testing = false; emit oauthCancelled(); setBusy(false); }
     if (m_saving) return;
     m_smtp.password->clear();
     m_imap.password->clear();
@@ -197,7 +216,7 @@ void AccountDialog::setBusy(bool busy)
     m_saving = busy;
     m_email->setEnabled(!busy);
     m_buttons->setEnabled(!busy || m_authorizing);
-    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(!busy);
+    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(!busy && m_testPassed);
     m_buttons->button(QDialogButtonBox::Cancel)->setEnabled(!busy || m_authorizing);
     m_test->setEnabled(!busy);
     for (const auto *fields : {&m_smtp, &m_imap}) {
@@ -208,21 +227,44 @@ void AccountDialog::setBusy(bool busy)
         fields->encryption->setEnabled(!busy);
         fields->password->setEnabled(!busy && fields->authentication->currentData().toInt() != int(AuthenticationMode::OAuth2));
         const bool oauth = fields->authentication->currentData().toInt() == int(AuthenticationMode::OAuth2);
-        fields->provider->setEnabled(!busy && oauth); fields->authorize->setEnabled(!busy && oauth);
+        fields->provider->setEnabled(!busy && oauth);
     }
     if (m_authorizing) m_buttons->button(QDialogButtonBox::Cancel)->setEnabled(true);
 }
 
 void AccountDialog::setOAuthGrant(bool smtp, const QString &grant, const QString &clientId)
 {
+    invalidateTest();
     auto &fields = smtp ? m_smtp : m_imap;
-    fields.authorize->setProperty("oauthGrant", grant);
-    if (!clientId.isEmpty()) fields.authorize->setProperty("clientId", clientId);
+    fields.oauthGrant = grant;
+    if (!clientId.isEmpty()) fields.clientId = clientId;
 }
 void AccountDialog::oauthFinished(bool smtp, const QString &grant, const QString &clientId, const QString &error)
 {
-    m_authorizing = false; setBusy(false);
-    if (error.isEmpty()) setOAuthGrant(smtp, grant, clientId);
-    m_error->setText(error.isEmpty() ? QStringLiteral("OAuth認可を取得しました。接続テストでサーバ設定も確認してください。") : error);
+    if (!m_testing || !m_authorizing || smtp != m_authorizingSmtp) return;
+    m_authorizing = false;
+    if (!error.isEmpty() || grant.isEmpty() || clientId.isEmpty()) { m_testing = false; setBusy(false); m_error->setText(error.isEmpty() ? QStringLiteral("OAuth認可の情報が不足しています。") : error); return; }
+    setOAuthGrant(smtp, grant, clientId); continueTest();
+}
+void AccountDialog::invalidateTest()
+{
+    m_testPassed = false;
+    if (!m_test) return;
+    m_test->setProperty("testPassed", false); m_test->setText(QStringLiteral("接続テスト: 未"));
+    m_buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
+}
+void AccountDialog::continueTest()
+{
+    for (const bool smtp : {true, false}) {
+        const auto &fields = smtp ? m_smtp : m_imap;
+        if (fields.value().authentication != AuthenticationMode::OAuth2 || (!fields.secret().isEmpty() && !fields.clientId.isEmpty())) continue;
+        m_authorizing = true; m_authorizingSmtp = smtp; setBusy(true);
+        m_error->setText(QStringLiteral("外部ブラウザでOAuth認可を完了してください。"));
+        emit oauthRequested(smtp, fields.provider->currentData().toString(), fields.user->text()); return;
+    }
+    const auto value = account(); const auto error = validateAccount(value);
+    if (!error.isEmpty()) { m_testing = false; setBusy(false); m_error->setText(error); return; }
+    setBusy(true); m_error->setText(QStringLiteral("指定された設定で接続テスト中..."));
+    emit testRequested(value, m_smtp.secret(), m_imap.secret());
 }
 } // namespace smoothmail
