@@ -9,6 +9,12 @@
 
 境界線はQtのQPainterによる線描画で、新しい画像・外部素材は使用していない。既存Qt SDK・依存ライブラリは変更しない。
 
+## 細線指定の追記
+
+利用者指定で境界線を2pxから1pxへ変更した。ドラッグ可能な範囲は7pxのまま維持する。線の隣が背景色であることも明暗・縦横の回帰に追加し、ホストCTest15対象が成功した。この変更では下記のSandbox202件は再実行していない。
+
+更新版は`build/thin-splitter-check/runtime/`に用意済み。SmoothMailが起動中のため`build/local-run`は変更せず、[UI-01](../../spec/inprogress/thin-splitter-deployment.md)として配備待ちを記録した。
+
 ## 検証・配備
 
 - オフラインWindows Sandbox：12 EXE、202件成功、失敗・スキップ0件。ホストCTest15対象とPython31件も成功。

@@ -28,7 +28,7 @@ protected:
                 QPainter painter(this);
                 const auto background = palette().color(QPalette::Window);
                 painter.fillRect(rect(), background);
-                painter.setPen(QPen(qGray(background.rgb()) < 128 ? Qt::white : Qt::black, 2));
+                painter.setPen(QPen(qGray(background.rgb()) < 128 ? Qt::white : Qt::black, 1));
                 if (orientation() == Qt::Horizontal)
                     painter.drawLine(width() / 2, 2, width() / 2, height() - 3);
                 else

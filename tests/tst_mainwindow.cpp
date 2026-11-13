@@ -43,6 +43,8 @@ private slots:
         const auto point = handle->rect().center(); const auto ratio = image.devicePixelRatio();
         const auto pixel = image.pixelColor(qRound(point.x() * ratio), qRound(point.y() * ratio));
         QCOMPARE(pixel, QColor(dark ? Qt::white : Qt::black));
+        const auto beside = point - (vertical ? QPoint(0, 1) : QPoint(1, 0));
+        QCOMPARE(image.pixelColor(qRound(beside.x() * ratio), qRound(beside.y() * ratio)), QColor(dark ? Qt::black : Qt::white));
         const auto before = splitter.sizes().first();
         QTest::mousePress(handle, Qt::LeftButton, Qt::NoModifier, point);
         QTest::mouseMove(handle, point + (vertical ? QPoint(0, 30) : QPoint(30, 0)));
