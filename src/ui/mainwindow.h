@@ -51,6 +51,7 @@ signals:
     void folderOperationRequested(const QString &id, const QString &operation, const QString &source, const QString &destination);
     void addAccountRequested();
     void refreshAllRequested();
+    void fullRefreshRequested();
     void refreshRequested(const QString &accountId, const QString &folder);
     void composeRequested(bool reply);
     void undoRedoRequested(bool redo);
@@ -76,6 +77,7 @@ private:
     void restoreWindow();
     void rebuildFolders();
     void rebuildMessages();
+    void changeFlag(int row, bool importantFlag, bool enabled);
 
     QSystemTrayIcon *m_tray = nullptr;
     QStandardItemModel *m_folders = nullptr;

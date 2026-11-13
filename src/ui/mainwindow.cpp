@@ -33,6 +33,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QSignalBlocker>
+#include <QMouseEvent>
 #include "core/diagnostics.h"
 #include <algorithm>
 #include <functional>
@@ -63,6 +64,39 @@ QAction *pendingAction(QMenu *menu, const QString &text, const char *name)
     action->setStatusTip(text);
     return action;
 }
+
+QRect badgeRect(const QRect &cell)
+{
+    const int size = qMax(0, qMin(16, cell.height() - 4));
+    return QRect(cell.center().x() - size / 2, cell.center().y() - size / 2, size, size);
+}
+
+class BadgeDelegate final : public QStyledItemDelegate
+{
+public:
+    BadgeDelegate(QObject *parent, std::function<void(const QModelIndex &)> toggle)
+        : QStyledItemDelegate(parent), m_toggle(std::move(toggle)) {}
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QStyleOptionViewItem background(option); initStyleOption(&background, index); background.text.clear();
+        const auto *widget = option.widget;
+        (widget ? widget->style() : QApplication::style())->drawControl(QStyle::CE_ItemViewItem, &background, painter, widget);
+        painter->save();
+        auto font = option.font; font.setPixelSize(14); painter->setFont(font);
+        painter->setPen(option.palette.color(option.state & QStyle::State_Selected ? QPalette::HighlightedText : QPalette::Text));
+        painter->drawText(badgeRect(option.rect), Qt::AlignCenter, index.data(Qt::DisplayRole).toString());
+        painter->restore();
+    }
+    bool editorEvent(QEvent *event, QAbstractItemModel *, const QStyleOptionViewItem &option, const QModelIndex &index) override
+    {
+        if (index.column() > 1 || event->type() != QEvent::MouseButtonRelease) return false;
+        const auto *mouse = static_cast<QMouseEvent *>(event);
+        if (mouse->button() != Qt::LeftButton || !badgeRect(option.rect).contains(mouse->position().toPoint())) return false;
+        m_toggle(index); return true;
+    }
+private:
+    std::function<void(const QModelIndex &)> m_toggle;
+};
 
 } // namespace
 
@@ -106,18 +140,28 @@ void MainWindow::createMenus()
     connect(threads, &QAction::toggled, this, [this] { rebuildMessages(); });
 
     auto *mail = menuBar()->addMenu(QStringLiteral("メール"));
-    auto *refresh = pendingAction(mail, QStringLiteral("最新の情報に更新"), "refreshAction");
+    auto *refresh = pendingAction(mail, QStringLiteral("最新の情報を取得"), "refreshAction");
     refresh->setShortcut(QKeySequence(Qt::Key_F5));
     connect(refresh, &QAction::triggered, this, &MainWindow::refreshAllRequested);
+    auto *fullRefresh = pendingAction(mail, QStringLiteral("最新の全ての情報を取得"), "fullRefreshAction");
+    fullRefresh->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F5));
+    connect(fullRefresh, &QAction::triggered, this, &MainWindow::fullRefreshRequested);
     auto *automatic = pendingAction(mail, QStringLiteral("自動で更新"), "autoRefreshAction");
     automatic->setCheckable(true);
     auto *poll = new QTimer(this);
     poll->setInterval(30000);
     connect(automatic, &QAction::toggled, this, [poll](bool enabled) { if (enabled) poll->start(); else poll->stop(); });
     connect(poll, &QTimer::timeout, this, &MainWindow::refreshAllRequested);
-    connect(pendingAction(mail, QStringLiteral("新規メール"), "composeAction"), &QAction::triggered,
-            this, [this] { emit composeRequested(false); });
-    connect(pendingAction(mail, QStringLiteral("新規返信メール"), "replyAction"), &QAction::triggered,
+    auto *autoRead = pendingAction(mail, QStringLiteral("自動で既読を付ける"), "autoReadAction");
+    autoRead->setCheckable(true); // Opt in; do not silently mark mail read by default.
+    mail->addSeparator();
+    auto *compose = pendingAction(mail, QStringLiteral("新規メール"), "composeAction");
+    compose->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
+    auto *reply = pendingAction(mail, QStringLiteral("新規返信メール"), "replyAction");
+    reply->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+    connect(compose, &QAction::triggered,
+             this, [this] { emit composeRequested(false); });
+    connect(reply, &QAction::triggered,
             this, [this] { emit composeRequested(true); });
 
     auto *tools = menuBar()->addMenu(QStringLiteral("ツール"));
@@ -246,6 +290,19 @@ void MainWindow::createPanes()
         QStringLiteral("差出人アドレス"), QStringLiteral("日時")});
     messages->setModel(messageModel);
     messages->setUniformRowHeights(true);
+    messages->setTreePosition(3);
+    auto *badges = new BadgeDelegate(messages, [this](const QModelIndex &index) {
+        const int row = index.data(Qt::UserRole).toInt();
+        if (row < 0 || row >= m_visibleMessages.size()) return;
+        const auto &identity = m_visibleMessages.at(row);
+        changeFlag(row, index.column() == 0, index.column() == 0 ? !identity.important : !identity.seen);
+    });
+    for (int c = 0; c < 3; ++c) {
+        messages->setItemDelegateForColumn(c, badges);
+        messages->header()->setSectionResizeMode(c, QHeaderView::Fixed);
+        const int width = messages->fontMetrics().horizontalAdvance(messageModel->headerData(c, Qt::Horizontal).toString()) + 12;
+        messages->setColumnWidth(c, qMax(width, 24));
+    }
     messages->header()->setStretchLastSection(true);
     messages->header()->setSectionsClickable(true);
     messages->header()->setSortIndicator(m_sortColumn, m_sortOrder);
@@ -274,6 +331,7 @@ void MainWindow::createPanes()
         if (message) emit downloadRequested(*message, partId);
     });
     connect(messages->selectionModel(), &QItemSelectionModel::currentChanged, this, [this, viewer](const QModelIndex &index) {
+        if (m_rebuilding) return;
         const int record = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
         findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(index.isValid());
         if (!index.isValid() || record < 0 || record >= m_visibleMessages.size()) { viewer->clear(); return; }
@@ -286,13 +344,8 @@ void MainWindow::createPanes()
                 emit messageRequested(identity);
             }
         } else viewer->displayMessage(m_visibleMessages.at(record).document);
-    });
-    connect(messages, &QTreeView::clicked, this, [this](const QModelIndex &index) {
-        if (index.column() > 1) return;
-        const int row = index.siblingAtColumn(0).data(Qt::UserRole).toInt();
-        if (row < 0 || row >= m_visibleMessages.size()) return;
-        const auto identity = m_visibleMessages.at(row);
-        emit messageFlagRequested(identity, index.column() == 0, index.column() == 0 ? !identity.important : !identity.seen);
+        if (findChild<QAction *>(QStringLiteral("autoReadAction"))->isChecked() && !m_visibleMessages.at(record).seen
+            && !(QApplication::mouseButtons().testFlag(Qt::LeftButton) && index.column() < 2)) changeFlag(record, false, true);
     });
     horizontal->setSizes({250, 850});
     vertical->setSizes({300, 400});
@@ -317,7 +370,7 @@ void MainWindow::setAccounts(const QList<Account> &accounts)
     }
     m_accounts = accounts;
     rebuildFolders();
-    for (const auto *name : {"refreshAction", "autoRefreshAction", "threadAction"}) {
+    for (const auto *name : {"refreshAction", "fullRefreshAction", "autoRefreshAction", "autoReadAction", "threadAction"}) {
         findChild<QAction *>(QLatin1String(name))->setEnabled(!accounts.isEmpty());
     }
     statusBar()->showMessage(accounts.isEmpty() ? QStringLiteral("アカウントを追加してください。")
@@ -349,7 +402,7 @@ void MainWindow::applySnapshot(const QString &id, const QString &folder, const Q
     for (const auto &item : folders) present.append(item.name);
     for (const auto &cached : m_mailCache[id].keys()) if (!present.contains(cached)) m_mailCache[id].remove(cached);
     if (!m_pagedStorage) m_mailCache[id][folder] = messages;
-    const bool visible = m_accountId.isEmpty() || (m_accountId == id && (m_folder.isEmpty() || m_folder == folder));
+    const bool visible = m_accountId.isEmpty() || (m_accountId == id && (m_folder.isEmpty() || m_folder == folder || !present.contains(m_folder)));
     if (visible) { m_accountId = id; m_folder = folder; }
     findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!m_accountId.isEmpty() && !m_folder.isEmpty());
     if (remoteUpdate) m_lastSuccess = QDateTime::currentDateTime();
@@ -408,6 +461,14 @@ void MainWindow::applyPage(const MailPage &page)
     const auto start = page.total ? qint64(page.query.page - 1) * MailPageSize + 1 : 0;
     m_pageRange->setText(QStringLiteral("%1 - %2 / %3件").arg(start).arg(page.total ? start + page.messages.size() - 1 : 0).arg(page.total));
     m_mailCache.clear(); m_mailCache[m_accountId][m_folder] = page.messages;
+    if (m_loadedMessage) {
+        bool present = false;
+        for (const auto &message : page.messages) if (message.accountId == m_loadedMessage->accountId && message.folder == m_loadedMessage->folder
+            && message.uidValidity == m_loadedMessage->uidValidity && message.uid == m_loadedMessage->uid) {
+            m_loadedMessage->seen = message.seen; m_loadedMessage->important = message.important; present = true; break;
+        }
+        if (!present) m_loadedMessage.reset();
+    }
     rebuildMessages();
     if (page.query.revealUid > 0 && m_revealUid > 0) {
         m_revealUid = 0; statusBar()->showMessage(QStringLiteral("元メッセージが見つからないか、UIDVALIDITYが変更されています。"));
@@ -419,7 +480,10 @@ void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &
     if (!selected || selected->accountId != message.accountId || selected->folder != message.folder
         || selected->uidValidity != message.uidValidity || selected->uid != message.uid) return;
     if (!error.isEmpty()) { statusBar()->showMessage(error); return; }
-    m_loadedMessage = message; findChild<MessageViewer *>()->displayMessage(message.document);
+    m_loadedMessage = message;
+    // A body request may have started before a local flag edit.
+    m_loadedMessage->seen = selected->seen; m_loadedMessage->important = selected->important;
+    findChild<MessageViewer *>()->displayMessage(message.document);
     findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(true);
 }
 void MainWindow::showSyncProgress(const QString &id, qint64 done, qint64 total)
@@ -539,6 +603,7 @@ void MainWindow::rebuildMessages()
         previousAccount = m_visibleMessages.at(previousRow).accountId;
         previousFolder = m_visibleMessages.at(previousRow).folder;
     }
+    m_rebuilding = true;
     m_messageModel->removeRows(0, m_messageModel->rowCount());
     findChild<MessageViewer *>()->clear();
     m_visibleMessages = m_mailCache.value(m_accountId).value(m_folder);
@@ -569,13 +634,14 @@ void MainWindow::rebuildMessages()
     for (qsizetype i = 0; i < m_visibleMessages.size(); ++i) {
         const auto &record = m_visibleMessages.at(i);
         const auto &doc = record.document;
-        const QStringList cells{record.important ? QStringLiteral("★") : QString{}, record.seen ? QString{} : QStringLiteral("●"),
+        const QStringList cells{record.important ? QStringLiteral("★") : QStringLiteral("☆"), record.seen ? QStringLiteral("○") : QStringLiteral("●"),
             doc.attachments.isEmpty() ? QString{} : QStringLiteral("●"), doc.subject, doc.senderName, doc.senderAddress,
             doc.date.toLocalTime().toString(QStringLiteral("yyyy/MM/dd HH:mm"))};
         QList<QStandardItem *> row;
         for (int c = 0; c < cells.size(); ++c) {
             auto *item = new QStandardItem(cells.at(c));
             item->setEditable(false);
+            item->setData(i, Qt::UserRole);
             item->setData(c == 6 ? QVariant(doc.date.toMSecsSinceEpoch()) : QVariant(cells.at(c)), Qt::UserRole + 10);
             auto font = item->font(); font.setBold(!record.seen); item->setFont(font);
             row.append(item);
@@ -592,12 +658,65 @@ void MainWindow::rebuildMessages()
     for (qsizetype i = 0; i < m_visibleMessages.size(); ++i) {
         if (m_visibleMessages.at(i).uid == previousUid && m_visibleMessages.at(i).uidValidity == previousValidity
             && m_visibleMessages.at(i).accountId == previousAccount && m_visibleMessages.at(i).folder == previousFolder) {
-            m_messageView->setCurrentIndex(rows.at(i).first()->index());
+            m_messageView->setCurrentIndex(rows.at(i).at(3)->index());
             m_revealUid = 0;
             break;
         }
     }
-    for (int c = 0; c < 6; ++c) m_messageView->resizeColumnToContents(c);
+    m_rebuilding = false;
+    for (int c = 3; c < 6; ++c) m_messageView->resizeColumnToContents(c);
+    const auto current = m_messageView->currentIndex();
+    findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(current.isValid() && (!m_pagedStorage || m_loadedMessage.has_value()));
+    if (current.isValid()) {
+        const int row = current.data(Qt::UserRole).toInt();
+        if (row >= 0 && row < m_visibleMessages.size()) {
+            if (m_pagedStorage) {
+                if (m_loadedMessage && m_loadedMessage->accountId == m_accountId && m_loadedMessage->folder == m_folder
+                    && m_loadedMessage->uidValidity == m_visibleMessages.at(row).uidValidity && m_loadedMessage->uid == m_visibleMessages.at(row).uid)
+                    findChild<MessageViewer *>()->displayMessage(m_loadedMessage->document);
+                else emit messageRequested(m_visibleMessages.at(row));
+            } else findChild<MessageViewer *>()->displayMessage(m_visibleMessages.at(row).document);
+        }
+    }
+}
+
+void MainWindow::changeFlag(int row, bool importantFlag, bool enabled)
+{
+    if (row < 0 || row >= m_visibleMessages.size()) return;
+    const auto identity = m_visibleMessages.at(row);
+    if ((importantFlag ? identity.important : identity.seen) == enabled) return;
+    if (importantFlag) m_visibleMessages[row].important = enabled; else m_visibleMessages[row].seen = enabled;
+    auto &cached = m_mailCache[m_accountId][m_folder];
+    for (auto &record : cached) if (record.uidValidity == identity.uidValidity && record.uid == identity.uid) record = m_visibleMessages.at(row);
+    if (m_loadedMessage && m_loadedMessage->accountId == identity.accountId && m_loadedMessage->folder == identity.folder
+        && m_loadedMessage->uidValidity == identity.uidValidity && m_loadedMessage->uid == identity.uid) {
+        m_loadedMessage->seen = m_visibleMessages.at(row).seen; m_loadedMessage->important = m_visibleMessages.at(row).important;
+    }
+    if (!importantFlag) {
+        for (auto &folder : m_folderCache[m_accountId]) if (folder.name == identity.folder) folder.unread = qMax<qint64>(0, folder.unread + (enabled ? -1 : 1));
+        rebuildFolders();
+    }
+    // Update cells in place, without changing selection or rebuilding threads.
+    QList<QModelIndex> parents{QModelIndex{}}, matches;
+    while (!parents.isEmpty()) {
+        const auto parent = parents.takeLast();
+        for (int i = 0; i < m_messageModel->rowCount(parent); ++i) {
+            const auto index = m_messageModel->index(i, 3, parent);
+            if (index.data(Qt::UserRole).toInt() == row) matches.append(index);
+            parents.append(index.siblingAtColumn(0));
+        }
+    }
+    for (const auto &index : matches) {
+        const auto &record = m_visibleMessages.at(row);
+        for (int c = 0; c < 7; ++c) {
+            auto *item = m_messageModel->itemFromIndex(index.siblingAtColumn(c));
+            if (!item) continue;
+            if (c == 0) item->setText(record.important ? QStringLiteral("★") : QStringLiteral("☆"));
+            if (c == 1) item->setText(record.seen ? QStringLiteral("○") : QStringLiteral("●"));
+            auto font = item->font(); font.setBold(!record.seen); item->setFont(font);
+        }
+    }
+    emit messageFlagRequested(identity, importantFlag, enabled);
 }
 
 void MainWindow::setEditingState(bool undoAvailable, bool redoAvailable)

@@ -2,6 +2,10 @@
 
 現仕様の完成には至っていません。実装と検証を区別して管理します。
 
+## 最新：803f145の同期・フラグ・一覧仕様への追従
+
+F5の全フォルダ差分取得とCtrl+F5の全件同期、ローカル保留フラグと同期時の一括送信/再取得優先、自動既読、作成/返信ショートカット、バッジの中央表示/記号部分のみのクリック、タイトル列のスレッド枝を実装しました。DBはv3です。Sandbox11 EXEで137 passed / 0 failed / 0 skipped、ホストCTest15対象（ネットワーク系3対象除外）とPython9件が成功。新版は`build/local-run-behavior-deliver`に配置済みですが、通常起動先は使用中のため未更新です。起動方法と未指定事項は`behavior-update.md`を参照してください。
+
 ## 最新：KCodecs側での再発対策
 
 新しい呼出し履歴からKCodecsの`decodeRFC2047String`内の`isspace`引数を特定し、非ASCII Subjectで同じ停止位置を再現して修正しました。KCodecsも独立パッチとconfigure時receipt検証の対象です。修正後はSandbox11 EXEで133 passed / 0 failed / 0 skipped、ホストCTest15対象とPython9件が成功。1152合成入力、日本語混在の復号、5901件目に非ASCII Subjectを含む10034件同期を含みます。記録は`build/codecs-check/output/`、手元起動先`build/local-run`は更新済みです。実メールでの再試行は利用者環境で確認が必要です。

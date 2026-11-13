@@ -1,5 +1,13 @@
 # Windows SandboxのGUIチェック
 
+## 同期・フラグ・一覧仕様803f145対応（最新）
+
+最終記録は`build/behavior-check/output-verified/`です。11 EXEで**137 passed / 0 failed / 0 skipped**（init/cleanup含む）：connectiontester 21、mainwindow 12、accountrepository 11、guismoke 5、mimeregression 12、diagnostics 7、mimeparser 15、accountdialog 7、messageviewer 24、mailtransport 15、oauthclient 8。ホストCTest15対象（ネットワーク系3対象除外）・Python9件も成功しました。
+
+フォルダごとの1時間境界/タイムゾーン、初回/新規フォルダ/UIDVALIDITY変更、範囲内外の削除、再起動した保留フラグ、送信拒否/再送、サーバ再取得優先、同期中の新しい編集の保護、バッジ部分クリック/自動既読を検証しています。スレッドはタイトル列で展開した子行の画面位置とクリック先を照合し、`screenshots/04-thread-view.png`でも確認しました。10034件の一覧・同期と旧KMime/KCodecs異常終了の回帰検査も維持しています。
+
+実メールや実資格情報は共有していません。今回起動した4つのSandboxはすべて終了済みです。初回・中間の記録とは区別し、最終結果を参照してください。
+
 ## KCodecs修正後の追加検証（最新）
 
 再発ログで特定したKCodecsのRFC 2047文字分類不具合を修正し、11 EXEで**133 passed / 0 failed / 0 skipped**（init/cleanup含む）。mimeregressionは12件（1152入力と日本語/encoded-wordの復号検査）、他は前回と同じ121件です。10034件同期の5901件目に非ASCII Subjectを加えて同期・キャッシュ再利用・途中切断回復を検証しました。ホストCTest15対象（ネットワーク系3対象除外）とPython9件も成功しています。記録は`build/codecs-check/output/`、変更前の意図的な2ケースの異常終了は`build/codecs-check/baseline/`に分離しています。実メール・実資格情報は使わず、この追加調査のSandboxは両方とも終了済みです。詳細は`crash-investigation-20261113.md`を参照してください。

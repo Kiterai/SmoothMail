@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QPointer>
 #include <QQueue>
+#include <QSet>
+#include <QHash>
 class QWidget;
 class QProgressDialog;
 
@@ -31,7 +33,7 @@ private:
     bool m_accountMutation = false;
     QString m_editedId;
     QString m_reloadId;
-    void refresh(const QString &accountId, const QString &folder);
+    void refresh(const QString &accountId, const QString &folder, bool full = false);
     void processNext();
     void compose(bool reply);
     void updateEditingState();
@@ -52,8 +54,10 @@ private:
     QString m_reauthorizingId, m_reauthorizingProtocol;
     QPointer<QProgressDialog> m_oauthProgress;
     QList<Account> m_accounts;
-    struct Request { QString accountId; QString folder; };
+    struct Request { QString accountId; QString folder; bool full = false; };
     QQueue<Request> m_queue;
     Request m_current;
+    QSet<QString> m_completedSyncs;
+    QHash<QString, QString> m_cacheReloadErrors;
 };
 } // namespace smoothmail

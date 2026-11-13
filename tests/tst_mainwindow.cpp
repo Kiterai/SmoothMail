@@ -19,6 +19,39 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void refreshActionsAndOptimisticBadges()
+    {
+        using namespace smoothmail;
+        MainWindow window(false);
+        Account account; account.id = QStringLiteral("flags"); account.email = QStringLiteral("flags@example.test"); window.setAccounts({account});
+        MailRecord first{account.id, QStringLiteral("INBOX"), 10, 1}; first.document.subject = QStringLiteral("one");
+        auto second = first; second.uid = 2; second.document.subject = QStringLiteral("two");
+        window.applySnapshot(account.id, first.folder, {{first.folder, u'/', {}, 2}}, {first, second}, {});
+        QSignalSpy recent(&window, &MainWindow::refreshAllRequested), full(&window, &MainWindow::fullRefreshRequested), flags(&window, &MainWindow::messageFlagRequested);
+        auto *refresh = window.findChild<QAction *>(QStringLiteral("refreshAction"));
+        auto *all = window.findChild<QAction *>(QStringLiteral("fullRefreshAction"));
+        QCOMPARE(refresh->text(), QStringLiteral("最新の情報を取得")); QCOMPARE(all->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_F5));
+        refresh->trigger(); all->trigger(); QCOMPARE(recent.size(), 1); QCOMPARE(full.size(), 1);
+        QCOMPARE(window.findChild<QAction *>(QStringLiteral("composeAction"))->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_N));
+        QCOMPARE(window.findChild<QAction *>(QStringLiteral("replyAction"))->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_R));
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+        window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const auto badge = view->model()->index(0, 0); const auto rect = view->visualRect(badge);
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(rect.left() + 1, rect.center().y()));
+        QCOMPARE(flags.size(), 0);
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, rect.center());
+        QCOMPARE(flags.size(), 1); QVERIFY(window.selectedMessage()->important);
+        QCOMPARE(badge.data().toString(), QStringLiteral("★"));
+        const auto width = view->columnWidth(0); QVERIFY(width < 70);
+        auto *autoRead = window.findChild<QAction *>(QStringLiteral("autoReadAction")); QVERIFY(!autoRead->isChecked());
+        autoRead->setChecked(true);
+        view->setCurrentIndex(view->model()->index(1, 3));
+        QCOMPARE(flags.size(), 2); QVERIFY(window.selectedMessage()->seen);
+        QCOMPARE(view->model()->index(1, 1).data().toString(), QStringLiteral("○"));
+        view->setCurrentIndex(view->model()->index(1, 4)); QCOMPARE(flags.size(), 2);
+        autoRead->setChecked(false); view->setCurrentIndex(view->model()->index(0, 3));
+        QCOMPARE(flags.size(), 2); QVERIFY(!window.selectedMessage()->seen);
+    }
     void paginationIgnoresStaleResultsAndResetsFilters()
     {
         using namespace smoothmail;
@@ -129,7 +162,14 @@ private slots:
         QCOMPARE(messages->model()->rowCount(), 2);
         window.findChild<QAction *>(QStringLiteral("threadAction"))->setChecked(true);
         QCOMPARE(messages->model()->rowCount(), 1);
+        QCOMPARE(messages->treePosition(), 3);
         QCOMPARE(messages->model()->rowCount(messages->model()->index(0, 0)), 1);
+        const auto childIndex = messages->model()->index(0, 3, messages->model()->index(0, 0));
+        QVERIFY(childIndex.isValid());
+        window.findChild<QAction *>(QStringLiteral("autoReadAction"))->setChecked(true);
+        messages->setCurrentIndex(childIndex);
+        QCOMPARE(childIndex.siblingAtColumn(1).data().toString(), QStringLiteral("○"));
+        QVERIFY(window.selectedMessage()->seen);
         messages->setCurrentIndex(messages->model()->index(0, 0));
         auto *body = window.findChild<QTextBrowser *>(QStringLiteral("messageBody"));
         QVERIFY(body->toPlainText().contains(QStringLiteral("safe fixture body")));

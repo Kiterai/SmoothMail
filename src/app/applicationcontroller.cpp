@@ -30,26 +30,11 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(m_repository, &AccountRepository::messageLoaded, window, &MainWindow::displayLoadedMessage);
     connect(m_mail, &MailService::syncProgress, window, &MainWindow::showSyncProgress);
     connect(window, &MainWindow::messageFlagRequested, this, [this](const MailRecord &identity, bool importantFlag, bool enabled) {
-        if (!canManage()) return;
-        Account account; for (const auto &candidate : m_accounts) if (candidate.id == identity.accountId) account = candidate;
-        if (account.id.isEmpty()) return;
-        m_submissionWaiting = true;
-        const QPointer<ApplicationController> guard(this);
-        m_authentication->acquire(account, QStringLiteral("imap"), [guard, account, identity, importantFlag, enabled](const QString &secret, const QString &error) {
-            if (!guard) return;
-            if (!error.isEmpty()) { guard->m_submissionWaiting = false; guard->m_window->statusBar()->showMessage(error); guard->processNext(); return; }
-            guard->m_mail->setMessageFlag(account, secret, identity, importantFlag, enabled);
-        });
-    });
-    connect(m_mail, &MailService::messageFlagChanged, this, [this](const MailRecord &identity, bool importantFlag, bool enabled, const QString &error) {
-        if (!error.isEmpty()) { m_submissionWaiting = false; m_window->statusBar()->showMessage(error); processNext(); return; }
-        m_repository->updateFlags(identity, importantFlag ? identity.seen : enabled, importantFlag ? enabled : identity.important);
+        m_repository->queueFlag(identity, importantFlag, enabled);
     });
     connect(m_repository, &AccountRepository::flagsUpdated, this, [this](const MailRecord &identity, const QString &error) {
-        m_submissionWaiting = false;
         if (error.isEmpty()) { m_repository->loadCache(identity.accountId, true); m_window->requestPage(); }
-        else { m_window->statusBar()->showMessage(error); refresh(identity.accountId, identity.folder); }
-        processNext();
+        else { m_window->statusBar()->showMessage(error); m_window->requestPage(); }
     });
     window->enableAccountManagement(true);
     window->enableHistory(true);
@@ -87,7 +72,9 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     });
     connect(m_repository, &AccountRepository::cacheLoaded, this,
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders, const QList<MailRecord> &messages) {
-            m_window->applySnapshot(id, folder, folders, messages, {}, false);
+            m_window->applySnapshot(id, folder, folders, messages, {}, m_completedSyncs.remove(id) > 0);
+            const auto error = m_cacheReloadErrors.take(id);
+            if (!error.isEmpty()) m_window->statusBar()->showMessage(QStringLiteral("更新に失敗しました: ") + error);
         });
     connect(m_repository, &AccountRepository::snapshotSaved, this,
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders, const QList<MailRecord> &messages) {
@@ -219,9 +206,12 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         if (auto *text = qobject_cast<QPlainTextEdit *>(m_editor)) { if (redo) text->redo(); else text->undo(); }
         updateEditingState();
     });
-    connect(window, &MainWindow::refreshRequested, this, &ApplicationController::refresh);
+    connect(window, &MainWindow::refreshRequested, this, [this](const QString &id, const QString &folder) { refresh(id, folder); });
     connect(window, &MainWindow::refreshAllRequested, this, [this] {
         for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id));
+    });
+    connect(window, &MainWindow::fullRefreshRequested, this, [this] {
+        for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id), true);
     });
     connect(m_registrar, &AccountRegistrar::finished, this, [this](const QString &id, const QString &error) {
         if (error.isEmpty() && !m_editedId.isEmpty()) {
@@ -250,12 +240,17 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
                 // The mail worker already atomically published the disk-backed
                 // batches. Never send the complete mailbox through the GUI.
                 m_window->setRefreshing(id, false);
-                m_window->applySnapshot(id, folder, folders, {}, {});
+                m_completedSyncs.insert(id);
+                m_repository->loadCache(id, true); m_window->requestPage();
                 m_current = {}; processNext();
             } else {
                 m_authentication->invalidate(id);
                 m_window->setRefreshing(id, false);
                 m_window->applySnapshot(id, folder, folders, messages, error);
+                // Earlier flag readbacks/folder commits may already be durable.
+                // Show them without clearing the synchronization error marker.
+                m_cacheReloadErrors[id] = error;
+                m_repository->loadCache(id, true); m_window->requestPage();
                 m_current = {}; processNext();
             }
         });
@@ -378,11 +373,11 @@ void ApplicationController::openAccount(const QString &id)
     m_dialog->open();
 }
 
-void ApplicationController::refresh(const QString &id, const QString &folder)
+void ApplicationController::refresh(const QString &id, const QString &folder, bool full)
 {
-    if (m_current.accountId == id && m_current.folder == folder) return;
-    for (const auto &request : m_queue) if (request.accountId == id && request.folder == folder) return;
-    m_queue.enqueue({id, folder});
+    if (m_current.accountId == id && (!full || m_current.full)) return;
+    for (auto &request : m_queue) if (request.accountId == id) { request.full = request.full || full; return; }
+    m_queue.enqueue({id, folder, full});
     processNext();
 }
 
@@ -405,7 +400,8 @@ void ApplicationController::processNext()
                 guard->processNext();
                 return;
             }
-            guard->m_mail->synchronize(account, secret, guard->m_current.folder, guard->m_repository);
+            guard->m_mail->synchronize(account, secret, guard->m_current.folder, guard->m_repository,
+                guard->m_current.full ? MailService::SyncMode::All : MailService::SyncMode::Recent);
         });
 }
 

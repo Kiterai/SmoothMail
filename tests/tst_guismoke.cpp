@@ -58,9 +58,16 @@ class GuiSmokeTest final : public QObject
     }
     static QModelIndex subjectIndex(QTreeView *view, const QString &subject)
     {
-        const auto matches = view->model()->match(view->model()->index(0, 3), Qt::DisplayRole, subject, 1,
-                                                Qt::MatchExactly | Qt::MatchRecursive);
-        return matches.isEmpty() ? QModelIndex{} : matches.first().siblingAtColumn(0);
+        QList<QModelIndex> parents{QModelIndex{}};
+        while (!parents.isEmpty()) {
+            const auto parent = parents.takeLast();
+            for (int row = 0; row < view->model()->rowCount(parent); ++row) {
+                const auto index = view->model()->index(row, 3, parent);
+                if (index.data().toString() == subject) return index;
+                parents.append(index.siblingAtColumn(0));
+            }
+        }
+        return {};
     }
     static void contextAction(QTreeView *view, const QModelIndex &index, const QString &text)
     {
@@ -167,8 +174,12 @@ private slots:
         QTRY_COMPARE(messages->model()->index(0, 3).data().toString(), QStringLiteral("Sandbox reply"));
         action(window, "threadAction")->setChecked(true);
         QCOMPARE(messages->model()->rowCount(), 1);
+        QCOMPARE(messages->treePosition(), 3);
         QCOMPARE(messages->model()->rowCount(messages->model()->index(0, 0)), 1);
         messages->expandAll();
+        const auto replyIndex = subjectIndex(messages, QStringLiteral("Sandbox reply"));
+        QVERIFY(replyIndex.isValid()); QVERIFY(!messages->visualRect(replyIndex).isEmpty());
+        QCOMPARE(messages->indexAt(messages->visualRect(replyIndex).center()), replyIndex);
         capture(QStringLiteral("04-thread-view"));
         QSignalSpy automatic(&window, &MainWindow::refreshAllRequested);
         action(window, "autoRefreshAction")->setChecked(true);
@@ -339,12 +350,18 @@ private slots:
             auto *body = window.findChild<QTextBrowser *>(QStringLiteral("messageBody"));
             QTRY_VERIFY(body->toPlainText().contains(QStringLiteral("unique needle body")));
             const auto clickBadge = [&](int column) { const auto index = view->model()->index(0, column); QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, view->visualRect(index).center()); };
-            clickBadge(0); QTRY_VERIFY(!server.messageFlags.value(count).contains("\\Flagged")); QTRY_VERIFY(view->model()->index(0, 0).data().toString().isEmpty());
-            clickBadge(1); QTRY_VERIFY(!server.messageFlags.value(count).contains("\\Seen")); QTRY_COMPARE(view->model()->index(0, 1).data().toString(), QStringLiteral("●"));
+            clickBadge(0); QTRY_COMPARE(view->model()->index(0, 0).data().toString(), QStringLiteral("☆"));
+            QVERIFY(server.messageFlags.value(count).contains("\\Flagged"));
+            clickBadge(1); QTRY_COMPARE(view->model()->index(0, 1).data().toString(), QStringLiteral("●"));
+            QVERIFY(server.messageFlags.value(count).contains("\\Seen"));
             QTRY_VERIFY(folders->model()->index(0, 0).data().toString().endsWith(QStringLiteral("(3345)")));
-            server.rejectFlagChanges = true; clickBadge(0);
+            server.rejectFlagChanges = true; action(window, "refreshAction")->trigger();
             QTRY_VERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("failed")));
-            QVERIFY(view->model()->index(0, 0).data().toString().isEmpty()); server.rejectFlagChanges = false;
+            QCOMPARE(view->model()->index(0, 0).data().toString(), QStringLiteral("☆")); server.rejectFlagChanges = false;
+            action(window, "refreshAction")->trigger();
+            QTRY_VERIFY_WITH_TIMEOUT(!server.messageFlags.value(count).contains("\\Flagged"), 30000);
+            QTRY_VERIFY_WITH_TIMEOUT(!server.messageFlags.value(count).contains("\\Seen"), 30000);
+            QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 240000);
             capture(QStringLiteral("12-large-mailbox-filter-and-flags"));
             filter->clear(); QTest::mouseClick(search, Qt::LeftButton);
             auto *important = window.findChild<QCheckBox *>(QStringLiteral("importantOnly"));
