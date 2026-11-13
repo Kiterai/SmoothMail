@@ -59,7 +59,8 @@ public:
     QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {}, quint64 operation = 0);
     QString stageMessages(const QList<MailRecord> &messages);
     QString reuseMessage(qint64 uid, bool seen, bool important, bool &found);
-    QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount);
+    QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly = false);
+    QString resolveSyncFolder(const QString &id, const QString &local, QString &remote, bool &exists);
     void abortSync();
 
 signals:

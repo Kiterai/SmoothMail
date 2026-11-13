@@ -26,6 +26,23 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void folderScopedCommitPreservesOtherFoldersAndPendingFlags()
+    {
+        AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("scoped@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), changed(&repository, &AccountRepository::flagsUpdated), cached(&repository, &AccountRepository::cacheLoaded), pages(&repository, &AccountRepository::pageLoaded);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const auto parsed = MimeParser::parse("Subject: retained\r\n\r\nbody"); const QList<MailFolder> folders{{QStringLiteral("INBOX"), u'/', {}, 1}, {QStringLiteral("Other"), u'/', {}, 1}};
+        const MailRecord other{account.id, QStringLiteral("Other"), 10, 7, false, false, parsed.message};
+        repository.saveSnapshot(account.id, other.folder, folders, {other}); QTRY_COMPARE(saved.size(), 1);
+        repository.queueFlag(other, true, true); QTRY_COMPARE(changed.size(), 1);
+        QVERIFY(repository.beginSync(account.id, QStringLiteral("INBOX"), 10).isEmpty()); QVERIFY(repository.commitSync({folders.first()}, 0, true).isEmpty()); repository.abortSync();
+        MailQuery query; query.accountId = account.id; query.folder = other.folder; repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        QCOMPARE(qvariant_cast<MailPage>(pages.first().first()).total, 1); QVERIFY(qvariant_cast<MailPage>(pages.first().first()).messages.first().important);
+        qint64 revision = 0; QList<PendingFlag> flags; QVERIFY(repository.flagRevision(revision).isEmpty()); QVERIFY(repository.pendingFlags(account.id, other.folder, 0, revision, flags).isEmpty()); QCOMPARE(flags.size(), 1);
+        repository.loadCache(account.id, true); QTRY_COMPARE(cached.size(), 1); bool found = false;
+        for (const auto &folder : qvariant_cast<QList<MailFolder>>(cached.first().at(2))) if (folder.name == other.folder) { found = true; QCOMPARE(folder.unread, 1); }
+        QVERIFY(found);
+    }
     void metadataOnlySyncWithoutSelectableMailboxDoesNotBindSqlNull()
     {
         AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("noselect@example.test"));

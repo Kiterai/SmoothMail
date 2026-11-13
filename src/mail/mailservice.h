@@ -12,7 +12,7 @@ class MailService final : public QObject
 {
     Q_OBJECT
 public:
-    enum class SyncMode { SelectedFolder, Recent, All };
+    enum class SyncMode { SelectedFolder, Recent, All, SelectedRecent };
     explicit MailService(QString saslPluginDirectory, QObject *parent = nullptr);
     ~MailService() override;
     void test(const Account &account, const QString &smtpSecret, const QString &imapSecret);

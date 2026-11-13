@@ -278,6 +278,12 @@ void MailService::synchronize(const Account &account, const QString &secret, con
         QList<MailFolder> folders;
         QList<MailRecord> records;
         QString selected = requestedFolder;
+        const bool singleFolder = !requestedFolder.isEmpty() && (mode == SyncMode::SelectedFolder || mode == SyncMode::SelectedRecent);
+        if (error.isEmpty() && mode == SyncMode::SelectedRecent && requestedFolder.isEmpty()) error = QStringLiteral("更新対象のフォルダがありません。");
+        if (error.isEmpty() && singleFolder && cache) {
+            bool exists = true; error = cache->resolveSyncFolder(account.id, requestedFolder, selected, exists);
+            if (error.isEmpty() && !exists) error = QStringLiteral("このフォルダはサーバに未作成です。アカウントを更新して保留操作を反映してください。");
+        }
         if (error.isEmpty()) error = testImap(account.imap, secret, [&](KIMAP::Session &session) -> QString {
             diagnostics::event("sync-list");
             const auto listFolders = [&]() -> QString {
@@ -338,7 +344,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             auto jobError = listFolders(); if (!jobError.isEmpty()) return jobError;
             const auto containsFolder = [&](const QString &name) { for (const auto &folder : folders) if (folder.name == name) return true; return false; };
             QList<PendingFolder> operations;
-            if (cache) { jobError = cache->pendingFolders(account.id, folderAfter, folderThrough, operations); if (!jobError.isEmpty()) return jobError; }
+            if (cache && !singleFolder) { jobError = cache->pendingFolders(account.id, folderAfter, folderThrough, operations); if (!jobError.isEmpty()) return jobError; }
             while (!operations.isEmpty()) {
                 for (const auto &op : operations) {
                     if (interrupted()) return QStringLiteral("中断しました。");
@@ -368,7 +374,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             }
             bool forceFull = mode == SyncMode::All;
             qint64 moveThrough = 0, moveAfter = 0; QList<PendingMove> moves;
-            if (cache) { jobError = cache->moveRevision(account.id, moveThrough); if (jobError.isEmpty()) jobError = cache->pendingMoves(account.id, 0, moveThrough, moves); if (!jobError.isEmpty()) return jobError; }
+            if (cache && !singleFolder) { jobError = cache->moveRevision(account.id, moveThrough); if (jobError.isEmpty()) jobError = cache->pendingMoves(account.id, 0, moveThrough, moves); if (!jobError.isEmpty()) return jobError; }
             if (!moves.isEmpty()) {
                 KIMAP::CapabilitiesJob capabilities(&session); jobError = runJob(capabilities); if (!jobError.isEmpty()) return jobError;
                 if (!capabilities.capabilities().contains(QStringLiteral("MOVE")) || !capabilities.capabilities().contains(QStringLiteral("UIDPLUS"))) return QStringLiteral("安全なメール移動にはサーバのMOVEとUIDPLUS対応が必要です。保留操作は元に戻せます。");
@@ -398,11 +404,12 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             }
             QStringList selectable;
             for (auto &folder : folders) {
-                diagnostics::event("sync-status");
                 bool noSelect = false;
                 for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") noSelect = true;
                 if (noSelect) continue;
                 selectable.append(folder.name);
+                if (singleFolder && folder.name != selected) continue;
+                diagnostics::event("sync-status");
                 KIMAP::StatusJob status(&session);
                 status.setMailBox(folder.name);
                 status.setDataItems({"UNSEEN"});
@@ -417,11 +424,11 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 return error.isEmpty() ? cache->commitSync(folders, 0) : error;
             }
             if (!selectable.contains(selected)) {
-                if (mode == SyncMode::SelectedFolder) return QStringLiteral("選択フォルダが見つからないか、選択できません。");
+                if (singleFolder || mode == SyncMode::SelectedFolder) return QStringLiteral("選択フォルダが見つからないか、選択できません。");
                 selected = selectable.contains(QStringLiteral("INBOX")) ? QStringLiteral("INBOX") : selectable.value(0);
             }
             const auto visibleFolder = selected;
-            const auto targets = mode == SyncMode::SelectedFolder && !forceFull ? QStringList{selected} : selectable;
+            const auto targets = singleFolder || (mode == SyncMode::SelectedFolder && !forceFull) ? QStringList{selected} : selectable;
             if (!cache && mode != SyncMode::SelectedFolder) return QStringLiteral("全フォルダ同期にはローカル保存先が必要です。");
             for (const auto &target : targets) {
             selected = target;
@@ -473,7 +480,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             // streaming path has no total mailbox count/byte cap.
             if (!cache && total > 10000) return QStringLiteral("一括取得の上限（10000件）を超えています。分割同期を使用してください。");
             QDateTime boundary;
-            if (cache && mode == SyncMode::Recent && !forceFull) {
+            if (cache && (mode == SyncMode::Recent || mode == SyncMode::SelectedRecent) && !forceFull) {
                 jobError = cache->recentBoundary(account.id, selected, validity, boundary); if (!jobError.isEmpty()) return jobError;
             }
             QList<qint64> recentUids;
@@ -595,7 +602,10 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 return QStringLiteral("同期中にメールボックスが変化しました。再試行してください。");
             if (cache) {
                 if (interrupted()) return QStringLiteral("中断しました。");
-                jobError = cache->commitSync(folders, boundary.isValid() ? -1 : total);
+                QList<MailFolder> published;
+                if (singleFolder) { for (const auto &folder : folders) if (folder.name == selected) published.append(folder); }
+                else published = folders;
+                jobError = cache->commitSync(published, boundary.isValid() ? -1 : total, singleFolder);
                 cache->abortSync();
                 if (!jobError.isEmpty()) return jobError;
             }

@@ -26,6 +26,49 @@ private slots:
         if (!output.isEmpty()) QVERIFY(diagnostics::start(output + QStringLiteral("/transport-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
+    void folderRefreshStaysScopedAndDefersCrossFolderOperations_data()
+    {
+        QTest::addColumn<int>("kind");
+        QTest::newRow("recent") << 0; QTest::newRow("full") << 1;
+        QTest::newRow("unsubmitted-folder") << 2;
+        QTest::newRow("renamed-recent") << 3; QTest::newRow("renamed-full") << 4;
+    }
+    void folderRefreshStaysScopedAndDefersCrossFolderOperations()
+    {
+        QFETCH(int, kind);
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; server.extraFolders.insert("Other");
+        const auto raw = [](const QByteArray &subject, const QByteArray &date) { return "Subject: " + subject + "\r\nDate: " + date + "\r\n\r\nsynthetic body"; };
+        server.messages = {{1, raw("old", "Sun, 01 Nov 2026 10:00:00 +0000")}, {2, raw("latest", "Fri, 13 Nov 2026 10:00:00 +0000")}};
+        server.folderMessages["Other"].insert(10, raw("other", "Fri, 13 Nov 2026 10:00:00 +0000")); QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("scoped@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")}, {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted), queued(&cache, &AccountRepository::folderQueued), flags(&cache, &AccountRepository::flagsUpdated), pages(&cache, &AccountRepository::pageLoaded), cached(&cache, &AccountRepository::cacheLoaded), local(&cache, &AccountRepository::localOperationFinished);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1); MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+        cache.queueFolder(account.id, QStringLiteral("create"), {}, QStringLiteral("Pending")); QTRY_COMPARE(queued.size(), 1);
+        const bool renamed = kind >= 3; const auto target = renamed ? QStringLiteral("RenamedInbox") : QStringLiteral("INBOX");
+        if (renamed) { cache.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("INBOX"), target); QTRY_COMPARE(queued.size(), 2); }
+        const MailRecord other{account.id, QStringLiteral("Other"), 10, 10}; cache.queueFlag(other, true, true); QTRY_COMPARE(flags.size(), 1);
+        server.messages.remove(1); server.messages.insert(3, raw("new", "Fri, 13 Nov 2026 10:30:00 +0000")); server.folderMessages["Other"].insert(11, raw("unfetched", "Fri, 13 Nov 2026 11:00:00 +0000"));
+        const auto mode = kind == 1 || kind == 4 ? MailService::SyncMode::SelectedFolder : MailService::SyncMode::SelectedRecent;
+        server.commands.clear(); result.clear(); service.synchronize(account, QStringLiteral("dummy"), kind == 2 ? QStringLiteral("Pending") : target, &cache, mode);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
+        if (kind == 2) { QVERIFY(result.first().at(4).toString().contains(QStringLiteral("未作成"))); QVERIFY(server.commands.isEmpty()); return; }
+        QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString()));
+        for (const auto &command : server.commands) {
+            QVERIFY(!command.contains("\"Other\"")); QVERIFY(!command.contains(" CREATE ") && !command.contains(" RENAME ") && !command.contains(" UID STORE "));
+        }
+        MailQuery query; query.accountId = account.id; query.folder = target; cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, mode == MailService::SyncMode::SelectedRecent ? 3 : 2);
+        query.folder = QStringLiteral("Other"); cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); const auto page = qvariant_cast<MailPage>(pages.takeFirst().first());
+        QCOMPARE(page.total, 1); QVERIFY(page.messages.first().important); QVERIFY(!server.folderFlags["Other"][10].contains("\\Flagged"));
+        cache.loadCache(account.id, true); QTRY_COMPARE(cached.size(), 1); bool otherFound = false;
+        for (const auto &folder : qvariant_cast<QList<MailFolder>>(cached.first().at(2))) if (folder.name == QStringLiteral("Other")) { otherFound = true; QCOMPARE(folder.unread, 1); } QVERIFY(otherFound);
+        qint64 through = 0; QList<PendingFolder> pending; QVERIFY(cache.folderRevision(account.id, through).isEmpty()); QVERIFY(cache.pendingFolders(account.id, 0, through, pending).isEmpty()); QCOMPARE(pending.size(), renamed ? 2 : 1);
+        cache.setMoveIntent(QStringLiteral("deferred-move"), other, target); QTRY_COMPARE(local.size(), 1); QVERIFY(local.first().at(1).toString().isEmpty());
+        server.commands.clear(); result.clear(); service.synchronize(account, QStringLiteral("dummy"), target, &cache, mode); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+        for (const auto &command : server.commands) QVERIFY(!command.contains("\"Other\"") && !command.contains(" UID MOVE ") && !command.contains(" CREATE ") && !command.contains(" RENAME "));
+        QList<PendingMove> moves; QVERIFY(cache.moveRevision(account.id, through).isEmpty()); QVERIFY(cache.pendingMoves(account.id, 0, through, moves).isEmpty()); QCOMPARE(moves.size(), 1);
+    }
     void duplicateFolderListingIsMergedBeforeFetching_data()
     {
         QTest::addColumn<int>("kind");

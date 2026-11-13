@@ -109,6 +109,74 @@ private slots:
         QVERIFY(diagnostics::start(qEnvironmentVariable("SMOOTHMAIL_GUI_OUTPUT") + QStringLiteral("/gui-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
+    void scopedControllerRequestsKeepDistinctQueuedTargets()
+    {
+        QSettings().clear(); QTemporaryDir directory; QVERIFY(directory.isValid());
+        MailTestServer first(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        MailTestServer second(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        for (auto *server : {&first, &second}) {
+            server->provideMailbox = true; server->extraFolders.insert("Other");
+            server->messages.insert(1, "Subject: scope fixture\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nbody");
+            QVERIFY(server->listen());
+        }
+        QList<Account> accounts;
+        for (auto *server : {&first, &second}) accounts.append({
+            QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("scope@example.test"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server->port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}});
+        const auto path = directory.filePath(QStringLiteral("scope.sqlite"));
+        {
+            AccountRepository repository(path); MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+            QSignalSpy inserted(&repository, &AccountRepository::inserted), synchronized(&service, &MailService::synchronized);
+            for (const auto &account : accounts) {
+                repository.insert(account); QTRY_COMPARE(inserted.size(), 1); inserted.clear();
+                service.synchronize(account, QStringLiteral("dummy"), {}, &repository, MailService::SyncMode::All);
+                QTRY_COMPARE_WITH_TIMEOUT(synchronized.size(), 1, 15000); QVERIFY(synchronized.takeFirst().at(4).toString().isEmpty());
+            }
+        }
+        CredentialStore credentials;
+        for (const auto &account : accounts) {
+            bool done = false; QString error;
+            credentials.write(AccountRegistrar::secretKey(account.id, QStringLiteral("imap"), AuthenticationMode::Plain),
+                QStringLiteral("dummy"), [&](const QString &, const QString &result) { error = result; done = true; });
+            QTRY_VERIFY(done); QVERIFY(error.isEmpty());
+        }
+        {
+            MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+            window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+            auto *tree = window.findChild<QTreeView *>(QStringLiteral("folderTree"));
+            QTRY_COMPARE(tree->model()->rowCount(), 2);
+            QTRY_VERIFY_WITH_TIMEOUT(([&] { action(window, "systemSettingsAction")->trigger(); return window.findChild<SystemSettingsDialog *>() != nullptr; })(), 10000);
+            window.findChild<SystemSettingsDialog *>()->close();
+            first.commands.clear(); second.commands.clear();
+            QStringList errors; int completed = 0;
+            for (auto *mail : controller.findChildren<MailService *>()) connect(mail, &MailService::synchronized, &window,
+                [&](const QString &, const QString &, const QList<MailFolder> &, const QList<MailRecord> &, const QString &error) {
+                    errors.append(error); ++completed;
+                });
+            // Emit before returning to the event loop: one active request and
+            // distinct folder/account requests must survive queue coalescing.
+            window.targetRefreshRequested(accounts[0].id, QStringLiteral("INBOX"), false);
+            window.targetRefreshRequested(accounts[0].id, QStringLiteral("Other"), false);
+            window.targetRefreshRequested(accounts[0].id, QStringLiteral("Other"), true);
+            window.targetRefreshRequested(accounts[1].id, {}, true);
+            const auto count = [](const MailTestServer &server, const QByteArray &needle) {
+                int n = 0; for (const auto &command : server.commands) if (command.contains(needle)) ++n; return n;
+            };
+            QTRY_COMPARE_WITH_TIMEOUT(completed, 3, 30000);
+            for (const auto &error : errors) QVERIFY2(error.isEmpty(), qPrintable(error));
+            QCOMPARE(count(first, "STATUS \"INBOX\""), 1); QCOMPARE(count(first, "STATUS \"Other\""), 1);
+            QCOMPARE(count(second, "STATUS \"INBOX\""), 1); QCOMPARE(count(second, "STATUS \"Other\""), 1);
+            QCOMPARE(count(first, " SEARCH "), 1); // recent INBOX only; queued Other was upgraded to full
+            QCOMPARE(count(second, " SEARCH "), 0);
+        }
+        for (const auto &account : accounts) {
+            bool done = false;
+            credentials.remove(AccountRegistrar::secretKey(account.id, QStringLiteral("imap"), AuthenticationMode::Plain),
+                [&](const QString &, const QString &) { done = true; }); QTRY_VERIFY(done);
+        }
+        QSettings().clear();
+    }
     void settingsPersistAndLocalMovesHaveManualOnlyUndo()
     {
         QSettings().clear(); QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("settings-moves.sqlite"));

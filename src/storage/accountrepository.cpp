@@ -722,7 +722,11 @@ QString AccountRepository::reuseMessage(qint64 uid, bool seen, bool important, b
     }, Qt::BlockingQueuedConnection);
     return error;
 }
-QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 expectedCount)
+QString AccountRepository::resolveSyncFolder(const QString &id, const QString &local, QString &remote, bool &exists)
+{
+    QString error; QMetaObject::invokeMethod(m_worker, [&, this] { error = m_state->error; if (error.isEmpty()) error = serverFolder(m_state->db, id, local, remote, exists); }, Qt::BlockingQueuedConnection); return error;
+}
+QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly)
 {
     QString error;
     QMetaObject::invokeMethod(m_worker, [&, this] {
@@ -753,15 +757,21 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
         const auto id = m_state->syncId, folder = m_state->syncFolder;
         QSqlQuery account(db); account.prepare(QStringLiteral("SELECT 1 FROM accounts WHERE id=?")); account.addBindValue(id);
         if (!account.exec() || !account.next()) { if (account.lastError().isValid()) recordSqlError(account.lastError()); diagnostics::event("sync-cache-account-unavailable"); fail(QStringLiteral("同期先アカウントがありません。")); return; } account.finish();
+        if (folderOnly) {
+            bool present = false; for (const auto &item : folders) if (item.name == folder) present = true;
+            if (!present) { diagnostics::event("sync-cache-target-unavailable"); fail(QStringLiteral("更新対象のフォルダ情報がありません。")); return; }
+        }
         if (!validFolderMetadata(folders, diagnostics::FolderWriteSource::SyncCommit)) { fail(QStringLiteral("フォルダ情報が不正です。")); return; }
-        if (!run(QStringLiteral("DELETE FROM cache_folders WHERE account=?"), {id})) { fail(error); return; }
+        if (!folderOnly && !run(QStringLiteral("DELETE FROM cache_folders WHERE account=?"), {id})) { fail(error); return; }
         for (const auto &item : folders) {
+            if (folderOnly && item.name != folder) continue;
             QJsonArray flags; for (const auto &flag : item.flags) flags.append(QString::fromLatin1(flag));
-            if (!run(QStringLiteral("INSERT INTO cache_folders VALUES(?,?,?,?,?)"), {id, item.name, item.separator.isNull() ? QString{} : QString(item.separator), QJsonDocument(flags).toJson(QJsonDocument::Compact), item.unread})) break;
+            if (!run(QStringLiteral("INSERT OR REPLACE INTO cache_folders VALUES(?,?,?,?,?)"), {id, item.name, item.separator.isNull() ? QString{} : QString(item.separator), QJsonDocument(flags).toJson(QJsonDocument::Compact), item.unread})) break;
         }
         if (!error.isEmpty()) { fail(error); return; }
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
-            if (!run(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=? AND (folder=? OR NOT EXISTS (SELECT 1 FROM cache_folders WHERE cache_folders.account=") + table + QStringLiteral(".account AND cache_folders.name=") + table + QStringLiteral(".folder))"), {id, folder})) break;
+            const auto prune = folderOnly ? QStringLiteral(" WHERE account=? AND folder=?") : QStringLiteral(" WHERE account=? AND (folder=? OR NOT EXISTS (SELECT 1 FROM cache_folders WHERE cache_folders.account=") + table + QStringLiteral(".account AND cache_folders.name=") + table + QStringLiteral(".folder))");
+            if (!run(QStringLiteral("DELETE FROM ") + table + prune, {id, folder})) break;
         }
         if (error.isEmpty()) run(QStringLiteral("INSERT INTO cache_messages SELECT * FROM sync_messages"));
         if (error.isEmpty()) run(QStringLiteral("INSERT INTO cache_index SELECT * FROM sync_index"));
@@ -771,8 +781,14 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
             if (error.isEmpty()) run(QStringLiteral("UPDATE ") + table + QStringLiteral(" AS c SET flags=(flags & ~COALESCE((SELECT SUM(mask) FROM pending_flags p WHERE p.account=c.account AND p.folder=c.folder AND p.uidvalidity=c.uidvalidity AND p.uid=c.uid),0)) | COALESCE((SELECT SUM(mask*enabled) FROM pending_flags p WHERE p.account=c.account AND p.folder=c.folder AND p.uidvalidity=c.uidvalidity AND p.uid=c.uid),0) WHERE account=? AND folder=?"), {id, folder});
         }
-        if (error.isEmpty()) run(QStringLiteral("DELETE FROM pending_flags AS p WHERE account=? AND (NOT EXISTS (SELECT 1 FROM cache_folders f WHERE f.account=p.account AND f.name=p.folder) OR (folder=? AND NOT EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=p.account AND c.folder=p.folder AND c.uidvalidity=p.uidvalidity AND c.uid=p.uid)))"), {id, folder});
-        if (error.isEmpty()) run(QStringLiteral("UPDATE cache_folders AS f SET unread=(SELECT COUNT(*) FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name AND (c.flags & 1)=0) WHERE account=? AND (name=? OR EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name))"), {id, folder});
+        if (error.isEmpty()) {
+            const auto prune = folderOnly
+                ? QStringLiteral("DELETE FROM pending_flags AS p WHERE account=? AND folder=? AND NOT EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=p.account AND c.folder=p.folder AND c.uidvalidity=p.uidvalidity AND c.uid=p.uid)")
+                : QStringLiteral("DELETE FROM pending_flags AS p WHERE account=? AND (NOT EXISTS (SELECT 1 FROM cache_folders f WHERE f.account=p.account AND f.name=p.folder) OR (folder=? AND NOT EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=p.account AND c.folder=p.folder AND c.uidvalidity=p.uidvalidity AND c.uid=p.uid)))");
+            run(prune, {id, folder});
+        }
+        if (error.isEmpty()) run(QStringLiteral("UPDATE cache_folders AS f SET unread=(SELECT COUNT(*) FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name AND (c.flags & 1)=0) WHERE account=? AND ")
+            + (folderOnly ? QStringLiteral("name=?") : QStringLiteral("(name=? OR EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name))")), {id, folder});
         if (error.isEmpty() && !db.commit()) { recordSqlError(db.lastError()); error = db.lastError().text(); }
         if (!error.isEmpty()) { fail(error); return; }
         transactionActive = false; diagnostics::event("sync-cache-commit", expectedCount);

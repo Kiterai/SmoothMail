@@ -248,6 +248,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         updateEditingState();
     });
     connect(window, &MainWindow::refreshRequested, m_repository, &AccountRepository::ensureFolderLoaded);
+    connect(window, &MainWindow::targetRefreshRequested, this, [this](const QString &id, const QString &folder, bool full) { refresh(id, folder, full, !folder.isEmpty()); });
     connect(m_repository, &AccountRepository::initialFetchRequired, this, [this](const QString &id, const QString &folder) { refresh(id, folder); });
     connect(window, &MainWindow::refreshAllRequested, this, [this] {
         for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id));
@@ -462,12 +463,13 @@ void ApplicationController::openAccount(const QString &id)
     m_dialog->open();
 }
 
-void ApplicationController::refresh(const QString &id, const QString &folder, bool full)
+void ApplicationController::refresh(const QString &id, const QString &folder, bool full, bool folderOnly)
 {
     if (m_deletedAccounts.contains(id)) return;
-    if (m_current.accountId == id && (!full || m_current.full)) return;
-    for (auto &request : m_queue) if (request.accountId == id) { request.full = request.full || full; return; }
-    m_queue.enqueue({id, folder, full});
+    const auto sameTarget = [&](const Request &request) { return request.accountId == id && request.folderOnly == folderOnly && (!folderOnly || request.folder == folder); };
+    if (sameTarget(m_current) && (!full || m_current.full)) return;
+    for (auto &request : m_queue) if (sameTarget(request)) { request.full = request.full || full; return; }
+    m_queue.enqueue({id, folder, full, folderOnly});
     processNext();
 }
 
@@ -493,7 +495,9 @@ void ApplicationController::processNext()
                 return;
             }
             guard->m_mail->synchronize(account, secret, guard->m_current.folder, guard->m_repository,
-                guard->m_current.full ? MailService::SyncMode::All : MailService::SyncMode::Recent);
+                guard->m_current.folderOnly
+                    ? (guard->m_current.full ? MailService::SyncMode::SelectedFolder : MailService::SyncMode::SelectedRecent)
+                    : (guard->m_current.full ? MailService::SyncMode::All : MailService::SyncMode::Recent));
         });
 }
 

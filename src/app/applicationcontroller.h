@@ -35,7 +35,7 @@ private:
     void removeSecrets(const QString &id, int index = 0);
     bool m_accountMutation = false;
     QString m_editedId;
-    void refresh(const QString &accountId, const QString &folder, bool full = false);
+    void refresh(const QString &accountId, const QString &folder, bool full = false, bool folderOnly = false);
     void processNext();
     void compose(bool reply);
     void updateEditingState();
@@ -57,7 +57,7 @@ private:
     QString m_reauthorizingId, m_reauthorizingProtocol;
     QPointer<QProgressDialog> m_oauthProgress;
     QList<Account> m_accounts;
-    struct Request { QString accountId; QString folder; bool full = false; };
+    struct Request { QString accountId; QString folder; bool full = false; bool folderOnly = false; };
     QQueue<Request> m_queue;
     Request m_current;
     QSet<QString> m_completedSyncs;
