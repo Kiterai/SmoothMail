@@ -660,7 +660,11 @@ QString AccountRepository::beginSync(const QString &id, const QString &folder, q
              QStringLiteral("CREATE TEMP TABLE sync_index AS SELECT * FROM cache_index WHERE 0")}) {
             error = sql(db, statement); if (!error.isEmpty()) return;
         }
-        m_state->syncId = id; m_state->syncFolder = folder; m_state->syncValidity = validity;
+        m_state->syncId = id;
+        // No selectable mailbox is represented by an empty (not SQL NULL)
+        // folder. folder_state.folder is intentionally NOT NULL.
+        m_state->syncFolder = folder.isNull() ? QStringLiteral("") : folder;
+        m_state->syncValidity = validity;
         if (boundary.isValid()) {
             // Keep older published rows on disk; remove only the refresh window.
             for (const auto &table : {QStringLiteral("messages"), QStringLiteral("index")}) {

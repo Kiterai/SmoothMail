@@ -26,6 +26,17 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void metadataOnlySyncWithoutSelectableMailboxDoesNotBindSqlNull()
+    {
+        AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("noselect@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), cached(&repository, &AccountRepository::cacheLoaded), initial(&repository, &AccountRepository::initialFetchRequired);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        QVERIFY(repository.beginSync(account.id, {}, 0).isEmpty());
+        QVERIFY(repository.commitSync({{QStringLiteral("Root"), u'/', {"\\Noselect"}, 0}}, 0).isEmpty()); repository.abortSync();
+        repository.ensureFolderLoaded(account.id, {});
+        repository.loadCache(account.id, true); QTRY_COMPARE(cached.size(), 1); QVERIFY(initial.isEmpty());
+        const auto folders = qvariant_cast<QList<MailFolder>>(cached.first().at(2)); QCOMPARE(folders.size(), 1); QCOMPARE(folders.first().name, QStringLiteral("Root"));
+    }
     void folderMetadataErrorsAreDiagnosableWithoutPrivateNames_data()
     {
         QTest::addColumn<int>("reason"); QTest::addColumn<bool>("streaming");
