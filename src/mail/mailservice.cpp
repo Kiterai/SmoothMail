@@ -421,7 +421,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             if (selected.isEmpty()) {
                 if (!cache) return {};
                 auto error = cache->beginSync(account.id, {}, 0, {}, diagnostics::currentOperation());
-                return error.isEmpty() ? cache->commitSync(folders, 0) : error;
+                return error.isEmpty() ? cache->commitSync(folders, 0, false, account.id) : error;
             }
             if (!selectable.contains(selected)) {
                 if (singleFolder || mode == SyncMode::SelectedFolder) return QStringLiteral("選択フォルダが見つからないか、選択できません。");
@@ -558,7 +558,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     if (cache) {
                         batch.append(record); batchBytes += raw.size();
                         if (batch.size() >= MailPageSize || batchBytes >= 8 * 1024 * 1024) {
-                            result = cache->stageMessages(batch); batch.clear(); batchBytes = 0;
+                            result = cache->stageMessages(batch, account.id); batch.clear(); batchBytes = 0;
                             if (!result.isEmpty()) return result;
                         }
                     } else records.append(record);
@@ -577,7 +577,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 const bool seen = header.flags.contains("\\Seen"), important = header.flags.contains("\\Flagged");
                 if (cache) {
                     bool found = false;
-                    jobError = cache->reuseMessage(header.uid, seen, important, found);
+                    jobError = cache->reuseMessage(header.uid, seen, important, found, account.id);
                     if (!jobError.isEmpty()) return jobError;
                     if (found) { ++completed; continue; }
                 }
@@ -589,7 +589,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             }
             jobError = fetchPending(); if (!jobError.isEmpty()) return jobError;
             if (cache && !batch.isEmpty()) {
-                jobError = cache->stageMessages(batch); batch.clear(); batchBytes = 0;
+                jobError = cache->stageMessages(batch, account.id); batch.clear(); batchBytes = 0;
                 if (!jobError.isEmpty()) return jobError;
             }
             emit syncProgress(account.id, completed, total);
@@ -605,15 +605,15 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 QList<MailFolder> published;
                 if (singleFolder) { for (const auto &folder : folders) if (folder.name == selected) published.append(folder); }
                 else published = folders;
-                jobError = cache->commitSync(published, boundary.isValid() ? -1 : total, singleFolder);
-                cache->abortSync();
+                jobError = cache->commitSync(published, boundary.isValid() ? -1 : total, singleFolder, account.id);
+                cache->abortSync(account.id);
                 if (!jobError.isEmpty()) return jobError;
             }
             }
             selected = visibleFolder;
             return {};
         });
-        if (cache) cache->abortSync(); // Drop disk-backed staging after success or failure.
+        if (cache) cache->abortSync(account.id); // Drop only this account's disk-backed staging.
         // A failed snapshot must never replace previously displayed/cached mail.
         if (!error.isEmpty()) records.clear();
         diagnostics::event(error.isEmpty() ? "sync-complete" : "sync-failed", records.size());

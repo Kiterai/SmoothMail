@@ -56,12 +56,14 @@ public:
     void cancelPendingReads() { ++m_pageRequest; ++m_bodyRequest; }
     // Called by the mail worker only, never the GUI. Blocking calls provide
     // backpressure: at most one bounded batch is awaiting SQLite at a time.
+    // Parallel callers must pass accountId on every staging/publication call.
+    // The empty default is retained for legacy, single-session consumers.
     QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {}, quint64 operation = 0);
-    QString stageMessages(const QList<MailRecord> &messages);
-    QString reuseMessage(qint64 uid, bool seen, bool important, bool &found);
-    QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly = false);
+    QString stageMessages(const QList<MailRecord> &messages, const QString &accountId = {});
+    QString reuseMessage(qint64 uid, bool seen, bool important, bool &found, const QString &accountId = {});
+    QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly = false, const QString &accountId = {});
     QString resolveSyncFolder(const QString &id, const QString &local, QString &remote, bool &exists);
-    void abortSync();
+    void abortSync(const QString &accountId = {});
 
 signals:
     void loaded(const QList<smoothmail::Account> &accounts);

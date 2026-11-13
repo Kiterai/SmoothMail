@@ -26,6 +26,36 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void interleavedAccountStagesCommitAndAbortIndependently()
+    {
+        AccountRepository repository(QStringLiteral(":memory:"));
+        const auto a = makeAccount(QStringLiteral("a@example.test")), b = makeAccount(QStringLiteral("b@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), pages(&repository, &AccountRepository::pageLoaded);
+        repository.insert(a); repository.insert(b); QTRY_COMPARE(inserted.size(), 2);
+        const auto folder = QStringLiteral("INBOX"); const QList<MailFolder> folders{{folder, u'/', {}, 1}};
+        const MailRecord first{a.id, folder, 10, 1, false, false, MimeParser::parse("Subject: account A\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nA").message};
+        const MailRecord second{b.id, folder, 20, 1, false, false, MimeParser::parse("Subject: account B\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nB").message};
+        QVERIFY(repository.beginSync(a.id, folder, 10).isEmpty());
+        QVERIFY(repository.beginSync(b.id, folder, 20).isEmpty());
+        QVERIFY(repository.stageMessages({first}, a.id).isEmpty());
+        QVERIFY(repository.stageMessages({second}, b.id).isEmpty());
+        QVERIFY(!repository.stageMessages({first}, b.id).isEmpty());
+        QVERIFY(repository.commitSync(folders, 1, false, b.id).isEmpty()); repository.abortSync(b.id);
+        QVERIFY(repository.commitSync(folders, 1, false, a.id).isEmpty()); repository.abortSync(a.id);
+        // Account A's recent-window pruning and abort must not touch B's UID 1.
+        QVERIFY(repository.beginSync(b.id, folder, 20).isEmpty());
+        QVERIFY(repository.stageMessages({second}, b.id).isEmpty());
+        QVERIFY(repository.beginSync(a.id, folder, 10, QDateTime::fromString(QStringLiteral("2026-11-13T09:00:00Z"), Qt::ISODate)).isEmpty());
+        repository.abortSync(a.id);
+        QVERIFY(repository.commitSync(folders, 1, false, b.id).isEmpty()); repository.abortSync(b.id);
+        for (const auto &record : {first, second}) {
+            MailQuery query; query.accountId = record.accountId; query.folder = folder; repository.loadPage(query);
+            QTRY_COMPARE(pages.size(), 1); const auto page = qvariant_cast<MailPage>(pages.takeFirst().first());
+            QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().document.subject, record.document.subject);
+            QCOMPARE(page.messages.first().uidValidity, record.uidValidity);
+        }
+        QVERIFY(!repository.commitSync(folders, 1, false, a.id).isEmpty());
+    }
     void folderScopedCommitPreservesOtherFoldersAndPendingFlags()
     {
         AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("scoped@example.test"));

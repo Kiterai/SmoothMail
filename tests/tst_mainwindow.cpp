@@ -99,8 +99,13 @@ private slots:
         using namespace smoothmail;
         SystemSettingsDialog dialog({}, {}); QSignalSpy save(&dialog, &SystemSettingsDialog::saveRequested);
         auto *page = dialog.findChild<QSpinBox *>(QStringLiteral("settingsPageSize")); auto *interval = dialog.findChild<QSpinBox *>(QStringLiteral("settingsInterval"));
+        auto *parallel = dialog.findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"));
         auto *buttons = dialog.findChild<QDialogButtonBox *>(); auto *button = buttons->button(QDialogButtonBox::Save);
         QCOMPARE(page->value(), 100); QCOMPARE(interval->value(), 30); QVERIFY(!button->isEnabled());
+        QCOMPARE(parallel->value(), 4); parallel->setValue(2); QVERIFY(button->isEnabled());
+        button->click(); QCOMPARE(qvariant_cast<SystemSettings>(save.last().first()).parallelUpdates, 2); QVERIFY(!parallel->isEnabled());
+        dialog.saved(QStringLiteral("fixture failure")); QVERIFY(parallel->isEnabled()); QCOMPARE(parallel->value(), 2);
+        parallel->setValue(4); save.clear(); QVERIFY(!button->isEnabled());
         page->setValue(17); QVERIFY(button->isEnabled()); button->click(); QCOMPARE(save.size(), 1); QCOMPARE(qvariant_cast<SystemSettings>(save.first().first()).pageSize, 17); QVERIFY(!page->isEnabled());
         dialog.saved(QStringLiteral("fixture failure")); QVERIFY(page->isEnabled()); QCOMPARE(page->value(), 17); QVERIFY(button->isEnabled());
         page->setValue(100); QVERIFY(!button->isEnabled());

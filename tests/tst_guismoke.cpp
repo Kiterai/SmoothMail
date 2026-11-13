@@ -42,6 +42,8 @@
 #include <QCheckBox>
 #include <QProgressBar>
 #include <QtTest>
+#include <memory>
+#include <vector>
 
 using namespace smoothmail;
 
@@ -109,6 +111,82 @@ private slots:
         QVERIFY(diagnostics::start(qEnvironmentVariable("SMOOTHMAIL_GUI_OUTPUT") + QStringLiteral("/gui-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
+    void parallelControllerHonorsLimitChangesDeletionAndFailure()
+    {
+        QSettings().clear(); QSettings().setValue(QStringLiteral("refresh/parallelUpdates"), 2);
+        QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("parallel.sqlite"));
+        std::vector<std::unique_ptr<MailTestServer>> servers; QList<Account> accounts;
+        for (int i = 0; i < 4; ++i) {
+            auto server = std::make_unique<MailTestServer>(MailTestServer::Protocol::Imap, QStringList{QStringLiteral("PLAIN")});
+            server->provideMailbox = true; server->pauseHeaders = true;
+            server->messages.insert(1, "Subject: parallel " + QByteArray::number(i) + "\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nbody");
+            QVERIFY(server->listen());
+            accounts.append({QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("parallel%1@example.test").arg(i),
+                {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+                {QStringLiteral("127.0.0.1"), server->port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}});
+            servers.push_back(std::move(server));
+        }
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted);
+            for (const auto &account : accounts) {
+                repository.insert(account); QTRY_COMPARE(inserted.size(), 1); inserted.clear();
+                QVERIFY(repository.beginSync(account.id, QStringLiteral("INBOX"), 10).isEmpty());
+                QVERIFY(repository.commitSync({{QStringLiteral("INBOX"), u'/', {}, 0}}, 0).isEmpty()); repository.abortSync();
+            }
+        }
+        CredentialStore credentials;
+        for (const auto &account : accounts) {
+            bool done = false; QString error;
+            credentials.write(AccountRegistrar::secretKey(account.id, QStringLiteral("imap"), AuthenticationMode::Plain), QStringLiteral("dummy"),
+                [&](const QString &, const QString &result) { error = result; done = true; }); QTRY_VERIFY(done); QVERIFY(error.isEmpty());
+        }
+        {
+            MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+            window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+            auto *tree = window.findChild<QTreeView *>(QStringLiteral("folderTree")); QTRY_COMPARE(tree->model()->rowCount(), 4);
+            QTRY_VERIFY_WITH_TIMEOUT(([&] { action(window, "systemSettingsAction")->trigger(); return window.findChild<SystemSettingsDialog *>() != nullptr; })(), 10000);
+            window.findChild<SystemSettingsDialog *>()->close();
+            QHash<QString, QString> results;
+            for (auto *mail : controller.findChildren<MailService *>()) connect(mail, &MailService::synchronized, &window,
+                [&](const QString &id, const QString &, const QList<MailFolder> &, const QList<MailRecord> &, const QString &error) { results[id] = error; });
+            window.fullRefreshRequested();
+            QTRY_VERIFY_WITH_TIMEOUT(servers[0]->pausedHeaderCount() > 0 && servers[1]->pausedHeaderCount() > 0, 15000);
+            QTest::qWait(150); QVERIFY(!servers[2]->receivedAuthentication()); QVERIFY(!servers[3]->receivedAuthentication());
+            // Decreasing the limit drains existing work without cancelling it.
+            action(window, "systemSettingsAction")->trigger();
+            QPointer<SystemSettingsDialog> settings = window.findChild<SystemSettingsDialog *>(); QVERIFY(settings);
+            settings->findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"))->setValue(1);
+            settings->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click(); QTRY_VERIFY(settings.isNull());
+            servers[0]->disconnectOnBodyFetch = true; servers[0]->resumeHeaders();
+            QTRY_VERIFY_WITH_TIMEOUT(results.contains(accounts[0].id), 15000); QVERIFY(!results.value(accounts[0].id).isEmpty());
+            QVERIFY(!servers[2]->receivedAuthentication()); QVERIFY(!servers[3]->receivedAuthentication());
+            // Delete only the paused account; the next account must progress.
+            window.deleteAccountRequested(accounts[1].id);
+            QTRY_COMPARE(tree->model()->rowCount(), 3);
+            QTRY_VERIFY_WITH_TIMEOUT(servers[2]->pausedHeaderCount() > 0, 15000);
+            QVERIFY(!servers[3]->receivedAuthentication());
+            action(window, "systemSettingsAction")->trigger(); settings = window.findChild<SystemSettingsDialog *>(); QVERIFY(settings);
+            settings->findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"))->setValue(2);
+            settings->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click(); QTRY_VERIFY(settings.isNull());
+            QTRY_VERIFY_WITH_TIMEOUT(servers[3]->pausedHeaderCount() > 0, 15000);
+            servers[3]->resumeHeaders(); servers[2]->resumeHeaders();
+            QTRY_VERIFY_WITH_TIMEOUT(results.contains(accounts[2].id) && results.contains(accounts[3].id), 15000);
+            QVERIFY(results.value(accounts[2].id).isEmpty()); QVERIFY(results.value(accounts[3].id).isEmpty());
+        }
+        {
+            AccountRepository repository(path); QSignalSpy pages(&repository, &AccountRepository::pageLoaded);
+            for (int i : {2, 3}) {
+                MailQuery query; query.accountId = accounts[i].id; query.folder = QStringLiteral("INBOX"); repository.loadPage(query);
+                QTRY_COMPARE(pages.size(), 1); const auto page = qvariant_cast<MailPage>(pages.takeFirst().first());
+                QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().document.subject, QStringLiteral("parallel %1").arg(i));
+            }
+        }
+        for (const auto &account : accounts) {
+            bool done = false; credentials.remove(AccountRegistrar::secretKey(account.id, QStringLiteral("imap"), AuthenticationMode::Plain),
+                [&](const QString &, const QString &) { done = true; }); QTRY_VERIFY(done);
+        }
+        QSettings().clear();
+    }
     void scopedControllerRequestsKeepDistinctQueuedTargets()
     {
         QSettings().clear(); QTemporaryDir directory; QVERIFY(directory.isValid());
@@ -195,6 +273,7 @@ private slots:
             QTRY_VERIFY_WITH_TIMEOUT(([&] { action(window, "systemSettingsAction")->trigger(); return window.findChild<SystemSettingsDialog *>() != nullptr; })(), 10000);
             QPointer<SystemSettingsDialog> dialog = window.findChild<SystemSettingsDialog *>();
             dialog->findChild<QSpinBox *>(QStringLiteral("settingsPageSize"))->setValue(17); dialog->findChild<QSpinBox *>(QStringLiteral("settingsInterval"))->setValue(45);
+            dialog->findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"))->setValue(3);
             dialog->findChild<QLineEdit *>(QStringLiteral("settingsGoogleClient"))->setText(QStringLiteral("dummy-client")); dialog->findChild<QLineEdit *>(QStringLiteral("settingsGoogleSecret"))->setText(QStringLiteral("dummy-system-secret"));
             dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click(); QTRY_VERIFY(dialog.isNull());
             QVERIFY(!action(window, "undoAction")->isEnabled());
@@ -214,6 +293,7 @@ private slots:
             MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
             QTRY_VERIFY_WITH_TIMEOUT(([&] { action(window, "systemSettingsAction")->trigger(); return window.findChild<SystemSettingsDialog *>() != nullptr; })(), 10000);
             auto *dialog = window.findChild<SystemSettingsDialog *>(); QCOMPARE(dialog->findChild<QSpinBox *>(QStringLiteral("settingsPageSize"))->value(), 17); QCOMPARE(dialog->findChild<QSpinBox *>(QStringLiteral("settingsInterval"))->value(), 45);
+            QCOMPARE(dialog->findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"))->value(), 3);
             // Compare the dummy secret, never print it in diagnostics or a failed QCOMPARE.
             QVERIFY(dialog->findChild<QLineEdit *>(QStringLiteral("settingsGoogleSecret"))->text() == QStringLiteral("dummy-system-secret"));
             dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();

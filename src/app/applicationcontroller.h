@@ -37,6 +37,7 @@ private:
     QString m_editedId;
     void refresh(const QString &accountId, const QString &folder, bool full = false, bool folderOnly = false);
     void processNext();
+    void connectSyncWorker(MailService *mail);
     void compose(bool reply);
     void updateEditingState();
     QPointer<MainWindow> m_window;
@@ -48,7 +49,8 @@ private:
     AccountRepository *m_repository;
     CredentialStore *m_credentials;
     AccountRegistrar *m_registrar;
-    MailService *m_mail;
+    QList<MailService *> m_syncWorkers;
+    QString m_saslPlugins;
     MailService *m_actions;
     AuthenticationBroker *m_authentication;
     OAuthClient *m_authorization;
@@ -59,7 +61,8 @@ private:
     QList<Account> m_accounts;
     struct Request { QString accountId; QString folder; bool full = false; bool folderOnly = false; };
     QQueue<Request> m_queue;
-    Request m_current;
+    struct Active { Request request; MailService *mail = nullptr; quint64 serial = 0; };
+    QHash<QString, Active> m_active;
     QSet<QString> m_completedSyncs;
     QHash<QString, QString> m_cacheReloadErrors;
     QSet<QString> m_deletedAccounts;

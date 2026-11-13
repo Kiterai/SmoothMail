@@ -20,6 +20,7 @@
 #include <QUndoStack>
 #include <QUndoCommand>
 #include <QUuid>
+#include <utility>
 
 namespace smoothmail {
 namespace {
@@ -35,14 +36,16 @@ private:
 ApplicationController::ApplicationController(MainWindow *window, const QString &path, const QString &plugins)
     : m_window(window), m_repository(new AccountRepository(path, this)),
       m_credentials(new CredentialStore(this)), m_registrar(new AccountRegistrar(m_repository, m_credentials, this)),
-      m_mail(new MailService(plugins, this)), m_actions(new MailService(plugins, this)), m_authentication(new AuthenticationBroker(m_credentials, this)),
+      m_actions(new MailService(plugins, this)), m_authentication(new AuthenticationBroker(m_credentials, this)),
       m_authorization(new OAuthClient(this))
 {
+    m_saslPlugins = plugins;
     m_operations = new QUndoStack(this); m_operations->setUndoLimit(1000);
     connect(m_operations, &QUndoStack::canUndoChanged, this, &ApplicationController::updateEditingState); connect(m_operations, &QUndoStack::canRedoChanged, this, &ApplicationController::updateEditingState);
     QSettings settings;
     m_systemSettings = {settings.value(QStringLiteral("display/pageSize"), 100).toInt(), settings.value(QStringLiteral("refresh/seconds"), 30).toInt(), settings.value(QStringLiteral("google/clientId"), qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_ID")).toString()};
-    if (!validSettings(m_systemSettings)) { m_systemSettings.pageSize = 100; m_systemSettings.refreshSeconds = 30; }
+    m_systemSettings.parallelUpdates = settings.value(QStringLiteral("refresh/parallelUpdates"), 4).toInt();
+    if (!validSettings(m_systemSettings)) { m_systemSettings.pageSize = 100; m_systemSettings.refreshSeconds = 30; m_systemSettings.parallelUpdates = 4; }
     window->applySettings(m_systemSettings);
     const bool configured = settings.value(QStringLiteral("google/configured"), false).toBool();
     m_credentials->read(QStringLiteral("system/google-client-secret"), [this, configured](const QString &secret, const QString &error) {
@@ -57,7 +60,6 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(m_repository, &AccountRepository::pageLoaded, window, &MainWindow::applyPage);
     connect(window, &MainWindow::messageRequested, m_repository, &AccountRepository::loadMessage);
     connect(m_repository, &AccountRepository::messageLoaded, window, &MainWindow::displayLoadedMessage);
-    connect(m_mail, &MailService::syncProgress, window, &MainWindow::showSyncProgress);
     connect(window, &MainWindow::messageFlagRequested, this, [this](const MailRecord &identity, bool importantFlag, bool enabled) {
         const auto handle = QUuid::createUuid().toString(QUuid::WithoutBraces); const bool before = importantFlag ? identity.important : identity.seen;
         m_operations->push(new OperationCommand(QStringLiteral("メールフラグの変更"), [this, handle, identity, importantFlag, before] { m_repository->setFlagIntent(handle, identity, importantFlag, before); }, [this, handle, identity, importantFlag, enabled] { m_repository->setFlagIntent(handle, identity, importantFlag, enabled); }));
@@ -97,11 +99,6 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_window->enableAccountManagement(false);
             m_window->statusBar()->showMessage(QStringLiteral("アカウント設定を読み込めません: ") + error);
         }
-        if (!m_current.accountId.isEmpty() && operation == QStringLiteral("snapshot:") + m_current.accountId) {
-            m_window->setRefreshing(m_current.accountId, false);
-            m_window->applySnapshot(m_current.accountId, {}, {}, {}, error);
-            m_current = {}; processNext();
-        }
         if (operation.startsWith(QStringLiteral("cache:"))) m_window->statusBar()->showMessage(QStringLiteral("保存済みメールを読み込めません: ") + error);
         if (operation == QStringLiteral("reorder") || operation == QStringLiteral("history")) {
             auto *notice = new QMessageBox(QMessageBox::Warning,
@@ -122,7 +119,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders, const QList<MailRecord> &messages) {
             m_window->setRefreshing(id, false);
             m_window->applySnapshot(id, folder, folders, messages, {});
-            m_current = {}; processNext();
+            processNext();
         });
     connect(window, &MainWindow::addAccountRequested, this, &ApplicationController::addAccount);
     connect(window, &MainWindow::editAccountRequested, this, [this](const QString &id) {
@@ -132,9 +129,14 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         if (!canManage()) return;
         m_deletedAccounts.insert(id); m_authentication->cancelAccount(id);
         m_operations->clear(); m_folderHandles.clear();
-        m_mail->cancelSynchronization(id);
+        if (m_active.contains(id)) {
+            const auto active = m_active.value(id);
+            active.mail->cancelSynchronization(id);
+            // Authentication has not started network work yet. Its callback is
+            // invalidated by the per-request serial, without occupying a slot.
+            if (!active.mail->busy()) m_active.remove(id);
+        }
         for (qsizetype i = m_queue.size(); i-- > 0;) if (m_queue.at(i).accountId == id) m_queue.removeAt(i);
-        if (m_current.accountId == id) { ++m_requestSerial; m_current = {}; }
         for (qsizetype i = m_accounts.size(); i-- > 0;) if (m_accounts.at(i).id == id) m_accounts.removeAt(i);
         m_window->setAccounts(m_accounts);
         m_accountMutation = true; m_repository->remove(id);
@@ -277,28 +279,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         if (m_dialog) m_dialog->testFinished(smtp, imap);
         processNext();
     });
-    connect(m_mail, &MailService::synchronized, this,
-        [this](const QString &id, const QString &folder, const QList<MailFolder> &folders,
-               const QList<MailRecord> &messages, const QString &error) {
-            if (m_deletedAccounts.contains(id)) { processNext(); return; }
-            if (error.isEmpty()) {
-                // The mail worker already atomically published the disk-backed
-                // batches. Never send the complete mailbox through the GUI.
-                m_window->setRefreshing(id, false);
-                m_completedSyncs.insert(id);
-                m_repository->loadCache(id, true); m_window->requestPage();
-                m_current = {}; processNext();
-            } else {
-                m_authentication->invalidate(id);
-                m_window->setRefreshing(id, false);
-                m_window->applySnapshot(id, folder, folders, messages, error);
-                // Earlier flag readbacks/folder commits may already be durable.
-                // Show them without clearing the synchronization error marker.
-                m_cacheReloadErrors[id] = error;
-                m_repository->loadCache(id, true); m_window->requestPage();
-                m_current = {}; processNext();
-            }
-        });
+    for (int i = 0; i < m_systemSettings.parallelUpdates; ++i) connectSyncWorker(new MailService(plugins, this));
     connect(m_actions, &MailService::submissionFinished, this, [this](const QString &id, bool savedAsDraft, const QString &error) {
         m_submissionWaiting = false;
         if (!error.isEmpty()) m_authentication->invalidate(id);
@@ -309,11 +290,41 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     });
 }
 
+void ApplicationController::connectSyncWorker(MailService *mail)
+{
+    m_syncWorkers.append(mail);
+    connect(mail, &MailService::syncProgress, m_window, &MainWindow::showSyncProgress);
+    connect(mail, &MailService::synchronized, this,
+        [this](const QString &id, const QString &folder, const QList<MailFolder> &folders,
+               const QList<MailRecord> &messages, const QString &error) {
+            m_active.remove(id);
+            if (m_deletedAccounts.contains(id)) { processNext(); return; }
+            if (error.isEmpty()) {
+                // The mail worker already atomically published the disk-backed
+                // batches. Never send the complete mailbox through the GUI.
+                m_window->setRefreshing(id, false);
+                m_completedSyncs.insert(id);
+                m_repository->loadCache(id, true); m_window->requestPage();
+                processNext();
+            } else {
+                m_authentication->invalidate(id);
+                m_window->setRefreshing(id, false);
+                m_window->applySnapshot(id, folder, folders, messages, error);
+                // Earlier flag readbacks/folder commits may already be durable.
+                // Show them without clearing the synchronization error marker.
+                m_cacheReloadErrors[id] = error;
+                m_repository->loadCache(id, true); m_window->requestPage();
+                processNext();
+            }
+        });
+}
+
 ApplicationController::~ApplicationController()
 {
     // Stop mail workers before dependencies and the GUI callbacks disappear.
     m_repository->cancelPendingReads();
-    delete m_mail;
+    for (auto it = m_active.cbegin(); it != m_active.cend(); ++it) it.value().mail->cancelSynchronization(it.key());
+    for (auto *mail : m_syncWorkers) delete mail;
     delete m_actions;
     delete m_authorization;
     delete m_authentication;
@@ -334,16 +345,17 @@ void ApplicationController::openSystemSettings()
             if (!dialog) return;
             if (!error.isEmpty()) { dialog->saved(error); return; }
             QSettings settings;
-            const QStringList keys{QStringLiteral("display/pageSize"), QStringLiteral("refresh/seconds"), QStringLiteral("google/clientId"), QStringLiteral("google/configured")};
+            const QStringList keys{QStringLiteral("display/pageSize"), QStringLiteral("refresh/seconds"), QStringLiteral("google/clientId"), QStringLiteral("google/configured"), QStringLiteral("refresh/parallelUpdates")};
             QMap<QString, QVariant> previous;
             for (const auto &key : keys) if (settings.contains(key)) previous.insert(key, settings.value(key));
-            settings.setValue(keys[0], value.pageSize); settings.setValue(keys[1], value.refreshSeconds); settings.setValue(keys[2], value.googleClientId); settings.setValue(keys[3], true); settings.sync();
+            settings.setValue(keys[0], value.pageSize); settings.setValue(keys[1], value.refreshSeconds); settings.setValue(keys[2], value.googleClientId); settings.setValue(keys[3], true);
+            settings.setValue(keys[4], value.parallelUpdates); settings.sync();
             if (settings.status() != QSettings::NoError) {
                 for (const auto &key : keys) { if (previous.contains(key)) settings.setValue(key, previous.value(key)); else settings.remove(key); }
                 settings.sync();
                 m_credentials->write(QStringLiteral("system/google-client-secret"), previousSecret, [dialog](const QString &, const QString &rollbackError) { if (dialog) dialog->saved(rollbackError.isEmpty() ? QStringLiteral("設定ファイルを保存できませんでした。変更は適用していません。") : QStringLiteral("設定保存と秘密情報の復元に失敗しました。OS資格情報ストアを確認してください。")); }); return;
             }
-            m_systemSettings = value; m_googleSecret = secret; m_authentication->setGoogleSecret(secret); m_window->applySettings(value); dialog->saved({});
+            m_systemSettings = value; m_googleSecret = secret; m_authentication->setGoogleSecret(secret); m_window->applySettings(value); dialog->saved({}); processNext();
         });
     });
     m_systemDialog->open();
@@ -467,7 +479,7 @@ void ApplicationController::refresh(const QString &id, const QString &folder, bo
 {
     if (m_deletedAccounts.contains(id)) return;
     const auto sameTarget = [&](const Request &request) { return request.accountId == id && request.folderOnly == folderOnly && (!folderOnly || request.folder == folder); };
-    if (sameTarget(m_current) && (!full || m_current.full)) return;
+    if (m_active.contains(id) && sameTarget(m_active.value(id).request) && (!full || m_active.value(id).request.full)) return;
     for (auto &request : m_queue) if (sameTarget(request)) { request.full = request.full || full; return; }
     m_queue.enqueue({id, folder, full, folderOnly});
     processNext();
@@ -475,30 +487,46 @@ void ApplicationController::refresh(const QString &id, const QString &folder, bo
 
 void ApplicationController::processNext()
 {
-    if (m_mail->busy() || !m_current.accountId.isEmpty() || m_accountMutation || m_queue.isEmpty()) return;
-    m_current = m_queue.dequeue();
-    Account account;
-    for (const auto &candidate : m_accounts) if (candidate.id == m_current.accountId) account = candidate;
-    if (account.id.isEmpty()) { m_current = {}; processNext(); return; }
-    m_window->setRefreshing(account.id, true);
-    const QPointer<ApplicationController> guard(this);
-    const auto serial = ++m_requestSerial;
-    m_authentication->acquire(account, QStringLiteral("imap"),
-        [guard, account, serial](const QString &secret, const QString &error) {
-            if (!guard) return;
-            if (serial != guard->m_requestSerial || guard->m_deletedAccounts.contains(account.id)) return;
+    if (m_accountMutation) return;
+    while (m_active.size() < m_systemSettings.parallelUpdates && !m_queue.isEmpty()) {
+        int next = -1; Account account;
+        // Keep each account serial, and start eligible accounts in tree order.
+        for (const auto &candidate : m_accounts) {
+            if (m_active.contains(candidate.id) || m_deletedAccounts.contains(candidate.id)) continue;
+            for (int i = 0; i < m_queue.size(); ++i) if (m_queue.at(i).accountId == candidate.id) { account = candidate; next = i; break; }
+            if (next >= 0) break;
+        }
+        if (next < 0) return;
+        MailService *mail = nullptr;
+        for (auto *worker : m_syncWorkers) {
+            bool reserved = worker->busy();
+            for (const auto &active : std::as_const(m_active)) if (active.mail == worker) reserved = true;
+            if (!reserved) { mail = worker; break; }
+        }
+        if (!mail) { mail = new MailService(m_saslPlugins, this); connectSyncWorker(mail); }
+        const auto request = m_queue.takeAt(next);
+        const auto serial = ++m_requestSerial;
+        m_active.insert(account.id, {request, mail, serial});
+        m_window->setRefreshing(account.id, true);
+        const QPointer<ApplicationController> guard(this);
+        m_authentication->acquire(account, QStringLiteral("imap"),
+        [guard, account, request, mail, serial](const QString &secret, const QString &error) {
+             if (!guard) return;
+             if (!guard->m_active.contains(account.id) || guard->m_active.value(account.id).serial != serial) return;
+             if (guard->m_deletedAccounts.contains(account.id)) { guard->m_active.remove(account.id); guard->processNext(); return; }
             if (!error.isEmpty()) {
                 guard->m_window->setRefreshing(account.id, false);
                 guard->m_window->applySnapshot(account.id, {}, {}, {}, QStringLiteral("秘密情報を読み込めません: ") + error);
-                guard->m_current = {};
+                 guard->m_active.remove(account.id);
                 guard->processNext();
                 return;
             }
-            guard->m_mail->synchronize(account, secret, guard->m_current.folder, guard->m_repository,
-                guard->m_current.folderOnly
-                    ? (guard->m_current.full ? MailService::SyncMode::SelectedFolder : MailService::SyncMode::SelectedRecent)
-                    : (guard->m_current.full ? MailService::SyncMode::All : MailService::SyncMode::Recent));
-        });
+             mail->synchronize(account, secret, request.folder, guard->m_repository,
+                 request.folderOnly
+                     ? (request.full ? MailService::SyncMode::SelectedFolder : MailService::SyncMode::SelectedRecent)
+                     : (request.full ? MailService::SyncMode::All : MailService::SyncMode::Recent));
+         });
+    }
 }
 
 void ApplicationController::compose(bool reply)

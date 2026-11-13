@@ -20,7 +20,7 @@ private:
     bool changed() const;
     SystemSettings m_original;
     QString m_secret;
-    QSpinBox *m_page, *m_interval;
+    QSpinBox *m_page, *m_interval, *m_parallel;
     QLineEdit *m_client, *m_password;
     QPushButton *m_save;
     QLabel *m_error;
