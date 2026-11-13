@@ -24,6 +24,17 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void deletionCannotQueueReloadAfterStateDestruction()
+    {
+        for (int i = 0; i < 20; ++i) {
+            auto *repository = new AccountRepository(QStringLiteral(":memory:"));
+            const auto account = makeAccount(QStringLiteral("shutdown@example.test"));
+            QSignalSpy inserted(repository, &AccountRepository::inserted);
+            repository->insert(account); QTRY_COMPARE(inserted.size(), 1);
+            repository->remove(account.id);
+            delete repository; // Race the worker's self-queued reload with its deletion barrier.
+        }
+    }
     void pendingFlagsSurviveRestartAndPreserveNewerEdits()
     {
         QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("flags.sqlite"));

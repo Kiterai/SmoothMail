@@ -159,7 +159,11 @@ AccountRepository::~AccountRepository()
 
 void AccountRepository::reload()
 {
+    if (m_thread.isInterruptionRequested()) return;
     QMetaObject::invokeMethod(m_worker, [this] {
+        // A mutation can enqueue this from the worker while destruction has
+        // already queued its state-deletion barrier from the GUI thread.
+        if (m_thread.isInterruptionRequested() || !m_state) return;
         if (!m_state->error.isEmpty()) {
             emit failed(QStringLiteral("load"), m_state->error);
             return;
