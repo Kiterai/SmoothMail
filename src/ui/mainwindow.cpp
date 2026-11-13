@@ -492,6 +492,7 @@ void MainWindow::requestPage(bool reset)
     query.page = m_page->value(); query.sortColumn = m_sortColumn; query.order = m_sortOrder;
     query.importantOnly = m_importantOnly->isChecked(); query.unreadOnly = m_unreadOnly->isChecked(); query.generation = ++m_queryGeneration;
     query.revealUid = m_revealUid; query.revealValidity = m_revealValidity;
+    query.revealStorageFolder = m_revealStorageFolder;
     query.pageSize = m_pageSize;
     m_filterProgress->show(); emit pageRequested(query);
 }
@@ -737,10 +738,11 @@ void MainWindow::rebuildMessages()
         else m_messageModel->appendRow(rows.at(i));
     }
     if (!m_pagedStorage) m_messageModel->sort(m_sortColumn, m_sortOrder);
-    if (m_revealUid > 0) { previousUid = m_revealUid; previousValidity = m_revealValidity; previousAccount = m_accountId; previousFolder = m_folder; }
+    if (m_revealUid > 0) { previousUid = m_revealUid; previousValidity = m_revealValidity; previousAccount = m_accountId; previousFolder = m_folder; previousStorage = m_revealStorageFolder; }
     for (qsizetype i = 0; i < m_visibleMessages.size(); ++i) {
         if (m_visibleMessages.at(i).uid == previousUid && m_visibleMessages.at(i).uidValidity == previousValidity
-            && m_visibleMessages.at(i).accountId == previousAccount && m_visibleMessages.at(i).folder == previousFolder && (m_revealUid > 0 || m_visibleMessages.at(i).storageFolder == previousStorage)) {
+            && m_visibleMessages.at(i).accountId == previousAccount && m_visibleMessages.at(i).folder == previousFolder
+            && ((m_revealUid > 0 && m_revealStorageFolder.isEmpty()) || m_visibleMessages.at(i).storageFolder == previousStorage)) {
             m_messageView->setCurrentIndex(rows.at(i).at(3)->index());
             m_revealUid = 0;
             break;
@@ -814,9 +816,10 @@ void MainWindow::enableHistory(bool enabled)
     findChild<QAction *>(QStringLiteral("downloadHistoryAction"))->setEnabled(enabled);
 }
 
-void MainWindow::revealMessage(const QString &id, const QString &folder, qint64 validity, qint64 uid)
+void MainWindow::revealMessage(const QString &id, const QString &folder, qint64 validity, qint64 uid, const QString &storageFolder)
 {
     m_accountId = id; m_folder = folder; m_revealUid = uid; m_revealValidity = validity;
+    m_revealStorageFolder = storageFolder;
     if (m_pagedStorage) {
         m_filter->clear(); m_filterText.clear();
         { const QSignalBlocker a(m_importantOnly), b(m_unreadOnly); m_importantOnly->setChecked(false); m_unreadOnly->setChecked(false); }

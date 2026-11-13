@@ -42,6 +42,9 @@ public:
     QString finishMove(const PendingMove &move, qint64 validity, qint64 uid);
     QString abandonMove(qint64 revision);
     void loadMessage(const MailRecord &identity);
+    void trackMessage(const QString &handle, const MailRecord &identity);
+    void locateMessage(const QString &handle);
+    void forgetMessage(const QString &handle);
     void updateFlags(const MailRecord &identity, bool seen, bool important);
     void queueFlag(const MailRecord &identity, bool importantFlag, bool enabled);
     QString prepareSync(const Account &account);
@@ -79,6 +82,7 @@ signals:
     void historyLoaded(const QList<smoothmail::DownloadEntry> &entries);
     void pageLoaded(const smoothmail::MailPage &page);
     void messageLoaded(const smoothmail::MailRecord &message, const QString &error);
+    void messageLocated(const QString &handle, const smoothmail::MailRecord &message, const QString &error);
     void flagsUpdated(const smoothmail::MailRecord &identity, const QString &error);
     void folderQueued(const QString &id, const QString &error);
     void initialFetchRequired(const QString &id, const QString &folder);

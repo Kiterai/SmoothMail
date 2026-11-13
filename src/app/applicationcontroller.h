@@ -43,6 +43,7 @@ private:
     QPointer<MainWindow> m_window;
     QPointer<AccountDialog> m_dialog;
     QPointer<ComposeDialog> m_compose;
+    QString m_replyHandle;
     QPointer<DownloadHistoryDialog> m_history;
     QPointer<QWidget> m_editor;
     bool m_submissionWaiting = false;

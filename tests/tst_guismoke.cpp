@@ -394,6 +394,18 @@ private slots:
         QVERIFY(compose->screen()->availableGeometry().contains(compose->frameGeometry()));
         QCOMPARE(compose->draft().to, QStringLiteral("reply@example.test"));
         QCOMPARE(compose->draft().reply.inReplyTo, QByteArray("gui-root@smoothmail.test"));
+        compose->findChild<QPlainTextEdit *>(QStringLiteral("composeBody"))->setPlainText(QStringLiteral("preserved reply draft"));
+        auto *filter = window.findChild<QLineEdit *>(QStringLiteral("mailFilter")); filter->setText(QStringLiteral("no matching fixture"));
+        window.findChild<QPushButton *>(QStringLiteral("mailSearch"))->click(); QTRY_COMPARE(messages->model()->rowCount(), 0);
+        auto *replySource = compose->findChild<QLabel *>(QStringLiteral("composeReplySource")); QVERIFY(replySource);
+        QCOMPARE(replySource->text(), subject); QTest::mouseClick(replySource, Qt::LeftButton);
+        QTRY_VERIFY(compose->isHidden()); QTRY_COMPARE(messages->currentIndex().siblingAtColumn(3).data().toString(), subject);
+        QTRY_VERIFY(body->toPlainText().contains(QStringLiteral("Sandbox plain body"))); QVERIFY(filter->text().isEmpty());
+        const auto sameDialog = compose; action(window, "composeAction")->trigger();
+        QCOMPARE(compose, sameDialog); QTRY_VERIFY(compose->isVisible());
+        QCOMPARE(window.findChild<ComposeDialog *>(), compose.data());
+        QCOMPARE(compose->draft().body, QStringLiteral("preserved reply draft"));
+        QTest::mouseMove(replySource, replySource->rect().center());
         capture(QStringLiteral("05-reply-dialog"));
         compose->close(); QTRY_VERIFY(compose.isNull());
         action(window, "composeAction")->trigger();

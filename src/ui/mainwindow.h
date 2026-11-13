@@ -41,7 +41,7 @@ public:
     std::optional<MailRecord> selectedMessage() const;
     void setEditingState(bool undoAvailable, bool redoAvailable);
     void enableHistory(bool enabled);
-    void revealMessage(const QString &accountId, const QString &folder, qint64 uidValidity, qint64 uid);
+    void revealMessage(const QString &accountId, const QString &folder, qint64 uidValidity, qint64 uid, const QString &storageFolder = {});
     void setPagedStorage(bool enabled) { m_pagedStorage = enabled; }
     void requestPage(bool reset = false);
     void applyPage(const MailPage &page);
@@ -110,6 +110,7 @@ private:
     int m_sortColumn = 6;
     Qt::SortOrder m_sortOrder = Qt::DescendingOrder;
     qint64 m_revealUid = 0, m_revealValidity = 0;
+    QString m_revealStorageFolder;
     bool m_exiting = false;
     bool m_pagedStorage = false;
     quint64 m_queryGeneration = 0;

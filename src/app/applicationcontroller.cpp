@@ -60,6 +60,15 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(m_repository, &AccountRepository::pageLoaded, window, &MainWindow::applyPage);
     connect(window, &MainWindow::messageRequested, m_repository, &AccountRepository::loadMessage);
     connect(m_repository, &AccountRepository::messageLoaded, window, &MainWindow::displayLoadedMessage);
+    connect(m_repository, &AccountRepository::messageLocated, this, [this](const QString &handle, const MailRecord &identity, const QString &error) {
+        if (!m_compose || handle != m_replyHandle) return;
+        if (!error.isEmpty() || m_deletedAccounts.contains(identity.accountId)) {
+            m_compose->sourceNavigationFailed(error.isEmpty() ? QStringLiteral("アカウントは削除されています。") : error); return;
+        }
+        m_window->revealMessage(identity.accountId, identity.folder, identity.uidValidity, identity.uid, identity.storageFolder);
+        m_compose->hide(); // Keep the draft; Ctrl+N / Ctrl+R reopens this same dialog.
+        m_window->show(); m_window->raise(); m_window->activateWindow();
+    });
     connect(window, &MainWindow::messageFlagRequested, this, [this](const MailRecord &identity, bool importantFlag, bool enabled) {
         const auto handle = QUuid::createUuid().toString(QUuid::WithoutBraces); const bool before = importantFlag ? identity.important : identity.seen;
         m_operations->push(new OperationCommand(QStringLiteral("メールフラグの変更"), [this, handle, identity, importantFlag, before] { m_repository->setFlagIntent(handle, identity, importantFlag, before); }, [this, handle, identity, importantFlag, enabled] { m_repository->setFlagIntent(handle, identity, importantFlag, enabled); }));
@@ -531,19 +540,27 @@ void ApplicationController::processNext()
 
 void ApplicationController::compose(bool reply)
 {
-    if (m_compose) { m_compose->raise(); m_compose->activateWindow(); return; }
+    if (m_compose) { m_compose->show(); m_compose->raise(); m_compose->activateWindow(); return; }
     Account account;
     for (const auto &candidate : m_accounts) if (candidate.id == m_window->selectedAccountId()) account = candidate;
     if (account.id.isEmpty()) return;
     ComposeData draft;
+    MailRecord source;
     draft.from = account.email;
     if (reply) {
         const auto parent = m_window->selectedMessage();
         if (!parent) return;
         draft = replyDraft(account.email, parent->document);
+        source = *parent; source.document = {};
     }
-    m_compose = new ComposeDialog(draft, m_window);
+    m_compose = new ComposeDialog(draft, m_window, reply);
     m_compose->setAttribute(Qt::WA_DeleteOnClose);
+    if (reply) {
+        const auto handle = QUuid::createUuid().toString(QUuid::WithoutBraces); m_replyHandle = handle;
+        m_repository->trackMessage(handle, source);
+        connect(m_compose, &ComposeDialog::replySourceRequested, this, [this, handle] { m_repository->locateMessage(handle); });
+        connect(m_compose, &QObject::destroyed, this, [this, handle] { m_repository->forgetMessage(handle); if (m_replyHandle == handle) m_replyHandle.clear(); });
+    }
     connect(m_compose, &ComposeDialog::submitRequested, this, [this, account](const ComposeData &draft, bool saveAsDraft) {
         updateEditingState();
         if (m_actions->busy() || m_submissionWaiting || m_deletedAccounts.contains(account.id)) {

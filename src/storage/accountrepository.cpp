@@ -858,7 +858,7 @@ void AccountRepository::loadPage(const MailQuery &request)
         const QStringList columns{QStringLiteral("json_extract(meta,'$.subject') COLLATE NOCASE"), QStringLiteral("json_extract(meta,'$.name') COLLATE NOCASE"),
             QStringLiteral("json_extract(meta,'$.address') COLLATE NOCASE"), QStringLiteral("json_extract(meta,'$.date')")};
         const auto order = QStringLiteral(" ORDER BY ") + columns.value(request.sortColumn - 3, columns.last())
-            + (request.order == Qt::AscendingOrder ? QStringLiteral(" ASC,uid ASC") : QStringLiteral(" DESC,uid DESC"));
+            + (request.order == Qt::AscendingOrder ? QStringLiteral(" ASC,uid ASC,storage_folder ASC") : QStringLiteral(" DESC,uid DESC,storage_folder DESC"));
         const auto execute = [&](QSqlQuery &query, const QString &statement, const QVariantList &bindings) {
             query.prepare(statement); for (const auto &value : bindings) query.addBindValue(value); return query.exec();
         };
@@ -867,8 +867,10 @@ void AccountRepository::loadPage(const MailQuery &request)
         page.total = query.value(0).toLongLong(); query.finish();
         if (request.revealUid > 0) {
             auto bindings = values; bindings.append(request.revealUid); bindings.append(request.revealValidity);
-            if (!execute(query, QStringLiteral("SELECT position FROM (SELECT uid,uidvalidity,ROW_NUMBER() OVER(") + order + QStringLiteral(") AS position FROM effective_index")
-                + where + QStringLiteral(") WHERE uid=? AND uidvalidity=?"), bindings)) { deliverError(query.lastError().text()); return; }
+            if (!request.revealStorageFolder.isEmpty()) bindings.append(request.revealStorageFolder);
+            if (!execute(query, QStringLiteral("SELECT position FROM (SELECT uid,uidvalidity,storage_folder,ROW_NUMBER() OVER(") + order + QStringLiteral(") AS position FROM effective_index")
+                + where + QStringLiteral(") WHERE uid=? AND uidvalidity=?")
+                + (request.revealStorageFolder.isEmpty() ? QString{} : QStringLiteral(" AND storage_folder=?")), bindings)) { deliverError(query.lastError().text()); return; }
             if (query.next()) page.query.page = int((query.value(0).toLongLong() - 1) / request.pageSize + 1);
             query.finish();
         }
@@ -1006,6 +1008,49 @@ void AccountRepository::loadMessage(const MailRecord &identity)
         auto record = identity; const auto parsed = MimeParser::parse(query.value(0).toByteArray());
         record.document = parsed.message; record.seen = query.value(1).toInt() & 1; record.important = query.value(1).toInt() & 2;
         if (serial == m_bodyRequest.load()) emit messageLoaded(record, parsed.error);
+    }, Qt::QueuedConnection);
+}
+void AccountRepository::trackMessage(const QString &handle, const MailRecord &initial)
+{
+    QMetaObject::invokeMethod(m_worker, [this, handle, initial] {
+        if (!m_state->error.isEmpty() || handle.isEmpty()) return;
+        MailRecord identity;
+        // Register before subsequent moves/renames. A failed registration is
+        // reported as a missing source on lookup; never rebind from old UIDs.
+        handleIdentity(m_state->db, handle, initial, identity);
+    }, Qt::QueuedConnection);
+}
+void AccountRepository::locateMessage(const QString &handle)
+{
+    QMetaObject::invokeMethod(m_worker, [this, handle] {
+        MailRecord identity; QString error = m_state->error;
+        if (error.isEmpty()) {
+            QSqlQuery query(m_state->db);
+            query.prepare(QStringLiteral("SELECT e.account,e.folder,e.uidvalidity,e.uid,e.storage_folder FROM effective_index e "
+                "JOIN message_handles h ON h.account=e.account AND h.folder=e.storage_folder AND h.uidvalidity=e.uidvalidity AND h.uid=e.uid "
+                "JOIN accounts a ON a.id=e.account WHERE h.id=?"));
+            query.addBindValue(handle);
+            if (!query.exec()) error = query.lastError().text();
+            else if (!query.next()) error = QStringLiteral("返信元メールが見つからないか、識別情報が変更されています。");
+            else {
+                identity = {query.value(0).toString(), query.value(1).toString(), query.value(2).toLongLong(), query.value(3).toLongLong()};
+                identity.storageFolder = query.value(4).toString(); query.finish();
+                QList<PendingFolder> operations; error = journal(m_state->db, identity.accountId, operations);
+                if (error.isEmpty()) for (const auto &op : operations) if (underFolder(identity.folder, op.source, op.separator)) {
+                    if (op.operation == QStringLiteral("rename")) identity.folder = op.destination + identity.folder.mid(op.source.size());
+                    else if (op.operation == QStringLiteral("delete") || op.operation == QStringLiteral("delete-empty")) {
+                        error = QStringLiteral("返信元メールのフォルダは削除されています。"); break;
+                    }
+                }
+            }
+        }
+        emit messageLocated(handle, identity, error);
+    }, Qt::QueuedConnection);
+}
+void AccountRepository::forgetMessage(const QString &handle)
+{
+    QMetaObject::invokeMethod(m_worker, [this, handle] {
+        sql(m_state->db, QStringLiteral("DELETE FROM message_handles WHERE id=?"), {handle});
     }, Qt::QueuedConnection);
 }
 void AccountRepository::updateFlags(const MailRecord &identity, bool seen, bool important)

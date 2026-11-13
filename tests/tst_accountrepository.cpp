@@ -26,6 +26,44 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void trackedReplySourceFollowsMovesWithoutRebindingCollidingUids()
+    {
+        AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("reply@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved),
+            moved(&repository, &AccountRepository::localOperationFinished), located(&repository, &AccountRepository::messageLocated),
+            pages(&repository, &AccountRepository::pageLoaded), renamed(&repository, &AccountRepository::folderQueued), removed(&repository, &AccountRepository::removed);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const QList<MailFolder> folders{{QStringLiteral("A"), u'/', {}, 1}, {QStringLiteral("B"), u'/', {}, 1}, {QStringLiteral("Target"), u'/', {}, 0}};
+        const auto parsed = MimeParser::parse("Subject: same subject\r\n\r\nbody");
+        const MailRecord a{account.id, QStringLiteral("A"), 10, 7, false, false, parsed.message}, b{account.id, QStringLiteral("B"), 10, 7, false, false, parsed.message};
+        repository.saveSnapshot(account.id, a.folder, folders, {a}); QTRY_COMPARE(saved.size(), 1);
+        repository.saveSnapshot(account.id, b.folder, folders, {b}); QTRY_COMPARE(saved.size(), 2);
+        repository.trackMessage(QStringLiteral("reply-a"), a); repository.trackMessage(QStringLiteral("reply-b"), b);
+        repository.setMoveIntent(QStringLiteral("move-a"), a, QStringLiteral("Target")); repository.setMoveIntent(QStringLiteral("move-b"), b, QStringLiteral("Target"));
+        QTRY_COMPARE(moved.size(), 2);
+        repository.locateMessage(QStringLiteral("reply-b")); QTRY_COMPARE(located.size(), 1); QVERIFY(located.last().at(2).toString().isEmpty());
+        auto identity = qvariant_cast<MailRecord>(located.takeFirst().at(1));
+        QCOMPARE(identity.folder, QStringLiteral("Target")); QCOMPARE(identity.storageFolder, b.folder);
+        MailQuery query; query.accountId = account.id; query.folder = identity.folder; query.pageSize = 1;
+        query.revealUid = identity.uid; query.revealValidity = identity.uidValidity; query.revealStorageFolder = identity.storageFolder;
+        repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); const auto page = qvariant_cast<MailPage>(pages.takeFirst().first());
+        QVERIFY(page.error.isEmpty()); QCOMPARE(page.total, 2); QCOMPARE(page.messages.first().storageFolder, b.folder);
+        qint64 through = 0; QList<PendingMove> pending; QVERIFY(repository.moveRevision(account.id, through).isEmpty());
+        QVERIFY(repository.pendingMoves(account.id, 0, through, pending).isEmpty());
+        QVERIFY(repository.markMove(pending.first().revision).isEmpty()); QVERIFY(repository.finishMove(pending.first(), 20, 90).isEmpty());
+        repository.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("Target"), QStringLiteral("Renamed")); QTRY_COMPARE(renamed.size(), 1);
+        repository.locateMessage(QStringLiteral("reply-a")); QTRY_COMPARE(located.size(), 1); QVERIFY(located.last().at(2).toString().isEmpty());
+        identity = qvariant_cast<MailRecord>(located.takeFirst().at(1));
+        QCOMPARE(identity.folder, QStringLiteral("Renamed")); QCOMPARE(identity.storageFolder, QStringLiteral("Target")); QCOMPARE(identity.uid, 90); QCOMPARE(identity.uidValidity, 20);
+        // An old handle must not bind to UID 90 from a new UIDVALIDITY.
+        auto replacement = identity; replacement.folder = QStringLiteral("Target"); replacement.uidValidity = 21; replacement.document = parsed.message;
+        repository.saveSnapshot(account.id, replacement.folder, folders, {replacement}); QTRY_COMPARE(saved.size(), 3);
+        repository.locateMessage(QStringLiteral("reply-a")); QTRY_COMPARE(located.size(), 1); QVERIFY(!located.takeFirst().at(2).toString().isEmpty());
+        repository.forgetMessage(QStringLiteral("reply-a")); repository.locateMessage(QStringLiteral("reply-a"));
+        QTRY_COMPARE(located.size(), 1); QVERIFY(!located.takeFirst().at(2).toString().isEmpty());
+        repository.remove(account.id); QTRY_COMPARE(removed.size(), 1); repository.locateMessage(QStringLiteral("reply-b"));
+        QTRY_COMPARE(located.size(), 1); QVERIFY(!located.takeFirst().at(2).toString().isEmpty());
+    }
     void interleavedAccountStagesCommitAndAbortIndependently()
     {
         AccountRepository repository(QStringLiteral(":memory:"));

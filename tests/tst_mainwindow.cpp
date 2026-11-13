@@ -1,5 +1,6 @@
 #include "ui/mainwindow.h"
 #include "ui/foldermodel.h"
+#include "ui/composedialog.h"
 #include "ui/visiblesplitter.h"
 
 #include <QAction>
@@ -49,6 +50,25 @@ private slots:
         QTRY_VERIFY(splitter.sizes().first() != before);
         smoothmail::MainWindow window(false);
         for (auto *pane : window.findChildren<QSplitter *>()) QVERIFY(dynamic_cast<smoothmail::VisibleSplitter *>(pane));
+    }
+    void replySourceIsLiteralClickableLabelAndKeepsDraft()
+    {
+        using namespace smoothmail; ComposeData data; data.replySubject = QStringLiteral("<img src='https://tracker.example/'>");
+        data.subject = QStringLiteral("reply"); data.body = QStringLiteral("draft");
+        ComposeDialog dialog(data, nullptr, true); dialog.show(); QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+        auto *source = dialog.findChild<QLabel *>(QStringLiteral("composeReplySource")); QVERIFY(source);
+        QCOMPARE(source->textFormat(), Qt::PlainText); QCOMPARE(source->text(), data.replySubject);
+        QVERIFY(source->styleSheet().contains(QStringLiteral(":hover"))); QSignalSpy requested(&dialog, &ComposeDialog::replySourceRequested);
+        QTest::mouseClick(source, Qt::LeftButton); QCOMPARE(requested.size(), 1);
+        QTest::mouseClick(source, Qt::RightButton); QCOMPARE(requested.size(), 1);
+        source->setFocus(); QTest::keyClick(source, Qt::Key_Return); QCOMPARE(requested.size(), 2);
+        dialog.sourceNavigationFailed(QStringLiteral("fixture missing"));
+        QCOMPARE(dialog.draft().body, data.body); QCOMPARE(dialog.draft().subject, data.subject);
+        ComposeDialog empty({}, nullptr, false); auto *blank = empty.findChild<QLabel *>(QStringLiteral("composeReplySource"));
+        QVERIFY(blank->text().isEmpty()); QSignalSpy absent(&empty, &ComposeDialog::replySourceRequested);
+        QTest::mouseClick(blank, Qt::LeftButton); QVERIFY(absent.isEmpty());
+        ComposeDialog untitled({}, nullptr, true); QSignalSpy present(&untitled, &ComposeDialog::replySourceRequested);
+        QTest::mouseClick(untitled.findChild<QLabel *>(QStringLiteral("composeReplySource")), Qt::LeftButton); QCOMPARE(present.size(), 1);
     }
     void contextRefreshTargetsClickedItemWithoutChangingGlobalActions()
     {

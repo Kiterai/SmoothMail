@@ -7,14 +7,17 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QScreen>
+#include <QMouseEvent>
+#include <QKeyEvent>
 
 namespace smoothmail {
-ComposeDialog::ComposeDialog(ComposeData value, QWidget *parent)
+ComposeDialog::ComposeDialog(ComposeData value, QWidget *parent, bool hasReplySource)
     : QDialog(parent), m_original(std::move(value)), m_subject(new QLineEdit(this)), m_from(new QLineEdit(this)),
       m_to(new QLineEdit(this)), m_cc(new QLineEdit(this)), m_bcc(new QLineEdit(this)), m_body(new QPlainTextEdit(this)),
       m_status(new QLabel(this)), m_send(new QPushButton(QStringLiteral("送信"), this)),
       m_save(new QPushButton(QStringLiteral("保存"), this)), m_cancel(new QPushButton(QStringLiteral("閉じる"), this))
 {
+    m_hasReplySource = hasReplySource;
     qRegisterMetaType<ComposeData>();
     m_from->setObjectName(QStringLiteral("composeFrom"));
     m_to->setObjectName(QStringLiteral("composeTo"));
@@ -30,8 +33,18 @@ ComposeDialog::ComposeDialog(ComposeData value, QWidget *parent)
     m_to->setText(m_original.to); m_cc->setText(m_original.cc); m_bcc->setText(m_original.bcc);
     form->addRow(QStringLiteral("件名"), m_subject); form->addRow(QStringLiteral("送信元"), m_from);
     form->addRow(QStringLiteral("宛先(To)"), m_to); form->addRow(QStringLiteral("CC"), m_cc); form->addRow(QStringLiteral("BCC"), m_bcc);
-    auto *reply = new QLineEdit(m_original.replySubject, this); reply->setReadOnly(true);
-    form->addRow(QStringLiteral("返信元メール"), reply); layout->addLayout(form);
+    m_reply = new QLabel(m_original.replySubject, this);
+    m_reply->setObjectName(QStringLiteral("composeReplySource"));
+    m_reply->setTextFormat(Qt::PlainText); m_reply->setWordWrap(true);
+    m_reply->setMinimumHeight(m_reply->fontMetrics().height());
+    m_reply->setProperty("hasReplySource", hasReplySource);
+    if (hasReplySource) {
+        m_reply->setCursor(Qt::PointingHandCursor); m_reply->setFocusPolicy(Qt::StrongFocus);
+        m_reply->setAccessibleName(QStringLiteral("返信元メールを表示"));
+        m_reply->setStyleSheet(QStringLiteral("QLabel:hover, QLabel:focus { background: palette(midlight); }"));
+    }
+    m_reply->installEventFilter(this);
+    form->addRow(QStringLiteral("返信元メール"), m_reply); layout->addLayout(form);
     m_body->setObjectName(QStringLiteral("composeBody")); m_body->setPlainText(m_original.body); layout->addWidget(m_body, 1);
     m_status->setTextFormat(Qt::PlainText); m_status->setWordWrap(true); layout->addWidget(m_status);
     auto *buttons = new QHBoxLayout;
@@ -52,6 +65,7 @@ ComposeData ComposeDialog::draft() const
 void ComposeDialog::submit(bool saveAsDraft)
 {
     if (m_busy) return;
+    m_replyPressed = false;
     m_busy = true;
     m_send->setEnabled(false); m_save->setEnabled(false); m_cancel->setEnabled(false);
     for (auto *edit : findChildren<QLineEdit *>()) edit->setEnabled(false);
@@ -74,5 +88,27 @@ void ComposeDialog::submissionFinished(bool savedAsDraft, const QString &error)
 void ComposeDialog::reject()
 {
     if (!m_busy) QDialog::reject();
+}
+void ComposeDialog::sourceNavigationFailed(const QString &error)
+{
+    m_status->setText(QStringLiteral("返信元メールを表示できません: ") + error);
+}
+
+bool ComposeDialog::eventFilter(QObject *object, QEvent *event)
+{
+    if (object == m_reply && m_hasReplySource && !m_busy) {
+        if (event->type() == QEvent::MouseButtonPress) {
+            m_replyPressed = static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton;
+        } else if (event->type() == QEvent::MouseButtonRelease) {
+            const auto *mouse = static_cast<QMouseEvent *>(event);
+            const bool activate = m_replyPressed && mouse->button() == Qt::LeftButton && m_reply->rect().contains(mouse->position().toPoint());
+            m_replyPressed = false;
+            if (activate) { emit replySourceRequested(); return true; }
+        } else if (event->type() == QEvent::KeyPress) {
+            const auto key = static_cast<QKeyEvent *>(event)->key();
+            if (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space) { emit replySourceRequested(); return true; }
+        }
+    }
+    return QDialog::eventFilter(object, event);
 }
 } // namespace smoothmail
