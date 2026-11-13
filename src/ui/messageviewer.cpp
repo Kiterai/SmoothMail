@@ -51,7 +51,8 @@ MessageViewer::MessageViewer(QWidget *parent)
     m_summary->setObjectName(QStringLiteral("messageSummary"));
     auto *splitter = new QSplitter(Qt::Vertical, this); splitter->setObjectName(QStringLiteral("headerBodySplitter"));
     splitter->setHandleWidth(5); splitter->setChildrenCollapsible(false);
-    auto *information = new QWidget(splitter); auto *informationLayout = new QVBoxLayout(information); informationLayout->setContentsMargins(0, 0, 0, 0);
+    auto *information = new QWidget(this); auto *informationLayout = new QVBoxLayout(information); informationLayout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(information);
     m_summary->setTextFormat(Qt::RichText);
     m_summary->setWordWrap(true);
     m_summary->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -71,7 +72,7 @@ MessageViewer::MessageViewer(QWidget *parent)
     auto *headerRow = new QHBoxLayout;
 
     m_headerToggle->setObjectName(QStringLiteral("headerToggle"));
-    m_headerToggle->setText(QStringLiteral("+ メールヘッダ"));
+    m_headerToggle->setText(QStringLiteral("▶ メールヘッダ"));
     m_headerToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     m_headerToggle->setCheckable(true);
     m_headerToggle->setAutoRaise(true);
@@ -84,14 +85,19 @@ MessageViewer::MessageViewer(QWidget *parent)
     m_headers->setObjectName(QStringLiteral("messageHeaders"));
     m_headers->setReadOnly(true);
     m_headers->setMinimumHeight(0);
-    informationLayout->addWidget(m_headers, 1);
-    connect(m_headerToggle, &QToolButton::toggled, this, [this](bool expanded) {
+    splitter->addWidget(m_headers);
+    connect(m_headerToggle, &QToolButton::toggled, this, [this, splitter](bool expanded) {
+        if (!expanded && !splitter->sizes().isEmpty() && splitter->sizes().first() > 0) m_headerHeight = splitter->sizes().first();
         m_headers->setVisible(expanded);
-        m_headerToggle->setText(expanded ? QStringLiteral("- メールヘッダ") : QStringLiteral("+ メールヘッダ"));
+        m_headerToggle->setText(expanded ? QStringLiteral("▼ メールヘッダ") : QStringLiteral("▶ メールヘッダ"));
+        if (expanded) {
+            const int height = qMin(m_headerHeight, splitter->height() / 2);
+            splitter->setSizes({height, qMax(1, splitter->height() - height)});
+        }
     });
 
     m_body->setObjectName(QStringLiteral("messageBody"));
-    splitter->addWidget(m_body); splitter->setStretchFactor(0, 0); splitter->setStretchFactor(1, 1); splitter->setSizes({160, 420});
+    splitter->addWidget(m_body); splitter->setStretchFactor(0, 0); splitter->setStretchFactor(1, 1);
     layout->addWidget(splitter, 1);
     connect(splitter, &QSplitter::splitterMoved, this, [this] { centerCurrentMatch(); });
     connect(m_body->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { if (m_searchText) highlightMatches(); });
@@ -146,7 +152,7 @@ void MessageViewer::clear()
     m_summary->clear();
     m_attachments->clear(); m_attachments->hide();
     m_headerToggle->setChecked(false);
-    m_headerToggle->setText(QStringLiteral("+ メールヘッダ"));
+    m_headerToggle->setText(QStringLiteral("▶ メールヘッダ"));
     m_headerToggle->setEnabled(false);
     m_headers->clear();
     m_headers->hide();

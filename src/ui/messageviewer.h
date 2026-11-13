@@ -45,6 +45,7 @@ private:
     int m_position = -1, m_current = 0, m_matches = 0;
     QList<int> m_matchPositions;
     bool m_hasMessage = false;
+    int m_headerHeight = 150;
     void countMatches();
     void findMatch(bool previous);
     void highlightMatches();

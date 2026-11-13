@@ -13,6 +13,7 @@
 #include <QListWidget>
 #include <QLineEdit>
 #include <QSplitter>
+#include <QSplitterHandle>
 #include <QScrollBar>
 #include "core/displaytime.h"
 
@@ -33,6 +34,27 @@ class MessageViewerTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void collapsedHeadersHaveNoHandleOrFlexibleInformationGap()
+    {
+        smoothmail::MessageViewer viewer; viewer.resize(700, 700);
+        smoothmail::MessageDocument message; message.subject = QStringLiteral("compact");
+        message.headers = QStringLiteral("Subject: compact\n") + QStringLiteral("X-Fixture: value\n").repeated(100);
+        message.parts = {{QStringLiteral("text/plain"), QStringLiteral("body")}};
+        viewer.displayMessage(message); viewer.show(); QVERIFY(QTest::qWaitForWindowExposed(&viewer));
+        auto *splitter = viewer.findChild<QSplitter *>(QStringLiteral("headerBodySplitter"));
+        auto *headers = viewer.findChild<QPlainTextEdit *>(QStringLiteral("messageHeaders"));
+        auto *body = viewer.findChild<smoothmail::SafeBodyView *>();
+        auto *toggle = viewer.findChild<QToolButton *>(QStringLiteral("headerToggle"));
+        auto *summary = viewer.findChild<QLabel *>(QStringLiteral("messageSummary"));
+        QVERIFY(headers->isHidden()); QVERIFY(!splitter->handle(1)->isVisible());
+        QVERIFY(toggle->mapTo(&viewer, QPoint()).y() - summary->mapTo(&viewer, summary->rect().bottomLeft()).y() < 30);
+        QVERIFY(body->mapTo(&viewer, QPoint()).y() - toggle->mapTo(&viewer, toggle->rect().bottomLeft()).y() < 30);
+        const auto compactHeight = body->height(); QVERIFY(compactHeight > viewer.height() / 2);
+        toggle->click(); QTRY_VERIFY(headers->isVisible()); QTRY_VERIFY(splitter->handle(1)->isVisible());
+        QTRY_VERIFY(body->height() < compactHeight); splitter->setSizes({180, 300});
+        toggle->click(); QTRY_VERIFY(!splitter->handle(1)->isVisible()); QTRY_COMPARE(body->height(), compactHeight);
+        viewer.resize(700, 900); QTRY_VERIFY(body->height() > compactHeight);
+    }
     void summaryEscapesMailValuesAndUsesLocalTime()
     {
         smoothmail::MessageViewer viewer; smoothmail::MessageDocument message;
@@ -53,9 +75,9 @@ private slots:
         QVERIFY(smoothmail::displayTime(message.date).startsWith(local.toString(QStringLiteral("yyyy/MM/dd HH:mm"))));
         QVERIFY(smoothmail::displayTime(message.date).endsWith(u')')); QVERIFY(smoothmail::displayTime({}).isEmpty());
         auto *splitter = viewer.findChild<QSplitter *>(QStringLiteral("headerBodySplitter")); QVERIFY(splitter); QCOMPARE(splitter->count(), 2); QCOMPARE(splitter->orientation(), Qt::Vertical);
-        auto *toggle = viewer.findChild<QToolButton *>(QStringLiteral("headerToggle")); QVERIFY(toggle->text().startsWith(u'+'));
+        auto *toggle = viewer.findChild<QToolButton *>(QStringLiteral("headerToggle")); QVERIFY(toggle->text().startsWith(u'▶'));
         if (label->font().pointSizeF() > 0) QVERIFY(qAbs(toggle->font().pointSizeF() - label->font().pointSizeF() * 2.0 / 3.0) < 0.1);
-        toggle->setChecked(true); QVERIFY(toggle->text().startsWith(u'-'));
+        toggle->setChecked(true); QVERIFY(toggle->text().startsWith(u'▼'));
     }
     void loadingAndFailureNeverSearchOrKeepOldMessage()
     {
