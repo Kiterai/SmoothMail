@@ -2,6 +2,7 @@
 
 #include "messageviewer.h"
 #include "core/threading.h"
+#include "core/displaytime.h"
 #include "foldermodel.h"
 
 #include <QAction>
@@ -134,7 +135,7 @@ MainWindow::MainWindow(bool enableSystemTray, QWidget *parent)
         const auto seconds = qMax<qint64>(0, m_lastSuccess.secsTo(QDateTime::currentDateTime()));
         const auto ago = seconds < 60 ? QStringLiteral("<1分前") : seconds < 3600
             ? QStringLiteral("%1分前").arg(seconds / 60) : QStringLiteral("%1時間前").arg(seconds / 3600);
-        m_lastUpdated->setText(QStringLiteral("最終更新: %1 (%2)").arg(m_lastSuccess.toString(QStringLiteral("yyyy/MM/dd HH:mm:ss")), ago));
+        m_lastUpdated->setText(QStringLiteral("最終更新: %1 (%2)").arg(displayUpdateTime(m_lastSuccess), ago));
     });
     statusBar()->showMessage(QStringLiteral("アカウント設定を読み込み中..."));
     if (enableSystemTray && QSystemTrayIcon::isSystemTrayAvailable()) {
@@ -227,6 +228,13 @@ void MainWindow::createPanes()
         for (const auto &candidate : m_accounts) if (candidate.id == id) account = candidate;
         QMenu menu(this);
         auto *create = menu.addAction(QStringLiteral("新規フォルダ"));
+        menu.addSeparator();
+        auto *recent = menu.addAction(QStringLiteral("最新の情報を取得"));
+        auto *full = menu.addAction(QStringLiteral("最新の全ての情報を取得"));
+        recent->setObjectName(QStringLiteral("targetRecentRefresh")); full->setObjectName(QStringLiteral("targetFullRefresh"));
+        const bool realFolder = folder.isEmpty() || bool(index.flags() & Qt::ItemIsSelectable);
+        recent->setEnabled(realFolder); full->setEnabled(realFolder);
+        menu.addSeparator();
         auto *edit = menu.addAction(folder.isEmpty() ? QStringLiteral("アカウントの編集") : QStringLiteral("名前の変更"));
         auto *remove = menu.addAction(folder.isEmpty() ? QStringLiteral("アカウントの削除") : QStringLiteral("削除"));
         menu.addSeparator();
@@ -237,6 +245,7 @@ void MainWindow::createPanes()
         smtp->setVisible(folder.isEmpty()); imap->setVisible(folder.isEmpty());
         const auto *chosen = menu.exec(folders->viewport()->mapToGlobal(position));
         if (chosen == create) editFolder(index, true);
+        if (chosen == recent || chosen == full) emit targetRefreshRequested(id, folder, chosen == full);
         if (chosen == edit) { if (folder.isEmpty()) emit editAccountRequested(id); else editFolder(index, false); }
         if (chosen == remove) {
             QMessageBox warning(QMessageBox::Warning, QStringLiteral("削除の確認"),
@@ -282,13 +291,14 @@ void MainWindow::createPanes()
         m_accountId = id;
         m_folder = name;
         m_revealUid = 0; m_revealValidity = 0;
-        if (m_pagedStorage) { m_loadedMessage.reset(); requestPage(true); }
+        if (m_pagedStorage) { m_loadedMessage.reset(); findChild<MessageViewer *>()->showLoading(); requestPage(true); }
         findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(!name.isEmpty());
         if (!m_pagedStorage) rebuildMessages();
         if (!name.isEmpty()) emit refreshRequested(id, name);
     });
 
     auto *vertical = new QSplitter(Qt::Vertical, horizontal);
+    vertical->setHandleWidth(5);
     vertical->setObjectName(QStringLiteral("mailSplitter"));
     auto *listPane = new QWidget(vertical);
     auto *listLayout = new QVBoxLayout(listPane); listLayout->setContentsMargins(0, 0, 0, 0);
@@ -372,7 +382,7 @@ void MainWindow::createPanes()
             if (m_loadedMessage && m_loadedMessage->accountId == identity.accountId && m_loadedMessage->folder == identity.folder
                 && m_loadedMessage->uidValidity == identity.uidValidity && m_loadedMessage->uid == identity.uid && m_loadedMessage->storageFolder == identity.storageFolder) viewer->displayMessage(m_loadedMessage->document);
             else {
-                m_loadedMessage.reset(); viewer->clear(); findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(false);
+                m_loadedMessage.reset(); viewer->showLoading(); findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(false);
                 emit messageRequested(identity);
             }
         } else viewer->displayMessage(m_visibleMessages.at(record).document);
@@ -487,7 +497,7 @@ void MainWindow::applyPage(const MailPage &page)
 {
     if (page.query.generation != m_queryGeneration || page.query.accountId != m_accountId || page.query.folder != m_folder) return;
     m_filterProgress->hide();
-    if (!page.error.isEmpty()) { statusBar()->showMessage(QStringLiteral("検索に失敗しました: ") + page.error); return; }
+    if (!page.error.isEmpty()) { if (!m_loadedMessage) findChild<MessageViewer *>()->showFailure(); statusBar()->showMessage(QStringLiteral("検索に失敗しました: ") + page.error); return; }
     const auto pages = qMax<qint64>(1, (page.total + page.query.pageSize - 1) / page.query.pageSize);
     { const QSignalBlocker block(m_page); m_page->setRange(1, int(pages)); m_page->setValue(page.query.page); m_page->setEnabled(pages > 1); }
     m_pageCount->setText(QStringLiteral("/ %1").arg(pages));
@@ -518,7 +528,7 @@ void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &
     const auto selected = selectedMessage();
     if (!selected || selected->accountId != message.accountId || selected->folder != message.folder
         || selected->uidValidity != message.uidValidity || selected->uid != message.uid || selected->storageFolder != message.storageFolder) return;
-    if (!error.isEmpty()) { statusBar()->showMessage(error); return; }
+    if (!error.isEmpty()) { m_loadedMessage.reset(); findChild<MessageViewer *>()->showFailure(); findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(false); statusBar()->showMessage(error); return; }
     m_loadedMessage = message;
     // A body request may have started before a local flag edit.
     m_loadedMessage->seen = selected->seen; m_loadedMessage->important = selected->important;
@@ -707,7 +717,7 @@ void MainWindow::rebuildMessages()
         const auto &doc = record.document;
         const QStringList cells{record.important ? QStringLiteral("★") : QStringLiteral("☆"), record.seen ? QStringLiteral("○") : QStringLiteral("●"),
             doc.attachments.isEmpty() ? QString{} : QStringLiteral("●"), doc.subject, doc.senderName, doc.senderAddress,
-            doc.date.toLocalTime().toString(QStringLiteral("yyyy/MM/dd HH:mm"))};
+            displayTime(doc.date)};
         QList<QStandardItem *> row;
         for (int c = 0; c < cells.size(); ++c) {
             auto *item = new QStandardItem(cells.at(c));
@@ -745,7 +755,7 @@ void MainWindow::rebuildMessages()
                 if (m_loadedMessage && m_loadedMessage->accountId == m_accountId && m_loadedMessage->folder == m_folder
                     && m_loadedMessage->uidValidity == m_visibleMessages.at(row).uidValidity && m_loadedMessage->uid == m_visibleMessages.at(row).uid && m_loadedMessage->storageFolder == m_visibleMessages.at(row).storageFolder)
                     findChild<MessageViewer *>()->displayMessage(m_loadedMessage->document);
-                else emit messageRequested(m_visibleMessages.at(row));
+                else { findChild<MessageViewer *>()->showLoading(); emit messageRequested(m_visibleMessages.at(row)); }
             } else findChild<MessageViewer *>()->displayMessage(m_visibleMessages.at(row).document);
         }
     }

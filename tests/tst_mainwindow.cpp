@@ -16,12 +16,48 @@
 #include "ui/systemsettingsdialog.h"
 #include <QDialogButtonBox>
 #include <QScrollBar>
+#include <QMenu>
+#include <QTimer>
 
 class MainWindowTest final : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void contextRefreshTargetsClickedItemWithoutChangingGlobalActions()
+    {
+        using namespace smoothmail; MainWindow window(false); Account account; account.id = QStringLiteral("target"); account.email = QStringLiteral("target@example.test"); window.setAccounts({account});
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}, {QStringLiteral("Archive"), u'/', {}, 0}}, {}, {});
+        window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window)); auto *tree = window.findChild<QTreeView *>(QStringLiteral("folderTree")); tree->expandAll();
+        QSignalSpy target(&window, &MainWindow::targetRefreshRequested), all(&window, &MainWindow::refreshAllRequested), full(&window, &MainWindow::fullRefreshRequested);
+        const auto accountIndex = tree->model()->index(0, 0); const auto folders = tree->model()->match(accountIndex, Qt::UserRole + 1, QStringLiteral("Archive"), 1, Qt::MatchExactly | Qt::MatchRecursive); QCOMPARE(folders.size(), 1);
+        const auto invoke = [&](const QModelIndex &index, bool complete) {
+            QTimer::singleShot(20, &window, [complete] {
+                auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget()); if (!menu) return;
+                for (auto *action : menu->actions()) if (action->objectName() == (complete ? QStringLiteral("targetFullRefresh") : QStringLiteral("targetRecentRefresh"))) { menu->setActiveAction(action); QTest::keyClick(menu, Qt::Key_Return); return; }
+                menu->close();
+            });
+            emit tree->customContextMenuRequested(tree->visualRect(index).center());
+        };
+        invoke(folders.first(), false); QCOMPARE(target.size(), 1); QCOMPARE(target.last().at(0).toString(), account.id); QCOMPARE(target.last().at(1).toString(), QStringLiteral("Archive")); QVERIFY(!target.last().at(2).toBool());
+        invoke(accountIndex, true); QCOMPARE(target.size(), 2); QVERIFY(target.last().at(1).toString().isEmpty()); QVERIFY(target.last().at(2).toBool()); QVERIFY(all.isEmpty()); QVERIFY(full.isEmpty());
+    }
+    void bodyLoadingFailureAndStaleRepliesAreDistinct()
+    {
+        using namespace smoothmail; MainWindow window(false); window.setPagedStorage(true);
+        Account account; account.id = QStringLiteral("body-state"); account.email = QStringLiteral("body@example.test"); window.setAccounts({account});
+        QSignalSpy pages(&window, &MainWindow::pageRequested);
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {}); QVERIFY(!pages.isEmpty());
+        MailPage page; page.query = qvariant_cast<MailQuery>(pages.last().first()); page.total = 2;
+        page.messages = {{account.id, QStringLiteral("INBOX"), 10, 1}, {account.id, QStringLiteral("INBOX"), 10, 2}}; window.applyPage(page);
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList")); auto *body = window.findChild<QTextBrowser *>(QStringLiteral("messageBody"));
+        view->setCurrentIndex(view->model()->index(0, 3)); QCOMPARE(body->toPlainText(), QStringLiteral("読み込み中..."));
+        window.displayLoadedMessage(page.messages[1], QStringLiteral("stale")); QCOMPARE(body->toPlainText(), QStringLiteral("読み込み中..."));
+        window.displayLoadedMessage(page.messages[0], QStringLiteral("fixture error")); QCOMPARE(body->toPlainText(), QStringLiteral("読み込みに失敗しました"));
+        auto first = page.messages[0]; first.document.parts = {{QStringLiteral("text/plain"), QStringLiteral("first body")}}; window.displayLoadedMessage(first, {}); QCOMPARE(body->toPlainText(), QStringLiteral("first body"));
+        view->setCurrentIndex(view->model()->index(1, 3)); QCOMPARE(body->toPlainText(), QStringLiteral("読み込み中..."));
+        window.displayLoadedMessage(first, {}); QCOMPARE(body->toPlainText(), QStringLiteral("読み込み中..."));
+    }
     void messageSelectionKeepsHorizontalScrollPosition()
     {
         using namespace smoothmail;

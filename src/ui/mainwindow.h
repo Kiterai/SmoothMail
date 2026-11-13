@@ -60,6 +60,7 @@ signals:
     void refreshAllRequested();
     void fullRefreshRequested();
     void refreshRequested(const QString &accountId, const QString &folder);
+    void targetRefreshRequested(const QString &accountId, const QString &folder, bool full);
     void composeRequested(bool reply);
     void undoRedoRequested(bool redo);
     void systemSettingsRequested();

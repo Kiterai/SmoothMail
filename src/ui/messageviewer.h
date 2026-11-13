@@ -24,6 +24,8 @@ public:
     void displayMessage(const MessageDocument &message);
     void clear();
     void showSearch();
+    void showLoading();
+    void showFailure();
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
 
@@ -37,12 +39,17 @@ private:
     QToolButton *m_headerToggle;
     QPlainTextEdit *m_headers;
     SafeBodyView *m_body;
-    QWidget *m_search;
-    QLineEdit *m_searchText;
+    QWidget *m_search = nullptr;
+    QLineEdit *m_searchText = nullptr;
     QLabel *m_searchCount;
     int m_position = -1, m_current = 0, m_matches = 0;
+    QList<int> m_matchPositions;
+    bool m_hasMessage = false;
     void countMatches();
     void findMatch(bool previous);
+    void highlightMatches();
+    void centerCurrentMatch();
+    void hideSearch();
 };
 
 } // namespace smoothmail

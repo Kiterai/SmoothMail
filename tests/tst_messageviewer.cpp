@@ -12,6 +12,9 @@
 #include <QtTest>
 #include <QListWidget>
 #include <QLineEdit>
+#include <QSplitter>
+#include <QScrollBar>
+#include "core/displaytime.h"
 
 namespace {
 
@@ -30,6 +33,55 @@ class MessageViewerTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void summaryEscapesMailValuesAndUsesLocalTime()
+    {
+        smoothmail::MessageViewer viewer; smoothmail::MessageDocument message;
+        message.subject = QStringLiteral("<img src=\"https://tracker.example/pixel\">");
+        message.senderAddress = QStringLiteral("利用者@example.test"); message.recipients = {QStringLiteral("safe@example.test")};
+        message.date = QDateTime(QDate(2026, 7, 1), QTime(12, 30, 45), QTimeZone::UTC);
+        viewer.displayMessage(message);
+        const auto *label = viewer.findChild<QLabel *>(QStringLiteral("messageSummary")); QCOMPARE(label->textFormat(), Qt::RichText);
+        QVERIFY(!label->text().contains(QStringLiteral("<img"))); QVERIFY(label->text().contains(QStringLiteral("&lt;img")));
+        QTextDocument summary; summary.setHtml(label->text()); const auto text = summary.toPlainText();
+        QVERIFY(text.startsWith(QStringLiteral("件名: ") + message.subject)); QVERIFY(text.contains(QStringLiteral("日時: ") + smoothmail::displayTime(message.date, true)));
+        QVERIFY(text.contains(QStringLiteral("差出人: (空) ( 利用者@example.test ) 宛先: safe@example.test")));
+        QCOMPARE(formatAt(&summary, int(text.indexOf(message.senderAddress))).foreground().color(), QColor(Qt::red));
+        QCOMPARE(formatAt(&summary, int(text.indexOf(message.subject))).fontWeight(), int(QFont::Bold));
+        QCOMPARE(formatAt(&summary, int(text.indexOf(QStringLiteral("(空)")))).foreground().color(), QColor(QStringLiteral("gray")));
+        QVERIFY(!formatAt(&summary, 0).isAnchor());
+        const auto local = message.date.toTimeZone(QTimeZone::systemTimeZone());
+        QVERIFY(smoothmail::displayTime(message.date).startsWith(local.toString(QStringLiteral("yyyy/MM/dd HH:mm"))));
+        QVERIFY(smoothmail::displayTime(message.date).endsWith(u')')); QVERIFY(smoothmail::displayTime({}).isEmpty());
+        auto *splitter = viewer.findChild<QSplitter *>(QStringLiteral("headerBodySplitter")); QVERIFY(splitter); QCOMPARE(splitter->count(), 2); QCOMPARE(splitter->orientation(), Qt::Vertical);
+        auto *toggle = viewer.findChild<QToolButton *>(QStringLiteral("headerToggle")); QVERIFY(toggle->text().startsWith(u'+'));
+        if (label->font().pointSizeF() > 0) QVERIFY(qAbs(toggle->font().pointSizeF() - label->font().pointSizeF() * 2.0 / 3.0) < 0.1);
+        toggle->setChecked(true); QVERIFY(toggle->text().startsWith(u'-'));
+    }
+    void loadingAndFailureNeverSearchOrKeepOldMessage()
+    {
+        smoothmail::MessageViewer viewer; smoothmail::MessageDocument message; message.subject = QStringLiteral("old"); message.parts = {{QStringLiteral("text/plain"), QStringLiteral("old needle")}};
+        viewer.displayMessage(message); viewer.showSearch(); auto *input = viewer.findChild<QLineEdit *>(QStringLiteral("bodySearchText")); input->setText(QStringLiteral("needle"));
+        auto *body = viewer.findChild<smoothmail::SafeBodyView *>(); viewer.showLoading();
+        QCOMPARE(body->toPlainText(), QStringLiteral("読み込み中...")); QVERIFY(body->extraSelections().isEmpty()); QVERIFY(viewer.findChild<QLabel *>(QStringLiteral("messageSummary"))->text().isEmpty());
+        input->setText(QStringLiteral("読み込み")); QCOMPARE(viewer.findChild<QLabel *>(QStringLiteral("bodySearchCount"))->text(), QStringLiteral("0 / 0 件"));
+        viewer.showFailure(); QCOMPARE(body->toPlainText(), QStringLiteral("読み込みに失敗しました")); QVERIFY(!viewer.findChild<QToolButton *>(QStringLiteral("headerToggle"))->isEnabled());
+        viewer.clear(); QCOMPARE(body->toPlainText(), QStringLiteral("表示するメールはありません。"));
+    }
+    void searchHighlightsVisibleHitsAndCentersCurrentResult()
+    {
+        smoothmail::MessageViewer viewer; viewer.resize(700, 650); smoothmail::MessageDocument message; QStringList lines;
+        for (int i = 0; i < 300; ++i) lines.append(i == 100 || i == 101 || i == 250 ? QStringLiteral("needle") : QStringLiteral("ordinary line %1").arg(i));
+        message.parts = {{QStringLiteral("text/plain"), lines.join(u'\n')}}; viewer.displayMessage(message); viewer.show(); QVERIFY(QTest::qWaitForWindowExposed(&viewer)); viewer.showSearch();
+        auto *input = viewer.findChild<QLineEdit *>(QStringLiteral("bodySearchText")); auto *body = viewer.findChild<smoothmail::SafeBodyView *>(); input->setText(QStringLiteral("needle"));
+        QTRY_VERIFY(qAbs(body->cursorRect().center().y() - body->viewport()->height() / 2) < body->fontMetrics().height() * 2);
+        int pink = 0, blue = 0;
+        for (const auto &selection : body->extraSelections()) { if (selection.format.background().color() == QColor(Qt::blue)) ++blue; if (selection.format.background().color() == QColor(QStringLiteral("#ffc0cb"))) ++pink; }
+        QCOMPARE(blue, 1); QVERIFY(pink >= 1);
+        QTest::keyClick(input, Qt::Key_Return); QTest::keyClick(input, Qt::Key_Return);
+        QTRY_VERIFY(qAbs(body->cursorRect().center().y() - body->viewport()->height() / 2) < body->fontMetrics().height() * 2);
+        QCOMPARE(viewer.findChild<QLabel *>(QStringLiteral("bodySearchCount"))->text(), QStringLiteral("3 / 3 件"));
+        viewer.findChild<QToolButton *>(QStringLiteral("bodySearchClose"))->click(); QVERIFY(body->extraSelections().isEmpty());
+    }
     void bodySearchWrapsInBothDirectionsAndResets()
     {
         smoothmail::MessageViewer viewer; smoothmail::MessageDocument document;
@@ -180,8 +232,8 @@ private slots:
         QVERIFY(headers);
         QVERIFY(summary);
         QVERIFY(body);
-        QCOMPARE(summary->textFormat(), Qt::PlainText);
-        QVERIFY(summary->text().contains(message.subject));
+        QCOMPARE(summary->textFormat(), Qt::RichText);
+        QVERIFY(summary->text().contains(message.subject.toHtmlEscaped()));
         QVERIFY(!toggle->isChecked());
         QVERIFY(headers->isHidden());
         toggle->setChecked(true);

@@ -7,6 +7,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QScreen>
+#include "core/displaytime.h"
 
 namespace smoothmail {
 DownloadHistoryDialog::DownloadHistoryDialog(QWidget *parent) : QDialog(parent), m_view(new QTreeView(this)), m_model(new QStandardItemModel(this))
@@ -41,7 +42,7 @@ void DownloadHistoryDialog::setEntries(const QList<DownloadEntry> &entries)
         double size = double(entry.size); int unit = 0;
         const QStringList units{QStringLiteral("B"), QStringLiteral("kB"), QStringLiteral("MB"), QStringLiteral("GB"), QStringLiteral("TB")};
         while (size >= 1000 && unit < units.size() - 1) { size /= 1000; ++unit; }
-        const QStringList cells{entry.subject, entry.savedAt.toLocalTime().toString(QStringLiteral("yyyy/MM/dd HH:mm")), entry.path,
+        const QStringList cells{entry.subject, displayTime(entry.savedAt), entry.path,
             QString::number(size, 'f', unit ? 2 : 0) + u' ' + units.at(unit), entry.mimeType};
         QList<QStandardItem *> row;
         for (const auto &cell : cells) { auto *item = new QStandardItem(cell); item->setEditable(false); row.append(item); }
