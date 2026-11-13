@@ -12,6 +12,7 @@
 #include <QSqlQuery>
 #include <QUuid>
 #include <QTimer>
+#include <QTimeZone>
 #include <QJsonArray>
 #include <QJsonObject>
 
@@ -70,6 +71,7 @@ struct AccountRepository::State
     QString connection;
     QString syncId, syncFolder;
     qint64 syncValidity = 0;
+    qint64 flagRevision = 0;
 
     explicit State(const QString &path)
     {
@@ -92,7 +94,7 @@ struct AccountRepository::State
         }
         const auto version = query.value(0).toInt();
         query.finish();
-        if (version > 2) {
+        if (version > 3) {
             error = QStringLiteral("このアプリより新しいデータベース形式です。");
             return;
         }
@@ -107,7 +109,8 @@ struct AccountRepository::State
                   QStringLiteral("CREATE TABLE IF NOT EXISTS cache_index (account TEXT NOT NULL,folder TEXT NOT NULL,uidvalidity INTEGER NOT NULL,uid INTEGER NOT NULL,flags INTEGER NOT NULL,meta TEXT NOT NULL,search_text TEXT NOT NULL,PRIMARY KEY(account,folder,uidvalidity,uid))"),
                   QStringLiteral("CREATE INDEX IF NOT EXISTS cache_index_date ON cache_index(account,folder,json_extract(meta,'$.date'),uid)"),
                  QStringLiteral("CREATE TABLE IF NOT EXISTS downloads (id TEXT PRIMARY KEY,account TEXT,folder TEXT,uidvalidity INTEGER,uid INTEGER,subject TEXT,path TEXT,size INTEGER,saved_at TEXT)"),
-                  QStringLiteral("PRAGMA user_version=2")}) {
+                  QStringLiteral("CREATE TABLE IF NOT EXISTS pending_flags (account TEXT NOT NULL,folder TEXT NOT NULL,uidvalidity INTEGER NOT NULL,uid INTEGER NOT NULL,mask INTEGER NOT NULL,enabled INTEGER NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(account,folder,uidvalidity,uid,mask))"),
+                  QStringLiteral("PRAGMA user_version=3")}) {
             if (!query.exec(sql)) {
                 error = query.lastError().text();
                 db.rollback();
@@ -119,6 +122,7 @@ struct AccountRepository::State
             db.rollback();
         }
         QSqlQuery temporary(db); temporary.exec(QStringLiteral("PRAGMA temp_store=FILE"));
+        if (query.exec(QStringLiteral("SELECT COALESCE(MAX(revision),0) FROM pending_flags")) && query.next()) flagRevision = query.value(0).toLongLong();
     }
 
     ~State()
@@ -213,7 +217,7 @@ void AccountRepository::update(const Account &account)
         query.addBindValue(account.id);
         if (!query.exec() || query.numRowsAffected() != 1) { db.rollback(); fail(QStringLiteral("設定を更新できません。")); return; }
         // Changed servers/users must never reuse another mailbox's UID cache.
-        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders")}) {
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders"), QStringLiteral("pending_flags")}) {
             query.prepare(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=?"));
             query.addBindValue(account.id);
             if (!query.exec()) { db.rollback(); fail(query.lastError().text()); return; }
@@ -230,7 +234,7 @@ void AccountRepository::remove(const QString &id)
         if (!m_state->error.isEmpty()) { fail(m_state->error); return; }
         if (!db.transaction()) { fail(db.lastError().text()); return; }
         QSqlQuery query(db);
-        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders"), QStringLiteral("accounts")}) {
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders"), QStringLiteral("pending_flags"), QStringLiteral("accounts")}) {
             query.prepare(QStringLiteral("DELETE FROM ") + table + (table == QStringLiteral("accounts") ? QStringLiteral(" WHERE id=?") : QStringLiteral(" WHERE account=?")));
             query.addBindValue(id);
             if (!query.exec()) { db.rollback(); fail(query.lastError().text()); return; }
@@ -367,7 +371,12 @@ void AccountRepository::loadCache(const QString &id, bool metadataOnly)
             }
         }
         if (metadataOnly) {
-            emit cacheLoaded(id, folders.isEmpty() ? QString{} : folders.first().name, folders, {}); return;
+            QString selected;
+            for (const auto &folder : folders) {
+                bool selectable = true; for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") selectable = false;
+                if (selectable) { selected = folder.name; break; }
+            }
+            emit cacheLoaded(id, selected, folders, {}); return;
         }
         query.prepare(QStringLiteral("SELECT COUNT(*),COALESCE(SUM(length(raw)),0) FROM cache_messages WHERE account=?"));
         query.addBindValue(id);
@@ -391,7 +400,21 @@ void AccountRepository::loadCache(const QString &id, bool metadataOnly)
         }
     }, Qt::QueuedConnection);
 }
-QString AccountRepository::beginSync(const QString &id, const QString &folder, qint64 validity)
+QString AccountRepository::recentBoundary(const QString &id, const QString &folder, qint64 validity, QDateTime &boundary)
+{
+    QString error; boundary = {};
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        error = m_state->error; if (!error.isEmpty()) return;
+        QSqlQuery query(m_state->db);
+        query.prepare(QStringLiteral("SELECT MAX(json_extract(meta,'$.date')),MIN(uidvalidity),MAX(uidvalidity) FROM cache_index WHERE account=? AND folder=?"));
+        query.addBindValue(id); query.addBindValue(folder);
+        if (!query.exec()) { error = query.lastError().text(); return; }
+        if (query.next() && !query.value(0).isNull() && query.value(1).toLongLong() == validity && query.value(2).toLongLong() == validity)
+            boundary = QDateTime::fromMSecsSinceEpoch(query.value(0).toLongLong(), QTimeZone::UTC).addSecs(-3600);
+    }, Qt::BlockingQueuedConnection);
+    return error;
+}
+QString AccountRepository::beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary)
 {
     QString error;
     QMetaObject::invokeMethod(m_worker, [&, this] {
@@ -405,6 +428,16 @@ QString AccountRepository::beginSync(const QString &id, const QString &folder, q
             error = sql(db, statement); if (!error.isEmpty()) return;
         }
         m_state->syncId = id; m_state->syncFolder = folder; m_state->syncValidity = validity;
+        if (boundary.isValid()) {
+            // Keep older published rows on disk; remove only the refresh window.
+            for (const auto &table : {QStringLiteral("messages"), QStringLiteral("index")}) {
+                error = sql(db, QStringLiteral("INSERT INTO sync_") + table + QStringLiteral(" SELECT * FROM cache_") + table
+                    + QStringLiteral(" WHERE account=? AND folder=? AND uidvalidity=?"), {id, folder, validity});
+                if (!error.isEmpty()) return;
+            }
+            error = sql(db, QStringLiteral("DELETE FROM sync_messages WHERE uid IN (SELECT uid FROM sync_index WHERE json_extract(meta,'$.date')>=?)"), {boundary.toMSecsSinceEpoch()});
+            if (error.isEmpty()) error = sql(db, QStringLiteral("DELETE FROM sync_index WHERE json_extract(meta,'$.date')>=?"), {boundary.toMSecsSinceEpoch()});
+        }
     }, Qt::BlockingQueuedConnection);
     return error;
 }
@@ -419,7 +452,7 @@ QString AccountRepository::stageMessages(const QList<MailRecord> &messages)
                 || record.uid <= 0 || record.document.rawSource.isEmpty() || record.document.rawSource.size() > MimeParser::MaxRawBytes) {
                 error = QStringLiteral("同期バッチの識別情報が不正です。"); break;
             }
-            error = sql(db, QStringLiteral("INSERT INTO sync_messages VALUES(?,?,?,?,?,?)"), {record.accountId, record.folder,
+            error = sql(db, QStringLiteral("INSERT OR REPLACE INTO sync_messages VALUES(?,?,?,?,?,?)"), {record.accountId, record.folder,
                 record.uidValidity, record.uid, (record.seen ? 1 : 0) | (record.important ? 2 : 0), record.document.rawSource});
             if (!error.isEmpty()) break;
             error = indexMessage(db, QStringLiteral("sync_index"), record); if (!error.isEmpty()) break;
@@ -443,8 +476,8 @@ QString AccountRepository::reuseMessage(qint64 uid, bool seen, bool important, b
         query.finish();
         if (!db.transaction()) { error = db.lastError().text(); return; }
         QVariantList values{(seen ? 1 : 0) | (important ? 2 : 0)}; values.append(identity);
-        error = sql(db, QStringLiteral("INSERT INTO sync_messages SELECT account,folder,uidvalidity,uid,?,raw FROM cache_messages WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"), values);
-        if (error.isEmpty()) error = sql(db, QStringLiteral("INSERT INTO sync_index SELECT account,folder,uidvalidity,uid,?,meta,search_text FROM cache_index WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"), values);
+        error = sql(db, QStringLiteral("INSERT OR REPLACE INTO sync_messages SELECT account,folder,uidvalidity,uid,?,raw FROM cache_messages WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"), values);
+        if (error.isEmpty()) error = sql(db, QStringLiteral("INSERT OR REPLACE INTO sync_index SELECT account,folder,uidvalidity,uid,?,meta,search_text FROM cache_index WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"), values);
         if (error.isEmpty() && !db.commit()) error = db.lastError().text();
         if (!error.isEmpty()) db.rollback(); else found = true;
     }, Qt::BlockingQueuedConnection);
@@ -456,7 +489,7 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
     QMetaObject::invokeMethod(m_worker, [&, this] {
         auto &db = m_state->db;
         QSqlQuery count(db);
-        if (!count.exec(QStringLiteral("SELECT COUNT(*) FROM sync_messages")) || !count.next() || count.value(0).toLongLong() != expectedCount) {
+        if (!count.exec(QStringLiteral("SELECT COUNT(*) FROM sync_messages")) || !count.next() || (expectedCount >= 0 && count.value(0).toLongLong() != expectedCount)) {
             error = QStringLiteral("同期中にメール件数が変化しました。再試行してください。"); return;
         }
         count.finish();
@@ -480,6 +513,13 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
         }
         if (error.isEmpty()) run(QStringLiteral("INSERT INTO cache_messages SELECT * FROM sync_messages"));
         if (error.isEmpty()) run(QStringLiteral("INSERT INTO cache_index SELECT * FROM sync_index"));
+        // Edits made while the network worker was fetching must win locally
+        // until their own revision is submitted on a later synchronization.
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
+            if (error.isEmpty()) run(QStringLiteral("UPDATE ") + table + QStringLiteral(" AS c SET flags=(flags & ~COALESCE((SELECT SUM(mask) FROM pending_flags p WHERE p.account=c.account AND p.folder=c.folder AND p.uidvalidity=c.uidvalidity AND p.uid=c.uid),0)) | COALESCE((SELECT SUM(mask*enabled) FROM pending_flags p WHERE p.account=c.account AND p.folder=c.folder AND p.uidvalidity=c.uidvalidity AND p.uid=c.uid),0) WHERE account=? AND folder=?"), {id, folder});
+        }
+        if (error.isEmpty()) run(QStringLiteral("DELETE FROM pending_flags AS p WHERE account=? AND (NOT EXISTS (SELECT 1 FROM cache_folders f WHERE f.account=p.account AND f.name=p.folder) OR (folder=? AND NOT EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=p.account AND c.folder=p.folder AND c.uidvalidity=p.uidvalidity AND c.uid=p.uid)))"), {id, folder});
+        if (error.isEmpty()) run(QStringLiteral("UPDATE cache_folders AS f SET unread=(SELECT COUNT(*) FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name AND (c.flags & 1)=0) WHERE account=? AND (name=? OR EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name))"), {id, folder});
         if (error.isEmpty() && !db.commit()) error = db.lastError().text();
         if (!error.isEmpty()) db.rollback();
         diagnostics::event(error.isEmpty() ? "sync-cache-commit" : "sync-cache-rollback", expectedCount);
@@ -577,6 +617,79 @@ void AccountRepository::updateFlags(const MailRecord &identity, bool seen, bool 
         if (!error.isEmpty()) db.rollback();
         emit flagsUpdated(identity, error);
     }, Qt::QueuedConnection);
+}
+
+void AccountRepository::queueFlag(const MailRecord &identity, bool importantFlag, bool enabled)
+{
+    QMetaObject::invokeMethod(m_worker, [this, identity, importantFlag, enabled] {
+        auto &db = m_state->db; QString error = m_state->error;
+        if (!error.isEmpty() || !db.transaction()) { emit flagsUpdated(identity, error.isEmpty() ? db.lastError().text() : error); return; }
+        const QVariantList key{identity.accountId, identity.folder, identity.uidValidity, identity.uid};
+        QSqlQuery query(db); query.prepare(QStringLiteral("SELECT flags FROM cache_messages WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"));
+        for (const auto &value : key) query.addBindValue(value);
+        if (!query.exec() || !query.next()) { db.rollback(); emit flagsUpdated(identity, QStringLiteral("フラグ変更対象のメールが見つかりません。")); return; }
+        const int before = query.value(0).toInt(), mask = importantFlag ? 2 : 1;
+        const int flags = (before & ~mask) | (enabled ? mask : 0); query.finish();
+        QVariantList values{flags}; values.append(key);
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
+            error = sql(db, QStringLiteral("UPDATE ") + table + QStringLiteral(" SET flags=? WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"), values);
+            if (!error.isEmpty()) break;
+        }
+        auto pending = key; pending.append(mask); pending.append(enabled ? 1 : 0); pending.append(++m_state->flagRevision);
+        if (error.isEmpty()) error = sql(db, QStringLiteral("INSERT OR REPLACE INTO pending_flags VALUES(?,?,?,?,?,?,?)"), pending);
+        if (error.isEmpty() && (before & 1) != (flags & 1)) error = sql(db, QStringLiteral("UPDATE cache_folders SET unread=MAX(0,unread+?) WHERE account=? AND name=?"), {enabled ? -1 : 1, identity.accountId, identity.folder});
+        if (error.isEmpty() && !db.commit()) error = db.lastError().text();
+        if (!error.isEmpty()) db.rollback();
+        emit flagsUpdated(identity, error);
+    }, Qt::QueuedConnection);
+}
+QString AccountRepository::flagRevision(qint64 &revision)
+{
+    QString error;
+    QMetaObject::invokeMethod(m_worker, [&, this] { error = m_state->error; revision = m_state->flagRevision; }, Qt::BlockingQueuedConnection);
+    return error;
+}
+QString AccountRepository::pendingFlags(const QString &id, const QString &folder, qint64 after, qint64 through, QList<PendingFlag> &batch)
+{
+    QString error; batch.clear();
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        error = m_state->error; if (!error.isEmpty()) return;
+        QSqlQuery query(m_state->db);
+        query.prepare(QStringLiteral("SELECT uidvalidity,uid,mask,enabled,revision FROM pending_flags WHERE account=? AND folder=? AND revision>? AND revision<=? ORDER BY revision LIMIT 100"));
+        for (const auto &value : QVariantList{id, folder, after, through}) query.addBindValue(value);
+        if (!query.exec()) { error = query.lastError().text(); return; }
+        while (query.next()) batch.append({{id, folder, query.value(0).toLongLong(), query.value(1).toLongLong()}, query.value(2).toInt() == 2, query.value(3).toBool(), query.value(4).toLongLong()});
+    }, Qt::BlockingQueuedConnection);
+    return error;
+}
+QString AccountRepository::acknowledgeFlag(const PendingFlag &flag, bool serverSeen, bool serverImportant, bool exists)
+{
+    QString error;
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        auto &db = m_state->db;
+        if (!db.transaction()) { error = db.lastError().text(); return; }
+        const auto &id = flag.identity;
+        if (!exists) {
+            for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("pending_flags")}) {
+                error = sql(db, QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"), {id.accountId, id.folder, id.uidValidity, id.uid});
+                if (!error.isEmpty()) break;
+            }
+            if (error.isEmpty() && !db.commit()) error = db.lastError().text();
+            if (!error.isEmpty()) db.rollback();
+            return;
+        }
+        const int mask = flag.importantFlag ? 2 : 1;
+        const QVariantList key{id.accountId, id.folder, id.uidValidity, id.uid, mask, flag.revision};
+        error = sql(db, QStringLiteral("DELETE FROM pending_flags WHERE account=? AND folder=? AND uidvalidity=? AND uid=? AND mask=? AND revision=?"), key);
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
+            if (!error.isEmpty()) break;
+            error = sql(db, QStringLiteral("UPDATE ") + table + QStringLiteral(" AS c SET flags=(? & ~COALESCE((SELECT SUM(mask) FROM pending_flags p WHERE p.account=c.account AND p.folder=c.folder AND p.uidvalidity=c.uidvalidity AND p.uid=c.uid),0)) | COALESCE((SELECT SUM(mask*enabled) FROM pending_flags p WHERE p.account=c.account AND p.folder=c.folder AND p.uidvalidity=c.uidvalidity AND p.uid=c.uid),0) WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"),
+                {(serverSeen ? 1 : 0) | (serverImportant ? 2 : 0), id.accountId, id.folder, id.uidValidity, id.uid});
+        }
+        if (error.isEmpty() && !db.commit()) error = db.lastError().text();
+        if (!error.isEmpty()) db.rollback();
+    }, Qt::BlockingQueuedConnection);
+    return error;
 }
 
 void AccountRepository::saveAttachment(const MailRecord &message, const QString &partId, const QString &directory)

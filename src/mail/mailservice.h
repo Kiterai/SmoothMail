@@ -11,10 +11,12 @@ class MailService final : public QObject
 {
     Q_OBJECT
 public:
+    enum class SyncMode { SelectedFolder, Recent, All };
     explicit MailService(QString saslPluginDirectory, QObject *parent = nullptr);
     ~MailService() override;
     void test(const Account &account, const QString &smtpSecret, const QString &imapSecret);
-    void synchronize(const Account &account, const QString &imapSecret, const QString &folder = {}, AccountRepository *cache = nullptr);
+    void synchronize(const Account &account, const QString &imapSecret, const QString &folder = {}, AccountRepository *cache = nullptr,
+                     SyncMode mode = SyncMode::SelectedFolder);
     void setMessageFlag(const Account &account, const QString &secret, const MailRecord &identity, bool importantFlag, bool enabled);
     void submit(const Account &account, const QString &secret, const ComposeData &draft, bool saveAsDraft);
     bool busy() const { return m_busy; }

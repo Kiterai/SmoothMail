@@ -4,6 +4,7 @@
 #include "core/mailrecord.h"
 #include "core/mailpage.h"
 #include "core/downloadentry.h"
+#include "core/pendingflag.h"
 #include <QObject>
 #include <QThread>
 #include <atomic>
@@ -30,10 +31,15 @@ public:
     void loadPage(const MailQuery &query);
     void loadMessage(const MailRecord &identity);
     void updateFlags(const MailRecord &identity, bool seen, bool important);
+    void queueFlag(const MailRecord &identity, bool importantFlag, bool enabled);
+    QString pendingFlags(const QString &id, const QString &folder, qint64 after, qint64 through, QList<PendingFlag> &batch);
+    QString flagRevision(qint64 &revision);
+    QString acknowledgeFlag(const PendingFlag &flag, bool serverSeen, bool serverImportant, bool exists = true);
+    QString recentBoundary(const QString &id, const QString &folder, qint64 validity, QDateTime &boundary);
     void cancelPendingReads() { ++m_pageRequest; ++m_bodyRequest; }
     // Called by the mail worker only, never the GUI. Blocking calls provide
     // backpressure: at most one bounded batch is awaiting SQLite at a time.
-    QString beginSync(const QString &id, const QString &folder, qint64 validity);
+    QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {});
     QString stageMessages(const QList<MailRecord> &messages);
     QString reuseMessage(qint64 uid, bool seen, bool important, bool &found);
     QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount);

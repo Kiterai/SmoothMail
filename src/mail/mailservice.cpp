@@ -15,6 +15,8 @@
 #include <KIMAP/RenameJob>
 #include <KIMAP/DeleteJob>
 #include <KIMAP/StoreJob>
+#include <KIMAP/SearchJob>
+#include <KMime/Headers>
 #include <KSMTP/LoginJob>
 #include <KSMTP/Session>
 #include <KSMTP/SendJob>
@@ -23,6 +25,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QMutex>
+#include <QSet>
 #include <QTimer>
 #include <QSslSocket>
 #include <functional>
@@ -233,11 +236,11 @@ void MailService::test(const Account &account, const QString &smtpSecret, const 
     }, Qt::QueuedConnection);
 }
 
-void MailService::synchronize(const Account &account, const QString &secret, const QString &requestedFolder, AccountRepository *cache)
+void MailService::synchronize(const Account &account, const QString &secret, const QString &requestedFolder, AccountRepository *cache, SyncMode mode)
 {
     if (m_busy) return;
     m_busy = true;
-    QMetaObject::invokeMethod(m_worker, [this, account, secret, requestedFolder, cache] {
+    QMetaObject::invokeMethod(m_worker, [this, account, secret, requestedFolder, cache, mode] {
         diagnostics::event("sync-start");
         auto error = validateAccount(account, false);
         if (error.isEmpty()) error = initializeSasl(m_pluginDirectory);
@@ -281,33 +284,98 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 auto error = cache->beginSync(account.id, {}, 0);
                 return error.isEmpty() ? cache->commitSync(folders, 0) : error;
             }
-            if (!selectable.contains(selected)) return QStringLiteral("選択フォルダが見つからないか、選択できません。");
+            if (!selectable.contains(selected)) {
+                if (mode == SyncMode::SelectedFolder) return QStringLiteral("選択フォルダが見つからないか、選択できません。");
+                selected = selectable.contains(QStringLiteral("INBOX")) ? QStringLiteral("INBOX") : selectable.value(0);
+            }
+            const auto visibleFolder = selected;
+            const auto targets = mode == SyncMode::SelectedFolder ? QStringList{selected} : selectable;
+            if (!cache && mode != SyncMode::SelectedFolder) return QStringLiteral("全フォルダ同期にはローカル保存先が必要です。");
+            for (const auto &target : targets) {
+            selected = target;
+            qint64 through = 0, after = 0;
+            QList<PendingFlag> edits;
+            if (cache) {
+                jobError = cache->flagRevision(through); if (!jobError.isEmpty()) return jobError;
+                jobError = cache->pendingFlags(account.id, selected, after, through, edits); if (!jobError.isEmpty()) return jobError;
+            }
             KIMAP::SelectJob select(&session);
             diagnostics::event("sync-select");
             select.setMailBox(selected);
-            select.setOpenReadOnly(true); // Refresh must not modify messages or expunge deletions.
+            select.setOpenReadOnly(edits.isEmpty()); // No CLOSE/EXPUNGE; write only explicitly queued flag edits.
             jobError = runJob(select);
             if (!jobError.isEmpty()) return jobError;
             if (select.uidValidity() <= 0) return QStringLiteral("UIDVALIDITYが不正です。");
             const qint64 total = select.messageCount();
             const auto validity = select.uidValidity(), nextUid = select.nextUid();
+            while (!edits.isEmpty()) {
+                if (m_thread.isInterruptionRequested()) return QStringLiteral("中断しました。");
+                // Coalesce each bounded outbox batch into at most four UID STOREs.
+                for (int group = 0; group < 4; ++group) {
+                    KIMAP::ImapSet ids; QList<PendingFlag> submitted;
+                    for (const auto &edit : edits) if (edit.identity.uidValidity == validity
+                        && int(edit.importantFlag) * 2 + int(edit.enabled) == group) { ids.add(edit.identity.uid); submitted.append(edit); }
+                    if (submitted.isEmpty()) continue;
+                    const QByteArray flag = group >= 2 ? QByteArray("\\Flagged") : QByteArray("\\Seen");
+                    KIMAP::StoreJob store(&session); store.setUidBased(true); store.setSequenceSet(ids);
+                    store.setMode(group & 1 ? KIMAP::StoreJob::AppendFlags : KIMAP::StoreJob::RemoveFlags); store.setFlags({flag});
+                    jobError = runJob(store); if (!jobError.isEmpty()) return jobError;
+                    QMap<qint64, KIMAP::Message> confirmed;
+                    KIMAP::FetchJob readback(&session); readback.setUidBased(true); readback.setSequenceSet(ids);
+                    KIMAP::FetchJob::FetchScope scope; scope.mode = KIMAP::FetchJob::FetchScope::Flags; readback.setScope(scope);
+                    connect(&readback, &KIMAP::FetchJob::messagesAvailable, &readback, [&](const QMap<qint64, KIMAP::Message> &items) {
+                        for (const auto &item : items) confirmed.insert(item.uid, item);
+                    });
+                    jobError = runJob(readback); if (!jobError.isEmpty()) return jobError;
+                    for (const auto &edit : submitted) {
+                        const auto flags = confirmed.value(edit.identity.uid).flags;
+                        jobError = cache->acknowledgeFlag(edit, flags.contains("\\Seen"), flags.contains("\\Flagged"), confirmed.contains(edit.identity.uid));
+                        if (!jobError.isEmpty()) return jobError;
+                    }
+                }
+                after = edits.last().revision;
+                jobError = cache->pendingFlags(account.id, selected, after, through, edits); if (!jobError.isEmpty()) return jobError;
+            }
             if (cache && nextUid <= 0) return QStringLiteral("安全な分割同期に必要なUIDNEXTを取得できません。");
             // Compatibility snapshot consumers are bounded; the application's
             // streaming path has no total mailbox count/byte cap.
             if (!cache && total > 10000) return QStringLiteral("一括取得の上限（10000件）を超えています。分割同期を使用してください。");
+            QDateTime boundary;
+            if (cache && mode == SyncMode::Recent) {
+                jobError = cache->recentBoundary(account.id, selected, validity, boundary); if (!jobError.isEmpty()) return jobError;
+            }
+            QList<qint64> recentUids;
+            if (boundary.isValid()) {
+                KIMAP::SearchJob search(&session); search.setUidBased(true);
+                // SENTSINCE ignores timezone offsets. Include the preceding day
+                // and apply the exact instant after receiving bounded headers.
+                search.setTerm(KIMAP::Term(KIMAP::Term::SentSince, boundary.date().addDays(-1)));
+                jobError = runJob(search); if (!jobError.isEmpty()) return jobError;
+                recentUids = search.results();
+                QSet<qint64> unique;
+                for (const auto uid : recentUids) {
+                    if (uid <= 0 || uid >= nextUid || unique.contains(uid)) return QStringLiteral("差分検索のUID応答が不正です。");
+                    unique.insert(uid);
+                }
+                if (recentUids.size() > total) return QStringLiteral("差分検索中にメール一覧が変化しました。");
+            }
             if (cache) {
-                jobError = cache->beginSync(account.id, selected, validity);
+                jobError = cache->beginSync(account.id, selected, validity, boundary);
                 if (!jobError.isEmpty()) return jobError;
             }
             qint64 retainedBytes = 0, batchBytes = 0, completed = 0;
             QList<MailRecord> batch;
-            for (qint64 first = 1; first <= total; first += MailPageSize) {
+            const qint64 candidates = boundary.isValid() ? recentUids.size() : total;
+            for (qint64 first = 1; first <= candidates; first += MailPageSize) {
             if (m_thread.isInterruptionRequested()) return QStringLiteral("中断しました。");
             diagnostics::event("sync-header-batch", first);
             QMap<qint64, KIMAP::Message> headers;
             KIMAP::FetchJob headerJob(&session);
-            headerJob.setUidBased(false);
-            headerJob.setSequenceSet(KIMAP::ImapSet(first, qMin(total, first + MailPageSize - 1)));
+            headerJob.setUidBased(boundary.isValid());
+            KIMAP::ImapSet window;
+            if (boundary.isValid()) { for (qint64 i = first - 1; i < qMin(candidates, first - 1 + MailPageSize); ++i) window.add(recentUids.at(i)); }
+            else window = KIMAP::ImapSet(first, qMin(total, first + MailPageSize - 1));
+            headerJob.setSequenceSet(window);
             KIMAP::FetchJob::FetchScope headerScope;
             headerScope.mode = KIMAP::FetchJob::FetchScope::Headers;
             headerJob.setScope(headerScope);
@@ -317,7 +385,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 });
             jobError = runJob(headerJob);
             if (!jobError.isEmpty()) return jobError;
-            if (headers.size() != qMin<qint64>(MailPageSize, total - first + 1)) return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+            if (headers.size() != qMin<qint64>(MailPageSize, candidates - first + 1)) return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
             QMap<qint64, KIMAP::Message> pending;
             qint64 pendingBytes = 0;
             const auto fetchPending = [&]() -> QString {
@@ -362,6 +430,8 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             };
             for (const auto &header : headers) {
                 if (m_thread.isInterruptionRequested()) return QStringLiteral("中断しました。");
+                if (boundary.isValid() && header.message && header.message->date()->dateTime().isValid()
+                    && header.message->date()->dateTime() < boundary) continue;
                 if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
                 constexpr qint64 snapshotLimit = 128 * 1024 * 1024;
                 if (!cache && header.size > snapshotLimit - retainedBytes) return QStringLiteral("一括取得の安全上限（128 MiB）を超えています。");
@@ -391,7 +461,13 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             jobError = runJob(verify); if (!jobError.isEmpty()) return jobError;
             if (verify.uidValidity() != validity || verify.messageCount() != total || verify.nextUid() != nextUid)
                 return QStringLiteral("同期中にメールボックスが変化しました。再試行してください。");
-            if (cache) return cache->commitSync(folders, total);
+            if (cache) {
+                jobError = cache->commitSync(folders, boundary.isValid() ? -1 : total);
+                cache->abortSync();
+                if (!jobError.isEmpty()) return jobError;
+            }
+            }
+            selected = visibleFolder;
             return {};
         });
         if (cache) cache->abortSync(); // Drop disk-backed staging after success or failure.

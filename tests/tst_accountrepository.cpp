@@ -24,6 +24,43 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void pendingFlagsSurviveRestartAndPreserveNewerEdits()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("flags.sqlite"));
+        const auto account = makeAccount(QStringLiteral("outbox@example.test"));
+        const auto parsed = MimeParser::parse("Subject: outbox\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nbody"); QVERIFY(parsed.ok());
+        const MailRecord identity{account.id, QStringLiteral("INBOX"), 10, 42, false, false, parsed.message};
+        const QList<MailFolder> folders{{identity.folder, u'/', {}, 1}};
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), changed(&repository, &AccountRepository::flagsUpdated);
+            repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+            repository.saveSnapshot(account.id, identity.folder, folders, {identity}); QTRY_COMPARE(saved.size(), 1);
+            repository.queueFlag(identity, false, true); repository.queueFlag(identity, true, true); QTRY_COMPARE(changed.size(), 2);
+            for (const auto &result : changed) QVERIFY(result.at(1).toString().isEmpty());
+        }
+        {
+            AccountRepository repository(path); qint64 through = 0; QList<PendingFlag> edits;
+            QVERIFY(repository.flagRevision(through).isEmpty()); QVERIFY(repository.pendingFlags(account.id, identity.folder, 0, through, edits).isEmpty()); QCOMPARE(edits.size(), 2);
+            QSignalSpy changed(&repository, &AccountRepository::flagsUpdated), pages(&repository, &AccountRepository::pageLoaded);
+            repository.queueFlag(identity, false, false); QTRY_COMPARE(changed.size(), 1);
+            QVERIFY(repository.acknowledgeFlag(edits.first(), true, false).isEmpty()); // Old ack must not erase the newer unread edit.
+            QVERIFY(repository.acknowledgeFlag(edits.last(), false, false).isEmpty()); // Server rejects/overrides important flag.
+            QVERIFY(repository.beginSync(account.id, identity.folder, 10).isEmpty());
+            auto server = identity; server.seen = true;
+            QVERIFY(repository.stageMessages({server}).isEmpty()); QVERIFY(repository.commitSync(folders, 1).isEmpty()); repository.abortSync();
+            MailQuery query; query.accountId = account.id; query.folder = identity.folder;
+            repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+            const auto page = qvariant_cast<MailPage>(pages.last().first()); QCOMPARE(page.total, 1);
+            QVERIFY(!page.messages.first().seen); QVERIFY(!page.messages.first().important);
+            QVERIFY(repository.flagRevision(through).isEmpty()); QVERIFY(repository.pendingFlags(account.id, identity.folder, 0, through, edits).isEmpty()); QCOMPARE(edits.size(), 1); QVERIFY(!edits.first().enabled);
+            QDateTime boundary; QVERIFY(repository.recentBoundary(account.id, identity.folder, 10, boundary).isEmpty());
+            QCOMPARE(boundary, parsed.message.date.addSecs(-3600));
+            QVERIFY(repository.recentBoundary(account.id, identity.folder, 20, boundary).isEmpty()); QVERIFY(!boundary.isValid());
+            QVERIFY(repository.beginSync(account.id, identity.folder, 20).isEmpty());
+            server.uidValidity = 20; QVERIFY(repository.stageMessages({server}).isEmpty()); QVERIFY(repository.commitSync(folders, 1).isEmpty()); repository.abortSync();
+            QVERIFY(repository.pendingFlags(account.id, identity.folder, 0, through, edits).isEmpty()); QVERIFY(edits.isEmpty());
+        }
+    }
     void upgradesV1CacheWithoutLoadingAllBodies()
     {
         QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("v1.sqlite"));
