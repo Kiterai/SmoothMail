@@ -23,7 +23,7 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
     set(compiler_flags "/MDd /W3 /EHsc /Zi /Od /D_DEBUG")
 else()
-    set(compiler_flags "/MD /W3 /EHsc /Zi /O2 /DNDEBUG")
+    set(compiler_flags "/MD /W3 /EHsc /Zi /O2 /DNDEBUG /experimental:deterministic /pathmap:\"${DEPENDENCY_ROOT}=SmoothMail-dependencies\"")
 endif()
 # Build only the required client mechanisms; no OpenSSL, SASL database,
 # server utilities or obsolete authentication mechanisms are pulled in.
@@ -37,7 +37,7 @@ foreach(component IN ITEMS lib plugins)
         "CL=/DUNICODE /D_UNICODE /D_WINSOCK_DEPRECATED_NO_WARNINGS"
         "${NMAKE_EXECUTABLE}" /NOLOGO /f NTMakefile "CFG=${CMAKE_BUILD_TYPE}" STATIC=no
         "CPP_PROJ=${compiler_flags} /D_CRT_SECURE_NO_DEPRECATE=1 $(CPPFLAGS) /c"
-        "LINK32_FLAGS=/debug" ${targets}
+        "LINK32_FLAGS=/debug /PDBALTPATH:smoothmail-sasl.pdb /INCREMENTAL:NO" ${targets}
         WORKING_DIRECTORY "${source}/${component}" RESULT_VARIABLE result)
     if(NOT result STREQUAL "0")
         message(FATAL_ERROR "Cyrus SASL ${component} build failed: ${result}")

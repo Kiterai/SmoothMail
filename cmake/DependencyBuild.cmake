@@ -16,8 +16,23 @@ get_filename_component(DEPENDENCY_ROOT "${DEPENDENCY_ROOT}" ABSOLUTE)
 get_filename_component(Qt6_ROOT "${Qt6_ROOT}" ABSOLUTE)
 set(prefix "${DEPENDENCY_ROOT}/install/${CMAKE_BUILD_TYPE}")
 find_package(Git REQUIRED)
+if(WIN32)
+    find_program(msvc_compiler NAMES cl.exe REQUIRED)
+    # Do not let a global CXX=g++ silently select an incompatible Qt ABI.
+    set(ENV{CC} "${msvc_compiler}")
+    set(ENV{CXX} "${msvc_compiler}")
+endif()
 include("${CMAKE_CURRENT_LIST_DIR}/DownloadAsset.cmake")
 file(READ "${CMAKE_CURRENT_LIST_DIR}/dependencies.json" manifest)
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    # These flags affect newly built dependencies, never the installed Qt SDK.
+    set(privacy_options
+        "-DCMAKE_C_FLAGS=/experimental:deterministic /pathmap:\"${DEPENDENCY_ROOT}=SmoothMail-dependencies\" /utf-8"
+        "-DCMAKE_CXX_FLAGS=/experimental:deterministic /pathmap:\"${DEPENDENCY_ROOT}=SmoothMail-dependencies\" /utf-8"
+        "-DCMAKE_SHARED_LINKER_FLAGS=/PDBALTPATH:smoothmail-dependency.pdb /INCREMENTAL:NO"
+        "-DCMAKE_MODULE_LINKER_FLAGS=/PDBALTPATH:smoothmail-dependency.pdb /INCREMENTAL:NO"
+        "-DCMAKE_EXE_LINKER_FLAGS=/PDBALTPATH:smoothmail-tool.pdb /INCREMENTAL:NO")
+endif()
 
 function(smoothmail_dependency_command)
     execute_process(COMMAND ${ARGV} RESULT_VARIABLE result)
@@ -80,6 +95,7 @@ function(smoothmail_build_dependency_source dependency source binary)
         "-DQt6_ROOT=${Qt6_ROOT}"
         -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_DOC=OFF -DBUILD_QCH=OFF
         -DBUILD_QDOC=OFF -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
+        ${privacy_options}
         ${ARGN}
         RESULT_VARIABLE result)
     if(NOT result STREQUAL "0")

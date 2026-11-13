@@ -29,6 +29,7 @@ execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${binary}" -G Ninj
     -DKIOCORE_ONLY=ON -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON
     -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DBUILD_QDOC=OFF
+    ${privacy_options}
     RESULT_VARIABLE result)
 if(NOT result STREQUAL "0")
     message(FATAL_ERROR "Patched KIO configure failed.")

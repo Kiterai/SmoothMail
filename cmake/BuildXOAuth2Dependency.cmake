@@ -8,6 +8,6 @@ smoothmail_dependency_command("${CMAKE_COMMAND}"
     "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
     "-DCMAKE_INSTALL_PREFIX=${prefix}"
     "-DSASL_PREFIX=${prefix}"
-    "-DXOAUTH2_SOURCE=${source}")
+    "-DXOAUTH2_SOURCE=${source}" ${privacy_options})
 smoothmail_dependency_command("${CMAKE_COMMAND}" --build "${binary}" --parallel 4)
 smoothmail_dependency_command("${CMAKE_COMMAND}" --install "${binary}")

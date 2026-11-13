@@ -13,6 +13,7 @@
       "binaryDir": "${sourceDir}/build/dev",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_MAKE_PROGRAM": "${sourceDir}/build/deps/build/tools/ninja-79feac0f3e3bc9da9effc586cd5fea41e7550051/ninja.exe",
         "CMAKE_PREFIX_PATH": "${sourceDir}/build/deps/install/Debug",
         "BUILD_TESTING": "ON"
       }

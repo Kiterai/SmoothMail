@@ -2,9 +2,28 @@
 
 Qtは開発者がインストールしたSDKを使用します。以下の処理はQtを取得せず、第三者ソース・成果物をリポジトリ内の`build/deps/`に配置します。
 
+## Windowsの標準入口
+
+作業者の準備は **CMake 3.30以降・Git・既存Qt（必要な開発モジュールを含む）・Python・MSVC/Windows SDK** です。MSVC x64開発者コマンドプロンプトで実行します。
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWindows.cmake
+```
+
+固定ソース取得→依存順のconfigure/build/install→アプリ構築を行います。依存だけなら`BuildWindowsDependencies.cmake`を使います。Releaseは`-DCMAKE_BUILD_TYPE=Release`。別SDK/コンパイラには新しい`-DDEPENDENCY_ROOT=...`と`-DAPPLICATION_BUILD=...`を使用してください。
+
+- Ninja 1.13.1は固定Git commitから内部取得し、MSVC付属NMakeで構築します。手動インストールやPATH設定は不要です。
+- vcpkg本体は固定URL/SHA512で内部取得します。用途はGNU gettext/libintl/libiconvのみで、Qtのport/toolchainは導入しません。
+- アーカイブはCMakeでHTTPS取得・TLS証明書検証・ハッシュ検証します。途中ファイルを再利用せず、既存キャッシュの不一致は上書きせず停止します。プロキシ・CA設定はCMakeが使える環境にしてください。TLS検証を無効にする回避策はありません。
+- プロジェクトのスクリプト・テストはCMake/C++です。PythonはKI18n上流のconfigure/翻訳データ生成からのみ間接利用します。
+- SolidとそのFlex/Bisonも標準入口で構築します。独自パッチ5件・原本分離・receipt照合は従来どおりです。
+- 既存presetだけ使う場合は、最初に`cmake -DQt6_ROOT=... -P cmake/PrepareBuildTools.cmake`を実行します。カスタム依存rootでは`CMAKE_MAKE_PROGRAM`もその内部Ninjaへ指定してください。
+
+以下は個別ステージの説明です。`CMAKE_MAKE_PROGRAM`の明示指定は既存環境向けの任意指定で、省略すると固定Ninjaを内部準備します。
+
 ## MIME依存
 
-CMake 3.30以降、Git、Ninja、Qt 6.10以降が必要です。Windowsでは指定Qtと一致するMSVC x64開発環境で実行してください。
+CMake 3.30以降、Git、Qt 6.10以降が必要です。Windowsでは指定Qtと一致するMSVC x64開発環境で実行してください。
 
 ```bat
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildMimeDependencies.cmake
@@ -56,13 +75,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja
 
 WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**gettext-libintlとlibiconvのDebug/Release、およびgettextホストツールの構築・インストール成功を確認済みです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
 
-サンドボックスのプロキシでvcpkg内蔵ダウンローダーが失敗する場合は、接続可能なcurlを指定して次を追加できます。
-
-```text
--DSMOOTHMAIL_USE_ASSET_DOWNLOADER=ON -DCURL_EXECUTABLE=C:/path/to/curl.exe
-```
-
-このオプションにはPython 3.11以降が必要です。既存のプロキシ設定は変更せず、GNU/MSYS2のミラーURLを各公式配布元へ正規化し、HTTPS・証明書検証とSHA512確認を維持します。ダウンローダーの単体テストは`python tests/test_asset_fetch.py`で実行できます（ネットワークを使用しません）。
+vcpkgの資材取得も常にCMakeのx-scriptを使い、外部curl/Pythonやorigin fallbackは使用しません。GNU/MSYS2のミラーURLを各公式配布元へ正規化します。オフラインガードは`cmake -P tests/cmake/run_build_guards.cmake`で実行できます。既存キャッシュだけで成功した場合は、新規ネットワーク取得の成功を意味しません。
 
 gettext/Flex/Bison等のGPLビルドツールは、アプリへリンクするLGPLのlibintlとは区別します。これらのビルドツール自体を製品へ同梱する構成にはしません。
 
@@ -100,7 +113,7 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-原本は変更せず、`build/deps/patched-src`に独立コピーを作成して`git apply --check`後にパッチを適用します。コピーの予期しない変更は上書きせず拒否します。`python tests/test_kio_patch.py`で、その保護と再実行をネットワークなしでテストできます。
+原本は変更せず、`build/deps/patched-src`に独立コピーを作成して`git apply --check`後にパッチを適用します。コピーの予期しない変更は上書きせず拒否します。`cmake -P tests/cmake/run_build_guards.cmake`で、その保護と再実行をネットワークなしでテストできます。
 
 指定Qt/MSVCでのKIOCore構築、favicon無効化・SSLエラー情報APIのテスト、対象実装・ヘッダがcompile commands／Ninja依存情報／DLLエクスポートに含まれないことを確認済みです。上流のライセンス文書・変更パッチ・変更通知はprefixの`share/licenses/kio`へ配置します。
 
@@ -123,7 +136,7 @@ KIMAPには`patches/kimap/26.08.3-fix-sasl-continuation.patch`を適用します
 
 KSMTPにも`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。STARTTLS後に以前のAUTH等の広告情報を残さないための修正です。未修正版ではTLS後にXOAUTH2が広告されなくてもAUTHを送ることを合成サーバーで再現し、修正後はAUTHと秘密情報を送らず拒否することを確認しています。差分・通知は`share/licenses/ksmtp`へ配置します。
 
-変更済みKIO/KIMAP/KSMTP/KMime/KCodecsの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`python tests/test_modified_receipt.py`で検証できます。
+変更済みKIO/KIMAP/KSMTP/KMime/KCodecsの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`cmake -P tests/cmake/run_build_guards.cmake`で検証できます。
 
 KCodecs 6.31.0にも`patches/kcodecs/6.31.0-safe-ctype.patch`を適用します。RFC 2047デコーダーの`isspace`引数をunsigned charへ変換します。`BuildMimeDependencies.cmake`がECM、修正KCodecs、修正KMimeの順に構築します。検証済みDebug構築先は`build/deps/build/Debug/kcodecs-safe-ctype-msvc-debug`。上流LICENSES・差分・変更通知・receiptを`share/licenses/kcodecs`へ配置し、Qt SDKは変更しません。
 
@@ -156,7 +169,7 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してください。必要に応じて`-DCURL_EXECUTABLE=/path/to/curl.exe`を指定できます。スクリプトはWindowsのDebug/Release向けです。
+MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してください。取得にはCMakeを使用します。スクリプトはWindowsのDebug/Release向けです。
 
 - Cyrus SASL 2.1.28は公式リリースアーカイブをSHA256検証して取得します。生成済みソースを含むアーカイブが必要なため、Gitソースとは別に展開します。
 - 必要なPLAIN/LOGINだけを構築・配置します。SASLデータベース・サーバー管理ツール・不要な機構は配布対象にしません。
