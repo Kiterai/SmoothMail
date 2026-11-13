@@ -26,6 +26,8 @@ set SMOOTHMAIL_MICROSOFT_CLIENT_ID=<Microsoft public clientのアプリID>
 
 ## 検証
 
+**2026-11-14追記:** 通常GUIでのGoogle登録から再起動・更新までの確認待ち（AUTH-01）は、利用者本人の手動による正常動作確認報告で完了しました。[完了記録](manual-validation-20261114.md)を参照してください。以下は専用プローブ等の過去の検証経緯です。Microsoft実アカウント検証の完了を意味しません。
+
 ### 実アカウントの手動プローブ
 
 `-DSMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE=ON`で、実装と同じ`OAuthClient`・`MailService`を使う`smoothmail_google_probe`を追加できます。既定OFFで、CTestでは自動実行しません。開発用ランタイムのQtプラグイン/SASL探索先を設定して、以下を実行します。
