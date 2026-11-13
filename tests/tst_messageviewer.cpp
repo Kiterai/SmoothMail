@@ -11,6 +11,7 @@
 #include <QUrl>
 #include <QtTest>
 #include <QListWidget>
+#include <QLineEdit>
 
 namespace {
 
@@ -29,6 +30,22 @@ class MessageViewerTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void bodySearchWrapsInBothDirectionsAndResets()
+    {
+        smoothmail::MessageViewer viewer; smoothmail::MessageDocument document;
+        document.parts = {{QStringLiteral("text/plain"), QStringLiteral("ababa ABA")}};
+        viewer.displayMessage(document); viewer.show(); viewer.showSearch();
+        auto *input = viewer.findChild<QLineEdit *>(QStringLiteral("bodySearchText")); auto *count = viewer.findChild<QLabel *>(QStringLiteral("bodySearchCount")); auto *body = viewer.findChild<smoothmail::SafeBodyView *>();
+        auto *bar = viewer.findChild<QWidget *>(QStringLiteral("bodySearchBar")); QVERIFY(bar->isVisible());
+        input->setText(QStringLiteral("aba")); QCOMPARE(count->text(), QStringLiteral("1 / 2 件")); QCOMPARE(body->textCursor().selectionStart(), 0);
+        QTest::keyClick(input, Qt::Key_Return, Qt::ShiftModifier); QCOMPARE(count->text(), QStringLiteral("2 / 2 件")); QCOMPARE(body->textCursor().selectionStart(), 6);
+        QTest::keyClick(input, Qt::Key_Return); QCOMPARE(count->text(), QStringLiteral("1 / 2 件")); QCOMPARE(body->textCursor().selectionStart(), 0);
+        QTest::keyClick(input, Qt::Key_Return); QTest::keyClick(input, Qt::Key_Return, Qt::ShiftModifier); QCOMPARE(body->textCursor().selectionStart(), 0);
+        input->setText(QStringLiteral("missing")); QCOMPARE(count->text(), QStringLiteral("0 / 0 件")); QTest::keyClick(input, Qt::Key_Return);
+        QTest::keyClick(input, Qt::Key_Escape); QVERIFY(bar->isHidden()); viewer.showSearch(); QVERIFY(bar->isVisible());
+        document.parts = {{QStringLiteral("text/plain"), QStringLiteral("missing")}}; viewer.displayMessage(document); QCOMPARE(count->text(), QStringLiteral("1 / 1 件"));
+        input->clear(); QCOMPARE(count->text(), QStringLiteral("0 / 0 件"));
+    }
     void htmlRemainsLiteral()
     {
         smoothmail::SafeBodyView view;

@@ -9,6 +9,7 @@ class QLabel;
 class QPlainTextEdit;
 class QToolButton;
 class QListWidget;
+class QLineEdit;
 
 namespace smoothmail {
 
@@ -22,6 +23,9 @@ public:
     explicit MessageViewer(QWidget *parent = nullptr);
     void displayMessage(const MessageDocument &message);
     void clear();
+    void showSearch();
+protected:
+    bool eventFilter(QObject *object, QEvent *event) override;
 
 signals:
     void externalLinkRequested(const QUrl &url);
@@ -33,6 +37,12 @@ private:
     QToolButton *m_headerToggle;
     QPlainTextEdit *m_headers;
     SafeBodyView *m_body;
+    QWidget *m_search;
+    QLineEdit *m_searchText;
+    QLabel *m_searchCount;
+    int m_position = -1, m_current = 0, m_matches = 0;
+    void countMatches();
+    void findMatch(bool previous);
 };
 
 } // namespace smoothmail
