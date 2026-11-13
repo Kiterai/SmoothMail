@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.30)
+include("${CMAKE_CURRENT_LIST_DIR}/DownloadAsset.cmake")
+foreach(required IN ITEMS URL SHA512 DESTINATION)
+    if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
+        message(FATAL_ERROR "Missing asset argument: ${required}")
+    endif()
+endforeach()
+smoothmail_download_asset("${URL}" SHA512 "${SHA512}" "${DESTINATION}")

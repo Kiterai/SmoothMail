@@ -16,9 +16,7 @@ get_filename_component(DEPENDENCY_ROOT "${DEPENDENCY_ROOT}" ABSOLUTE)
 get_filename_component(Qt6_ROOT "${Qt6_ROOT}" ABSOLUTE)
 set(prefix "${DEPENDENCY_ROOT}/install/${CMAKE_BUILD_TYPE}")
 find_package(Git REQUIRED)
-if(NOT DEFINED CMAKE_MAKE_PROGRAM)
-    find_program(CMAKE_MAKE_PROGRAM ninja REQUIRED)
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/DownloadAsset.cmake")
 file(READ "${CMAKE_CURRENT_LIST_DIR}/dependencies.json" manifest)
 
 function(smoothmail_dependency_command)
@@ -26,6 +24,18 @@ function(smoothmail_dependency_command)
     if(NOT result STREQUAL "0")
         message(FATAL_ERROR "Dependency command failed (${result}): ${ARGV}")
     endif()
+endfunction()
+
+# Bootstrap Ninja without requiring Ninja (or Python) on PATH.
+function(smoothmail_prepare_ninja)
+    smoothmail_fetch_dependency(ninja source)
+    string(JSON commit GET "${manifest}" ninja commit)
+    set(binary "${DEPENDENCY_ROOT}/build/tools/ninja-${commit}")
+    smoothmail_dependency_command("${CMAKE_COMMAND}" -S "${source}" -B "${binary}"
+        -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+        -DCMAKE_CXX_FLAGS=/utf-8)
+    smoothmail_dependency_command("${CMAKE_COMMAND}" --build "${binary}" --target ninja)
+    set(CMAKE_MAKE_PROGRAM "${binary}/ninja.exe" PARENT_SCOPE)
 endfunction()
 
 function(smoothmail_fetch_dependency dependency output_variable)
@@ -78,3 +88,7 @@ function(smoothmail_build_dependency_source dependency source binary)
     smoothmail_dependency_command("${CMAKE_COMMAND}" --build "${binary}" --parallel 4)
     smoothmail_dependency_command("${CMAKE_COMMAND}" --install "${binary}")
 endfunction()
+
+if(NOT DEFINED CMAKE_MAKE_PROGRAM)
+    smoothmail_prepare_ninja()
+endif()

@@ -1,4 +1,9 @@
 {
+  "ninja": {
+    "repository": "https://github.com/ninja-build/ninja.git",
+    "tag": "v1.13.1",
+    "commit": "79feac0f3e3bc9da9effc586cd5fea41e7550051"
+  },
   "vcpkg-recipes": {
     "repository": "https://github.com/microsoft/vcpkg.git",
     "tag": "commit",

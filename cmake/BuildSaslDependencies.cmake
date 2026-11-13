@@ -6,21 +6,13 @@ endif()
 if(NOT CMAKE_BUILD_TYPE MATCHES "^(Debug|Release)$")
     message(FATAL_ERROR "The native SASL bootstrap supports Debug or Release only.")
 endif()
-find_program(CURL_EXECUTABLE curl REQUIRED)
 find_program(NMAKE_EXECUTABLE nmake REQUIRED)
 
 set(sha256 "7ccfc6abd01ed67c1a0924b353e526f1b766b21f42d4562ee635a8ebfc5bb38c")
 set(archive "${DEPENDENCY_ROOT}/downloads/cyrus-sasl-2.1.28.tar.gz")
-file(MAKE_DIRECTORY "${DEPENDENCY_ROOT}/downloads")
-if(NOT EXISTS "${archive}")
-    smoothmail_dependency_command("${CURL_EXECUTABLE}" --fail --location --proto =https --proto-redir =https
-        --output "${archive}"
-        https://github.com/cyrusimap/cyrus-sasl/releases/download/cyrus-sasl-2.1.28/cyrus-sasl-2.1.28.tar.gz)
-endif()
-file(SHA256 "${archive}" actual)
-if(NOT actual STREQUAL sha256)
-    message(FATAL_ERROR "Cyrus SASL source archive checksum mismatch; refusing to extract.")
-endif()
+smoothmail_download_asset(
+    "https://github.com/cyrusimap/cyrus-sasl/releases/download/cyrus-sasl-2.1.28/cyrus-sasl-2.1.28.tar.gz"
+    SHA256 "${sha256}" "${archive}")
 set(work "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/cyrus-sasl-${sha256}")
 set(source "${work}/cyrus-sasl-2.1.28")
 if(NOT EXISTS "${source}")
