@@ -3,6 +3,7 @@
 #include "ui/accountdialog.h"
 #include "ui/composedialog.h"
 #include "ui/downloadhistorydialog.h"
+#include "ui/systemsettingsdialog.h"
 #include "storage/accountregistrar.h"
 #include "mail/mailservice.h"
 #include "mail/authenticationbroker.h"
@@ -15,14 +16,42 @@
 #include <QStandardPaths>
 #include <QDesktopServices>
 #include <QProgressDialog>
+#include <QSettings>
+#include <QUndoStack>
+#include <QUndoCommand>
+#include <QUuid>
 
 namespace smoothmail {
+namespace {
+class OperationCommand final : public QUndoCommand {
+public:
+    OperationCommand(const QString &text, std::function<void()> undo, std::function<void()> redo) : QUndoCommand(text), m_undo(std::move(undo)), m_redo(std::move(redo)) {}
+    void undo() override { m_undo(); }
+    void redo() override { m_redo(); }
+private:
+    std::function<void()> m_undo, m_redo;
+};
+}
 ApplicationController::ApplicationController(MainWindow *window, const QString &path, const QString &plugins)
     : m_window(window), m_repository(new AccountRepository(path, this)),
       m_credentials(new CredentialStore(this)), m_registrar(new AccountRegistrar(m_repository, m_credentials, this)),
       m_mail(new MailService(plugins, this)), m_actions(new MailService(plugins, this)), m_authentication(new AuthenticationBroker(m_credentials, this)),
       m_authorization(new OAuthClient(this))
 {
+    m_operations = new QUndoStack(this); m_operations->setUndoLimit(1000);
+    connect(m_operations, &QUndoStack::canUndoChanged, this, &ApplicationController::updateEditingState); connect(m_operations, &QUndoStack::canRedoChanged, this, &ApplicationController::updateEditingState);
+    QSettings settings;
+    m_systemSettings = {settings.value(QStringLiteral("display/pageSize"), 100).toInt(), settings.value(QStringLiteral("refresh/seconds"), 30).toInt(), settings.value(QStringLiteral("google/clientId"), qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_ID")).toString()};
+    if (!validSettings(m_systemSettings)) { m_systemSettings.pageSize = 100; m_systemSettings.refreshSeconds = 30; }
+    window->applySettings(m_systemSettings);
+    const bool configured = settings.value(QStringLiteral("google/configured"), false).toBool();
+    m_credentials->read(QStringLiteral("system/google-client-secret"), [this, configured](const QString &secret, const QString &error) {
+        if (!error.isEmpty()) { m_window->statusBar()->showMessage(QStringLiteral("システム設定の秘密情報を読み込めません: ") + error); return; }
+        m_googleSecret = configured || !secret.isEmpty() ? secret : qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET");
+        if (m_googleSecret.isNull()) m_googleSecret = QStringLiteral("");
+        m_authentication->setGoogleSecret(m_googleSecret); m_settingsReady = true;
+    }, true);
+    connect(window, &MainWindow::systemSettingsRequested, this, &ApplicationController::openSystemSettings);
     window->setPagedStorage(true);
     connect(window, &MainWindow::pageRequested, m_repository, &AccountRepository::loadPage);
     connect(m_repository, &AccountRepository::pageLoaded, window, &MainWindow::applyPage);
@@ -30,8 +59,23 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(m_repository, &AccountRepository::messageLoaded, window, &MainWindow::displayLoadedMessage);
     connect(m_mail, &MailService::syncProgress, window, &MainWindow::showSyncProgress);
     connect(window, &MainWindow::messageFlagRequested, this, [this](const MailRecord &identity, bool importantFlag, bool enabled) {
-        m_repository->queueFlag(identity, importantFlag, enabled);
+        const auto handle = QUuid::createUuid().toString(QUuid::WithoutBraces); const bool before = importantFlag ? identity.important : identity.seen;
+        m_operations->push(new OperationCommand(QStringLiteral("メールフラグの変更"), [this, handle, identity, importantFlag, before] { m_repository->setFlagIntent(handle, identity, importantFlag, before); }, [this, handle, identity, importantFlag, enabled] { m_repository->setFlagIntent(handle, identity, importantFlag, enabled); }));
     });
+    connect(window, &MainWindow::automaticFlagRequested, m_repository, &AccountRepository::queueFlag);
+    connect(window, &MainWindow::messageMoveBatchStarted, this, [this] { m_operations->beginMacro(QStringLiteral("メールの移動")); });
+    connect(window, &MainWindow::messageMoveBatchFinished, m_operations, &QUndoStack::endMacro);
+    connect(window, &MainWindow::messageMoveRequested, this, [this](const MailRecord &identity, const QString &destination) {
+        if (identity.folder == destination) return;
+        const auto handle = QUuid::createUuid().toString(QUuid::WithoutBraces), source = folderHandle(identity.accountId, identity.folder), target = folderHandle(identity.accountId, destination);
+        m_operations->push(new OperationCommand(QStringLiteral("メールの移動"), [this, handle, identity, source] { m_repository->setMoveIntent(handle, identity, m_folderHandles.value(source).second); }, [this, handle, identity, target] { m_repository->setMoveIntent(handle, identity, m_folderHandles.value(target).second); }));
+    });
+    connect(window, &MainWindow::folderMoveRequested, this, [this](const QString &id, const QString &source, const QString &parent, QChar separator) {
+        const auto handle = folderHandle(id, source), oldParent = folderHandle(id, source.contains(separator) ? source.left(source.lastIndexOf(separator)) : QString{}), target = folderHandle(id, parent);
+        if (m_folderHandles.value(oldParent).second == parent) return;
+        m_operations->push(new OperationCommand(QStringLiteral("フォルダの移動"), [this, handle, oldParent, separator] { moveFolder(handle, oldParent, separator); }, [this, handle, target, separator] { moveFolder(handle, target, separator); }));
+    });
+    connect(m_repository, &AccountRepository::localOperationFinished, this, [this](const QString &id, const QString &error) { if (!error.isEmpty()) m_cacheReloadErrors[id] = error; m_repository->loadCache(id, true); m_window->requestPage(); updateEditingState(); });
     connect(m_repository, &AccountRepository::flagsUpdated, this, [this](const MailRecord &identity, const QString &error) {
         if (error.isEmpty()) { m_repository->loadCache(identity.accountId, true); m_window->requestPage(); }
         else { m_window->statusBar()->showMessage(error); m_window->requestPage(); }
@@ -45,7 +89,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         m_window->setAccounts(m_accounts);
         for (const auto &account : m_accounts) if (!existing.contains(account.id)) {
             m_repository->loadCache(account.id, true);
-            refresh(account.id, {});
+            if (m_addedAccounts.remove(account.id)) refresh(account.id, {});
         }
     });
     connect(m_repository, &AccountRepository::failed, this, [this](const QString &operation, const QString &error) {
@@ -70,6 +114,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders, const QList<MailRecord> &messages) {
             if (m_deletedAccounts.contains(id)) return;
             m_window->applySnapshot(id, folder, folders, messages, {}, m_completedSyncs.remove(id) > 0);
+            if (m_window->selectedAccountId() == id) m_repository->ensureFolderLoaded(id, m_window->selectedFolderFor(id));
             const auto error = m_cacheReloadErrors.take(id);
             if (!error.isEmpty()) m_window->statusBar()->showMessage(QStringLiteral("更新に失敗しました: ") + error);
         });
@@ -86,6 +131,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(window, &MainWindow::deleteAccountRequested, this, [this](const QString &id) {
         if (!canManage()) return;
         m_deletedAccounts.insert(id); m_authentication->cancelAccount(id);
+        m_operations->clear(); m_folderHandles.clear();
         m_mail->cancelSynchronization(id);
         for (qsizetype i = m_queue.size(); i-- > 0;) if (m_queue.at(i).accountId == id) m_queue.removeAt(i);
         if (m_current.accountId == id) { ++m_requestSerial; m_current = {}; }
@@ -106,8 +152,10 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(window, &MainWindow::folderOperationRequested, this,
         [this](const QString &id, const QString &operation, const QString &source, const QString &destination) {
             if (m_deletedAccounts.contains(id)) return;
-            m_repository->queueFolder(id, operation, source, destination);
-            if (operation == QStringLiteral("rename")) m_window->followFolderRename(id, source, destination);
+            if (operation == QStringLiteral("create")) {
+                const auto handle = folderHandle(id, destination);
+                m_operations->push(new OperationCommand(QStringLiteral("フォルダの作成"), [this, id, handle] { m_repository->cancelCreatedFolder(id, m_folderHandles.value(handle).second); }, [this, id, handle] { m_repository->restoreCreatedFolder(id, m_folderHandles.value(handle).second); }));
+            } else performFolder(id, operation, source, destination);
         });
     connect(m_repository, &AccountRepository::folderQueued, this, [this](const QString &id, const QString &error) {
         if (!error.isEmpty()) m_window->cancelPendingFolderEdit();
@@ -154,7 +202,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_oauthProgress->setMinimumDuration(0); m_oauthProgress->setWindowModality(Qt::WindowModal); m_oauthProgress->show();
             connect(m_oauthProgress, &QProgressDialog::canceled, m_authorization, &OAuthClient::cancel);
             m_authorization->authorize(settings.oauthProvider, settings.oauthClientId, settings.user,
-                settings.oauthProvider == QStringLiteral("google") ? qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET") : QString{});
+                settings.oauthProvider == QStringLiteral("google") ? m_googleSecret : QString{});
             break;
         }
     });
@@ -193,12 +241,14 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         updateEditingState();
     });
     connect(window, &MainWindow::undoRedoRequested, this, [this](bool redo) {
-        if (!m_editor || !m_compose || !m_compose->isVisible()) return;
-        if (auto *line = qobject_cast<QLineEdit *>(m_editor)) { if (redo) line->redo(); else line->undo(); }
-        if (auto *text = qobject_cast<QPlainTextEdit *>(m_editor)) { if (redo) text->redo(); else text->undo(); }
+        auto *focus = QApplication::focusWidget();
+        if (auto *line = qobject_cast<QLineEdit *>(focus); line && !line->isReadOnly()) { if (redo) line->redo(); else line->undo(); }
+        else if (auto *text = qobject_cast<QPlainTextEdit *>(focus); text && !text->isReadOnly()) { if (redo) text->redo(); else text->undo(); }
+        else { if (redo) m_operations->redo(); else m_operations->undo(); }
         updateEditingState();
     });
-    connect(window, &MainWindow::refreshRequested, this, [this](const QString &id, const QString &folder) { refresh(id, folder); });
+    connect(window, &MainWindow::refreshRequested, m_repository, &AccountRepository::ensureFolderLoaded);
+    connect(m_repository, &AccountRepository::initialFetchRequired, this, [this](const QString &id, const QString &folder) { refresh(id, folder); });
     connect(window, &MainWindow::refreshAllRequested, this, [this] {
         for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id));
     });
@@ -206,6 +256,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id), true);
     });
     connect(m_registrar, &AccountRegistrar::finished, this, [this](const QString &id, const QString &error) {
+        if (error.isEmpty() && m_editedId.isEmpty()) m_addedAccounts.insert(id);
         if (error.isEmpty() && !m_editedId.isEmpty()) {
             m_authentication->invalidate(id);
             const auto account = m_dialog->account();
@@ -270,6 +321,50 @@ ApplicationController::~ApplicationController()
     delete m_repository;
 }
 
+void ApplicationController::openSystemSettings()
+{
+    if (m_systemDialog) { m_systemDialog->raise(); return; }
+    if (!m_settingsReady) { m_window->statusBar()->showMessage(QStringLiteral("OS資格情報ストアの準備が完了していません。")); return; }
+    m_systemDialog = new SystemSettingsDialog(m_systemSettings, m_googleSecret, m_window); m_systemDialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(m_systemDialog, &SystemSettingsDialog::saveRequested, this, [this](const SystemSettings &value, const QString &secret) {
+        if (!validSettings(value)) { m_systemDialog->saved(QStringLiteral("設定値が範囲外です。")); return; }
+        const QPointer<SystemSettingsDialog> dialog(m_systemDialog); const auto previousSecret = m_googleSecret;
+        m_credentials->write(QStringLiteral("system/google-client-secret"), secret, [this, dialog, value, secret, previousSecret](const QString &, const QString &error) {
+            if (!dialog) return;
+            if (!error.isEmpty()) { dialog->saved(error); return; }
+            QSettings settings;
+            const QStringList keys{QStringLiteral("display/pageSize"), QStringLiteral("refresh/seconds"), QStringLiteral("google/clientId"), QStringLiteral("google/configured")};
+            QMap<QString, QVariant> previous;
+            for (const auto &key : keys) if (settings.contains(key)) previous.insert(key, settings.value(key));
+            settings.setValue(keys[0], value.pageSize); settings.setValue(keys[1], value.refreshSeconds); settings.setValue(keys[2], value.googleClientId); settings.setValue(keys[3], true); settings.sync();
+            if (settings.status() != QSettings::NoError) {
+                for (const auto &key : keys) { if (previous.contains(key)) settings.setValue(key, previous.value(key)); else settings.remove(key); }
+                settings.sync();
+                m_credentials->write(QStringLiteral("system/google-client-secret"), previousSecret, [dialog](const QString &, const QString &rollbackError) { if (dialog) dialog->saved(rollbackError.isEmpty() ? QStringLiteral("設定ファイルを保存できませんでした。変更は適用していません。") : QStringLiteral("設定保存と秘密情報の復元に失敗しました。OS資格情報ストアを確認してください。")); }); return;
+            }
+            m_systemSettings = value; m_googleSecret = secret; m_authentication->setGoogleSecret(secret); m_window->applySettings(value); dialog->saved({});
+        });
+    });
+    m_systemDialog->open();
+}
+QString ApplicationController::folderHandle(const QString &id, const QString &path)
+{
+    const auto handle = QUuid::createUuid().toString(QUuid::WithoutBraces); m_folderHandles.insert(handle, {id, path}); return handle;
+}
+void ApplicationController::performFolder(const QString &id, const QString &operation, const QString &source, const QString &destination)
+{
+    m_repository->queueFolder(id, operation, source, destination);
+    if (operation != QStringLiteral("rename")) return;
+    const auto separator = m_window->folderSeparator(id, source);
+    for (auto it = m_folderHandles.begin(); it != m_folderHandles.end(); ++it) if (it.value().first == id && (it.value().second == source || (!separator.isNull() && it.value().second.startsWith(source + separator)))) it.value().second = destination + it.value().second.mid(source.size());
+    m_window->followFolderRename(id, source, destination);
+}
+void ApplicationController::moveFolder(const QString &handle, const QString &parent, QChar separator)
+{
+    const auto source = m_folderHandles.value(handle); const auto target = m_folderHandles.value(parent).second;
+    const auto leaf = source.second.mid(source.second.lastIndexOf(separator) + 1);
+    performFolder(source.first, QStringLiteral("rename"), source.second, target.isEmpty() ? leaf : target + separator + leaf);
+}
 void ApplicationController::addAccount()
 {
     openAccount({});
@@ -331,9 +426,9 @@ void ApplicationController::openAccount(const QString &id)
     }
     connect(m_dialog, &AccountDialog::oauthRequested, this, [this](bool smtp, const QString &provider, const QString &hint) {
         m_authorizingSmtp = smtp;
-        m_authorizingClientId = qEnvironmentVariable(provider == QStringLiteral("google") ? "SMOOTHMAIL_GOOGLE_CLIENT_ID" : "SMOOTHMAIL_MICROSOFT_CLIENT_ID");
+        m_authorizingClientId = provider == QStringLiteral("google") ? m_systemSettings.googleClientId : qEnvironmentVariable("SMOOTHMAIL_MICROSOFT_CLIENT_ID");
         m_authorization->authorize(provider, m_authorizingClientId, hint,
-            provider == QStringLiteral("google") ? qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET") : QString{});
+            provider == QStringLiteral("google") ? m_googleSecret : QString{});
     });
     connect(m_dialog, &AccountDialog::oauthCancelled, m_authorization, &OAuthClient::cancel);
     connect(m_dialog, &AccountDialog::testRequested, this,
@@ -443,21 +538,15 @@ void ApplicationController::compose(bool reply)
         connect(text, &QPlainTextEdit::undoAvailable, this, &ApplicationController::updateEditingState);
         connect(text, &QPlainTextEdit::redoAvailable, this, &ApplicationController::updateEditingState);
     }
-    connect(m_compose, &QObject::destroyed, this, [this] { m_editor = nullptr; m_window->setEditingState(false, false); });
+    connect(m_compose, &QObject::destroyed, this, [this] { m_editor = nullptr; updateEditingState(); });
     m_compose->show();
 }
 
 void ApplicationController::updateEditingState()
 {
-    bool undo = false, redo = false;
-    if (m_compose && m_compose->isVisible() && m_editor && m_editor->isEnabled()) {
-        if (const auto *line = qobject_cast<QLineEdit *>(m_editor); line && !line->isReadOnly()) {
-            undo = line->isUndoAvailable(); redo = line->isRedoAvailable();
-        }
-        if (const auto *text = qobject_cast<QPlainTextEdit *>(m_editor); text && !text->isReadOnly()) {
-            undo = text->document()->isUndoAvailable(); redo = text->document()->isRedoAvailable();
-        }
-    }
+    bool undo = m_operations->canUndo(), redo = m_operations->canRedo();
+    if (const auto *line = qobject_cast<QLineEdit *>(QApplication::focusWidget()); line && !line->isReadOnly()) { undo = line->isUndoAvailable(); redo = line->isRedoAvailable(); }
+    else if (const auto *text = qobject_cast<QPlainTextEdit *>(QApplication::focusWidget()); text && !text->isReadOnly()) { undo = text->document()->isUndoAvailable(); redo = text->document()->isRedoAvailable(); }
     m_window->setEditingState(undo, redo);
 }
 } // namespace smoothmail

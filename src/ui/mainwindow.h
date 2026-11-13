@@ -4,6 +4,7 @@
 #include "core/account.h"
 #include "core/mailrecord.h"
 #include "core/mailpage.h"
+#include "core/systemsettings.h"
 #include <QHash>
 #include <QSet>
 #include <optional>
@@ -17,6 +18,7 @@ class QLineEdit;
 class QSpinBox;
 class QCheckBox;
 class QProgressBar;
+class QTimer;
 
 namespace smoothmail {
 
@@ -46,7 +48,11 @@ public:
     void displayLoadedMessage(const MailRecord &message, const QString &error);
     void showSyncProgress(const QString &id, qint64 done, qint64 total);
     void followFolderRename(const QString &id, const QString &source, const QString &destination);
+    void applySettings(const SystemSettings &settings);
+    QChar folderSeparator(const QString &id, const QString &name) const;
 signals:
+    void messageMoveBatchStarted();
+    void messageMoveBatchFinished();
     void editAccountRequested(const QString &id);
     void deleteAccountRequested(const QString &id);
     void folderOperationRequested(const QString &id, const QString &operation, const QString &source, const QString &destination);
@@ -56,6 +62,7 @@ signals:
     void refreshRequested(const QString &accountId, const QString &folder);
     void composeRequested(bool reply);
     void undoRedoRequested(bool redo);
+    void systemSettingsRequested();
     void accountOrderChanged(const QStringList &accountIds);
     void historyRequested();
     void downloadRequested(const smoothmail::MailRecord &message, const QString &partId);
@@ -63,9 +70,13 @@ signals:
     void pageRequested(const smoothmail::MailQuery &query);
     void messageRequested(const smoothmail::MailRecord &identity);
     void messageFlagRequested(const smoothmail::MailRecord &identity, bool importantFlag, bool enabled);
+    void automaticFlagRequested(const smoothmail::MailRecord &identity, bool importantFlag, bool enabled);
+    void folderMoveRequested(const QString &id, const QString &source, const QString &parent, QChar separator);
+    void messageMoveRequested(const smoothmail::MailRecord &identity, const QString &destination);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *object, QEvent *event) override;
 
 private:
     void editFolder(const QModelIndex &index, bool create);
@@ -78,7 +89,7 @@ private:
     void restoreWindow();
     void rebuildFolders();
     void rebuildMessages();
-    void changeFlag(int row, bool importantFlag, bool enabled);
+    void changeFlag(int row, bool importantFlag, bool enabled, bool automatic = false);
 
     QSystemTrayIcon *m_tray = nullptr;
     QStandardItemModel *m_folders = nullptr;
@@ -108,6 +119,8 @@ private:
     QProgressBar *m_filterProgress = nullptr;
     QLabel *m_pageRange = nullptr, *m_pageCount = nullptr;
     std::optional<MailRecord> m_loadedMessage;
+    int m_pageSize = MailPageSize, m_edgeSelection = 0;
+    QTimer *m_poll = nullptr;
 };
 
 } // namespace smoothmail

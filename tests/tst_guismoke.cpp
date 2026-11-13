@@ -4,6 +4,8 @@
 #include "ui/composedialog.h"
 #include "ui/downloadhistorydialog.h"
 #include "ui/mainwindow.h"
+#include "ui/systemsettingsdialog.h"
+#include <QSettings>
 #include "storage/accountregistrar.h"
 #include "mail/mimeparser.h"
 #include "mail/mailservice.h"
@@ -107,6 +109,49 @@ private slots:
         QVERIFY(diagnostics::start(qEnvironmentVariable("SMOOTHMAIL_GUI_OUTPUT") + QStringLiteral("/gui-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
+    void settingsPersistAndLocalMovesHaveManualOnlyUndo()
+    {
+        QSettings().clear(); QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("settings-moves.sqlite"));
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("local@example.test"), {QStringLiteral("offline.example.test"), 465, QStringLiteral("test")}, {QStringLiteral("offline.example.test"), 993, QStringLiteral("test")}};
+        const auto parsed = MimeParser::parse("Subject: local fixture\r\n\r\nbody"); const MailRecord identity{account.id, QStringLiteral("INBOX"), 10, 1, false, false, parsed.message};
+        const QList<MailFolder> folders{{QStringLiteral("INBOX"), u'/', {}, 1}, {QStringLiteral("Target"), u'/', {}, 0}};
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved); repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+            repository.saveSnapshot(account.id, QStringLiteral("INBOX"), folders, {identity}); QTRY_COMPARE(saved.size(), 1);
+            repository.saveSnapshot(account.id, QStringLiteral("Target"), folders, {}); QTRY_COMPARE(saved.size(), 2);
+        }
+        {
+            MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+            auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList")); QTRY_COMPARE(view->model()->rowCount(), 1);
+            // Startup secret load is asynchronous. Retry opening until the guest keychain is ready.
+            QTRY_VERIFY_WITH_TIMEOUT(([&] { action(window, "systemSettingsAction")->trigger(); return window.findChild<SystemSettingsDialog *>() != nullptr; })(), 10000);
+            QPointer<SystemSettingsDialog> dialog = window.findChild<SystemSettingsDialog *>();
+            dialog->findChild<QSpinBox *>(QStringLiteral("settingsPageSize"))->setValue(17); dialog->findChild<QSpinBox *>(QStringLiteral("settingsInterval"))->setValue(45);
+            dialog->findChild<QLineEdit *>(QStringLiteral("settingsGoogleClient"))->setText(QStringLiteral("dummy-client")); dialog->findChild<QLineEdit *>(QStringLiteral("settingsGoogleSecret"))->setText(QStringLiteral("dummy-system-secret"));
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click(); QTRY_VERIFY(dialog.isNull());
+            QVERIFY(!action(window, "undoAction")->isEnabled());
+            window.automaticFlagRequested(identity, false, true); QTRY_COMPARE(view->model()->index(0, 1).data().toString(), QStringLiteral("○")); QVERIFY(!action(window, "undoAction")->isEnabled());
+            window.messageFlagRequested(identity, true, true); QTRY_COMPARE(view->model()->index(0, 0).data().toString(), QStringLiteral("★"));
+            view->setFocus(); action(window, "undoAction")->trigger(); QTRY_COMPARE(view->model()->index(0, 0).data().toString(), QStringLiteral("☆")); QCOMPARE(view->model()->index(0, 1).data().toString(), QStringLiteral("○"));
+            action(window, "redoAction")->trigger(); QTRY_COMPARE(view->model()->index(0, 0).data().toString(), QStringLiteral("★"));
+            window.messageMoveRequested(identity, QStringLiteral("Target")); QTRY_COMPARE(view->model()->rowCount(), 0);
+            action(window, "undoAction")->trigger(); QTRY_COMPARE(view->model()->rowCount(), 1);
+            window.folderOperationRequested(account.id, QStringLiteral("create"), {}, QStringLiteral("New")); auto *tree = window.findChild<QTreeView *>(QStringLiteral("folderTree")); QTRY_VERIFY(folderIndex(tree, QStringLiteral("New")).isValid());
+            action(window, "undoAction")->trigger(); QTRY_VERIFY(!folderIndex(tree, QStringLiteral("New")).isValid());
+            action(window, "redoAction")->trigger(); QTRY_VERIFY(folderIndex(tree, QStringLiteral("New")).isValid());
+            window.folderMoveRequested(account.id, QStringLiteral("Target"), QStringLiteral("INBOX"), u'/'); QTRY_VERIFY(folderIndex(tree, QStringLiteral("INBOX/Target")).isValid());
+            action(window, "undoAction")->trigger(); QTRY_VERIFY(folderIndex(tree, QStringLiteral("Target")).isValid()); QVERIFY(!folderIndex(tree, QStringLiteral("INBOX/Target")).isValid());
+        }
+        {
+            MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+            QTRY_VERIFY_WITH_TIMEOUT(([&] { action(window, "systemSettingsAction")->trigger(); return window.findChild<SystemSettingsDialog *>() != nullptr; })(), 10000);
+            auto *dialog = window.findChild<SystemSettingsDialog *>(); QCOMPARE(dialog->findChild<QSpinBox *>(QStringLiteral("settingsPageSize"))->value(), 17); QCOMPARE(dialog->findChild<QSpinBox *>(QStringLiteral("settingsInterval"))->value(), 45);
+            // Compare the dummy secret, never print it in diagnostics or a failed QCOMPARE.
+            QVERIFY(dialog->findChild<QLineEdit *>(QStringLiteral("settingsGoogleSecret"))->text() == QStringLiteral("dummy-system-secret"));
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+        }
+        QSettings().clear(); CredentialStore credentials; bool done = false; credentials.remove(QStringLiteral("system/google-client-secret"), [&](const QString &, const QString &) { done = true; }); QTRY_VERIFY(done);
+    }
     void nativeControllerWorkflow()
     {
         QFile cert(QStringLiteral(":/test/tls-cert.pem")), key(QStringLiteral(":/test/tls-key.pem"));
@@ -327,6 +372,8 @@ private slots:
         CredentialStore credentials;
         for (const auto &protocol : {QStringLiteral("imap"), QStringLiteral("smtp")}) { bool done = false; QString error; credentials.write(AccountRegistrar::secretKey(account.id, protocol), QStringLiteral("sandbox-only-dummy"), [&](const QString &, const QString &value) { error = value; done = true; }); QTRY_VERIFY(done); QVERIFY(error.isEmpty()); }
         MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_COMPARE(window.findChild<QTreeView *>(QStringLiteral("messageList"))->model()->rowCount(), 1);
+        QVERIFY(oldServer.commands.isEmpty()); action(window, "refreshAction")->trigger();
         QTRY_COMPARE_WITH_TIMEOUT(oldServer.pausedHeaderCount(), 1, 10000);
         auto *folders = window.findChild<QTreeView *>(QStringLiteral("folderTree")); auto *messages = window.findChild<QTreeView *>(QStringLiteral("messageList")); QTRY_COMPARE(messages->model()->rowCount(), 1);
         window.folderOperationRequested(account.id, QStringLiteral("create"), {}, QStringLiteral("Offline")); QTRY_VERIFY(folderIndex(folders, QStringLiteral("Offline")).isValid()); QVERIFY(!oldServer.extraFolders.contains("Offline"));
@@ -388,8 +435,7 @@ private slots:
             auto *page = window.findChild<QSpinBox *>(QStringLiteral("mailPage"));
             auto *range = window.findChild<QLabel *>(QStringLiteral("pageRange"));
             QTRY_COMPARE_WITH_TIMEOUT(view->model()->rowCount(), 100, 30000);
-            QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 240000);
-            QVERIFY(ticks > 5); QCOMPARE(server.fullFetchCount, 0); // Cache restoration did not load all bodies.
+            QTRY_VERIFY(ticks > 5); QVERIFY(server.commands.isEmpty()); QCOMPARE(server.fullFetchCount, 0); // A fetched folder is restored without network traffic.
             auto *folders = window.findChild<QTreeView *>(QStringLiteral("folderTree"));
             QTRY_VERIFY(folders->model()->index(0, 0).data().toString().endsWith(QStringLiteral("(3344)")));
             QCOMPARE(page->maximum(), 101); QVERIFY(page->isEnabled());

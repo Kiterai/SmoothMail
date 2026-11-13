@@ -22,7 +22,7 @@ void AuthenticationBroker::refresh(const ServerSettings &settings, const QString
         client->deleteLater(); completion(tokens, {});
     });
     client->refresh(settings.oauthProvider, settings.oauthClientId, token,
-        settings.oauthProvider == QStringLiteral("google") ? qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET") : QString{});
+        settings.oauthProvider == QStringLiteral("google") ? (m_googleSecret.isNull() ? qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET") : m_googleSecret) : QString{});
 }
 
 void AuthenticationBroker::transient(const ServerSettings &settings, const QString &stored, TransientCompletion completion)

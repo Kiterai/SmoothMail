@@ -13,12 +13,56 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QCheckBox>
+#include "ui/systemsettingsdialog.h"
+#include <QDialogButtonBox>
 
 class MainWindowTest final : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void configurablePagesNavigateAtListEdges()
+    {
+        using namespace smoothmail;
+        MainWindow window(false); window.setPagedStorage(true); window.applySettings({2, 45, {}});
+        Account account; account.id = QStringLiteral("edges"); account.email = QStringLiteral("edges@example.test"); window.setAccounts({account});
+        QSignalSpy requests(&window, &MainWindow::pageRequested);
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {}); QVERIFY(!requests.isEmpty());
+        MailPage page; page.query = qvariant_cast<MailQuery>(requests.last().first()); QCOMPARE(page.query.pageSize, 2); page.total = 4;
+        page.messages = {{account.id, page.query.folder, 10, 1}, {account.id, page.query.folder, 10, 2}}; window.applyPage(page);
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList")); view->setCurrentIndex(view->model()->index(1, 3));
+        QTest::keyClick(view, Qt::Key_Down); QCOMPARE(qvariant_cast<MailQuery>(requests.last().first()).page, 2);
+        page.query = qvariant_cast<MailQuery>(requests.last().first()); page.messages[0].uid = 3; page.messages[1].uid = 4; window.applyPage(page); QCOMPARE(view->currentIndex().row(), 0);
+        QTest::keyClick(view, Qt::Key_Up); QCOMPARE(qvariant_cast<MailQuery>(requests.last().first()).page, 1);
+        page.query = qvariant_cast<MailQuery>(requests.last().first()); page.messages[0].uid = 1; page.messages[1].uid = 2; window.applyPage(page); QCOMPARE(view->currentIndex().row(), 1);
+        const auto count = requests.size(); view->setCurrentIndex(view->model()->index(0, 3)); QTest::keyClick(view, Qt::Key_Up); QCOMPARE(requests.size(), count);
+    }
+    void settingsDefaultsAndSaveFailureKeepEdits()
+    {
+        using namespace smoothmail;
+        SystemSettingsDialog dialog({}, {}); QSignalSpy save(&dialog, &SystemSettingsDialog::saveRequested);
+        auto *page = dialog.findChild<QSpinBox *>(QStringLiteral("settingsPageSize")); auto *interval = dialog.findChild<QSpinBox *>(QStringLiteral("settingsInterval"));
+        auto *buttons = dialog.findChild<QDialogButtonBox *>(); auto *button = buttons->button(QDialogButtonBox::Save);
+        QCOMPARE(page->value(), 100); QCOMPARE(interval->value(), 30); QVERIFY(!button->isEnabled());
+        page->setValue(17); QVERIFY(button->isEnabled()); button->click(); QCOMPARE(save.size(), 1); QCOMPARE(qvariant_cast<SystemSettings>(save.first().first()).pageSize, 17); QVERIFY(!page->isEnabled());
+        dialog.saved(QStringLiteral("fixture failure")); QVERIFY(page->isEnabled()); QCOMPARE(page->value(), 17); QVERIFY(button->isEnabled());
+        page->setValue(100); QVERIFY(!button->isEnabled());
+        buttons->button(QDialogButtonBox::Cancel)->click(); QCOMPARE(dialog.result(), int(QDialog::Rejected));
+    }
+    void messageDropRejectsWholeMalformedBatch()
+    {
+        using namespace smoothmail;
+        FolderModel folders; auto *account = new QStandardItem(QStringLiteral("account")); account->setData(QStringLiteral("id"), Qt::UserRole); folders.appendRow(account);
+        auto *target = new QStandardItem(QStringLiteral("Target")); target->setData(QStringLiteral("id"), Qt::UserRole); target->setData(QStringLiteral("Target"), Qt::UserRole + 1); account->appendRow(target);
+        MessageListModel messages; messages.records = {{QStringLiteral("id"), QStringLiteral("INBOX"), 10, 1}, {QStringLiteral("id"), QStringLiteral("INBOX"), 10, -1}};
+        for (int i = 0; i < 2; ++i) { auto *item = new QStandardItem(QString::number(i)); item->setData(i, Qt::UserRole); messages.appendRow(item); }
+        QSignalSpy moved(&folders, &FolderModel::messageMoveRequested), started(&folders, &FolderModel::messageMoveBatchStarted), finished(&folders, &FolderModel::messageMoveBatchFinished);
+        QScopedPointer<QMimeData> invalid(messages.mimeData({messages.index(0, 0), messages.index(1, 0)}));
+        QVERIFY(!folders.dropMimeData(invalid.data(), Qt::CopyAction, -1, 0, target->index())); QCOMPARE(moved.size(), 0); QCOMPARE(started.size(), 0);
+        messages.records[1].uid = 2; QScopedPointer<QMimeData> valid(messages.mimeData({messages.index(0, 0), messages.index(1, 0)}));
+        QVERIFY(folders.dropMimeData(valid.data(), Qt::CopyAction, -1, 0, target->index())); QCOMPARE(moved.size(), 2); QCOMPARE(started.size(), 1); QCOMPARE(finished.size(), 1);
+        target->setData(QStringLiteral("another"), Qt::UserRole); QVERIFY(!folders.dropMimeData(valid.data(), Qt::CopyAction, -1, 0, target->index())); QCOMPARE(moved.size(), 2);
+    }
     void refreshActionsAndOptimisticBadges()
     {
         using namespace smoothmail;
@@ -27,7 +71,7 @@ private slots:
         MailRecord first{account.id, QStringLiteral("INBOX"), 10, 1}; first.document.subject = QStringLiteral("one");
         auto second = first; second.uid = 2; second.document.subject = QStringLiteral("two");
         window.applySnapshot(account.id, first.folder, {{first.folder, u'/', {}, 2}}, {first, second}, {});
-        QSignalSpy recent(&window, &MainWindow::refreshAllRequested), full(&window, &MainWindow::fullRefreshRequested), flags(&window, &MainWindow::messageFlagRequested);
+        QSignalSpy recent(&window, &MainWindow::refreshAllRequested), full(&window, &MainWindow::fullRefreshRequested), flags(&window, &MainWindow::messageFlagRequested), automatic(&window, &MainWindow::automaticFlagRequested);
         auto *refresh = window.findChild<QAction *>(QStringLiteral("refreshAction"));
         auto *all = window.findChild<QAction *>(QStringLiteral("fullRefreshAction"));
         QCOMPARE(refresh->text(), QStringLiteral("最新の情報を取得")); QCOMPARE(all->shortcut(), QKeySequence(Qt::CTRL | Qt::Key_F5));
@@ -46,11 +90,11 @@ private slots:
         auto *autoRead = window.findChild<QAction *>(QStringLiteral("autoReadAction")); QVERIFY(!autoRead->isChecked());
         autoRead->setChecked(true);
         view->setCurrentIndex(view->model()->index(1, 3));
-        QCOMPARE(flags.size(), 2); QVERIFY(window.selectedMessage()->seen);
+        QCOMPARE(flags.size(), 1); QCOMPARE(automatic.size(), 1); QVERIFY(window.selectedMessage()->seen);
         QCOMPARE(view->model()->index(1, 1).data().toString(), QStringLiteral("○"));
-        view->setCurrentIndex(view->model()->index(1, 4)); QCOMPARE(flags.size(), 2);
+        view->setCurrentIndex(view->model()->index(1, 4)); QCOMPARE(flags.size(), 1); QCOMPARE(automatic.size(), 1);
         autoRead->setChecked(false); view->setCurrentIndex(view->model()->index(0, 3));
-        QCOMPARE(flags.size(), 2); QVERIFY(!window.selectedMessage()->seen);
+        QCOMPARE(flags.size(), 1); QVERIFY(!window.selectedMessage()->seen);
     }
     void paginationIgnoresStaleResultsAndResetsFilters()
     {

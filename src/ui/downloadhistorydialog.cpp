@@ -15,7 +15,7 @@ DownloadHistoryDialog::DownloadHistoryDialog(QWidget *parent) : QDialog(parent),
     const auto available = screen()->availableGeometry().size();
     resize(qMin(900, available.width() - 80), qMin(420, available.height() - 80));
     auto *layout = new QVBoxLayout(this); layout->addWidget(m_view);
-    m_model->setHorizontalHeaderLabels({QStringLiteral("元メッセージ"), QStringLiteral("保存日"), QStringLiteral("保存パス"), QStringLiteral("サイズ")});
+    m_model->setHorizontalHeaderLabels({QStringLiteral("元メッセージ"), QStringLiteral("保存日"), QStringLiteral("保存パス"), QStringLiteral("サイズ"), QStringLiteral("MIMEタイプ")});
     m_view->setModel(m_model); m_view->setRootIsDecorated(false);
     m_view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_view, &QTreeView::customContextMenuRequested, this, [this](const QPoint &point) {
@@ -42,11 +42,11 @@ void DownloadHistoryDialog::setEntries(const QList<DownloadEntry> &entries)
         const QStringList units{QStringLiteral("B"), QStringLiteral("kB"), QStringLiteral("MB"), QStringLiteral("GB"), QStringLiteral("TB")};
         while (size >= 1000 && unit < units.size() - 1) { size /= 1000; ++unit; }
         const QStringList cells{entry.subject, entry.savedAt.toLocalTime().toString(QStringLiteral("yyyy/MM/dd HH:mm")), entry.path,
-            QString::number(size, 'f', unit ? 2 : 0) + u' ' + units.at(unit)};
+            QString::number(size, 'f', unit ? 2 : 0) + u' ' + units.at(unit), entry.mimeType};
         QList<QStandardItem *> row;
         for (const auto &cell : cells) { auto *item = new QStandardItem(cell); item->setEditable(false); row.append(item); }
         row.first()->setData(i, Qt::UserRole); m_model->appendRow(row);
     }
-    for (int i = 0; i < 4; ++i) m_view->resizeColumnToContents(i);
+    for (int i = 0; i < 5; ++i) m_view->resizeColumnToContents(i);
 }
 }

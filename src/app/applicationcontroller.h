@@ -1,5 +1,6 @@
 #pragma once
 #include "core/account.h"
+#include "core/systemsettings.h"
 #include <QObject>
 #include <QPointer>
 #include <QQueue>
@@ -7,6 +8,7 @@
 #include <QHash>
 class QWidget;
 class QProgressDialog;
+class QUndoStack;
 
 namespace smoothmail {
 class MainWindow;
@@ -19,6 +21,7 @@ class ComposeDialog;
 class DownloadHistoryDialog;
 class AuthenticationBroker;
 class OAuthClient;
+class SystemSettingsDialog;
 class ApplicationController final : public QObject
 {
     Q_OBJECT
@@ -61,5 +64,16 @@ private:
     QHash<QString, QString> m_cacheReloadErrors;
     QSet<QString> m_deletedAccounts;
     quint64 m_requestSerial = 0;
+    SystemSettings m_systemSettings;
+    QString m_googleSecret;
+    bool m_settingsReady = false;
+    QPointer<SystemSettingsDialog> m_systemDialog;
+    QSet<QString> m_addedAccounts;
+    void openSystemSettings();
+    QUndoStack *m_operations;
+    QHash<QString, QPair<QString, QString>> m_folderHandles;
+    QString folderHandle(const QString &id, const QString &path);
+    void performFolder(const QString &id, const QString &operation, const QString &source, const QString &destination);
+    void moveFolder(const QString &handle, const QString &parent, QChar separator);
 };
 } // namespace smoothmail
