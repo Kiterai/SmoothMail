@@ -6,6 +6,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
+option(SMOOTHMAIL_DISTRIBUTION "Build a privacy-hardened Windows Release application" OFF)
+if(SMOOTHMAIL_DISTRIBUTION)
+    if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+        message(FATAL_ERROR "Distribution requires Windows/MSVC Release")
+    endif()
+    # Avoid embedding the builder's source path in __FILE__ and compiler records.
+    add_compile_options("/pathmap:${CMAKE_CURRENT_SOURCE_DIR}=SmoothMail")
+    add_link_options("/PDBALTPATH:smoothmail.pdb" "/INCREMENTAL:NO" "/Brepro")
+endif()
 
 # Qt is supplied by the developer. Do not fetch or install a second SDK.
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Sql Network)

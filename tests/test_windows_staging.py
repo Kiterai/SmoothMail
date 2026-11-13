@@ -16,13 +16,13 @@ class StagingGuardTest(unittest.TestCase):
         self.directory = ROOT / "build/staging-guard-tests" / uuid.uuid4().hex
         self.directory.mkdir(parents=True)
 
-    def invoke(self, configuration="Debug", destination=None, **overrides):
+    def invoke(self, configuration="Debug", destination=None, script="StageWindowsRuntime.cmake", **overrides):
         paths = {name: self.directory for name in ("APP", "QT_BIN", "DEPENDENCY_BIN", "NATIVE_BIN", "SASL_DIR")}
         paths.update(overrides)
         paths["DESTINATION"] = destination or self.directory / "destination"
         paths["CONFIGURATION"] = configuration
         return subprocess.run([CMAKE, *(f"-D{key}={value}" for key, value in paths.items()),
-                               "-P", str(ROOT / "cmake/StageWindowsRuntime.cmake")],
+                               "-P", str(ROOT / "cmake" / script)],
                               capture_output=True, text=True, check=False)
 
     def test_rejects_release_without_creating_destination(self):
@@ -44,6 +44,20 @@ class StagingGuardTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Missing APP", result.stderr)
         self.assertFalse((self.directory / "destination").exists())
+
+    def test_release_stage_rejects_debug_configuration(self):
+        result = self.invoke(script="StageWindowsRelease.cmake", CRT_BIN=self.directory)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("requires Release", result.stderr)
+        self.assertFalse((self.directory / "destination").exists())
+
+    def test_release_stage_never_overwrites_existing_work(self):
+        marker = self.directory / "user-work.txt"
+        marker.write_text("keep", encoding="utf-8")
+        result = self.invoke(configuration="Release", destination=self.directory, script="StageWindowsRelease.cmake", CRT_BIN=self.directory)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be empty", result.stderr)
+        self.assertEqual(marker.read_text(encoding="utf-8"), "keep")
 
 
 if __name__ == "__main__":
