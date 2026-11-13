@@ -28,6 +28,8 @@
 
 ## 最終成果物
 
+追記：利用者がアプリを閉じた後、配置42ファイルのハッシュ・保存EXEとの一致を再確認し、`build/local-run-behavior-deliver`を`build/local-run`へ移動済み。旧ランタイムは`build/local-run-before-behavior`へ保存した。通常ランチャーは変更不要で新版を起動する。以下の使用中エラーは初回配置時の履歴。
+
 - 11 EXEの137 passed / 0 failed / 0 skippedは`build/behavior-check/output-verified/`。ネイティブ子行の可視性検査を含む最終ビルドです。ホスト15対象とPython9件も成功。
 - 配置42ファイルのSHA-256とbuild/dev/smoothmail.exe、保存したEXE/PDBとの一致を確認。新版は`build/local-run-behavior-deliver`、配置ログは`build/behavior-deliver-stage.log`、シンボルは`build/behavior-check/symbols/`。
 - `build/local-run`の移動は別プロセスによる使用中エラーで失敗。通常ランチャーは意図的に旧版のまま。ユーザープロセスは終了させていない。新版を試す前に旧アプリのトレイ終了が必要。存在しない`local-run-before-behavior`をバックアップとして案内しない。

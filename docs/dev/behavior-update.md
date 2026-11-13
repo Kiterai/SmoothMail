@@ -11,6 +11,6 @@ DBはv3へ非破壊移行します。旧版はv3 DBを開けないため、旧�
 
 ## 起動と検証
 
-新版は`build/local-run-behavior-deliver/start-smoothmail.cmd`から起動します。使用中の`build/local-run`は差し替えられなかったため、`build/start-smoothmail.cmd`はまだ旧版です。**現在のSmoothMailをトレイから終了してから新版を起動してください。**
+通常の`build/start-smoothmail.cmd`から新版を起動します。利用者によるアプリ終了後に`build/local-run`を更新し、旧ランタイムは`build/local-run-before-behavior`へ保存しました。配置42ファイルのハッシュと保存EXEとの一致を再確認済みです。
 
 Windows Sandboxの11 EXEで137 passed / 0 failed / 0 skipped、ホストCTest15対象とPython9件が成功しました。ログと合成データの画面記録は`build/behavior-check/output-verified/`です。実メール・実アカウントの接続確認は行っていません。

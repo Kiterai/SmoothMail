@@ -1,7 +1,7 @@
 # Windows開発用の起動設定
 
 現在の起動用フォルダは`build/local-run`です。
-**仕様803f145対応の新版は`build/local-run-behavior-deliver/start-smoothmail.cmd`から起動します。** 通常の`build/local-run`は別プロセスで使用中のため移動できず、従来の起動先は変更していません。実行中SmoothMailをトレイから終了してから新版を使ってください。新DBはv3となり旧版では開けません。配置42ファイルのハッシュ・現在ビルドとの一致を確認済みで、配置ログは`build/behavior-deliver-stage.log`、EXE/PDBは`build/behavior-check/symbols/`です。詳細は`behavior-update.md`を参照してください。以下は従来の通常起動先の履歴です。
+**通常の`build/start-smoothmail.cmd`は仕様803f145対応の新版を起動します。** 利用者によるアプリ終了後に`build/local-run`を更新しました。旧ランタイムは`build/local-run-before-behavior`に保存しています。新DBはv3となり旧版では開けません。配置42ファイルのハッシュ・保存EXEとの一致を再確認済みで、配置ログは`build/behavior-deliver-stage.log`、EXE/PDBは`build/behavior-check/symbols/`です。詳細は`behavior-update.md`を参照してください。以下は従来の通常起動先の履歴です。
 最新は再発対策の**KCodecs修正版**です。`build/start-smoothmail.cmd`から起動してください。直前版は`build/local-run-before-codecsfix`、最新配置ログは`build/codecs-check/stage.log`、対応するEXE/KCodecs/KMime DLL・PDBは`build/codecs-check/symbols/`です。42ファイルの配置ハッシュとビルド/保存成果物の一致を確認しています。EXEは前回と同じでもKCodecs DLLが更新されています。以下のKMime修正時の記載は履歴です。
 2026-11-13のCRT異常終了対策（KMimeのunsigned-char修正と安全な診断強化）も反映済みです。直前のページ表示版は`build/local-run-before-ctypefix`へ保存しました。最新の配置ログは`build/local-run-crashfix-final-stage.log`、対応するEXE/KMime DLLとPDBは`build/crash-check/symbols/`です。配置42ファイルのハッシュ、現在のビルド/修正DLLとの一致、登録JSON・テストEXEの非混入を確認しています。調査結果は`crash-investigation-20261113.md`を参照してください。
 **`build/start-smoothmail.cmd`をダブルクリック**して起動します。フォルダ内の`build/local-run/start-smoothmail.cmd`や`smoothmail.exe`からも起動できます。Qt SDKやKDE prefixをPATHへ追加する必要はありません。
