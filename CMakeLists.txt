@@ -95,6 +95,7 @@ if(SMOOTHMAIL_BUILD_MIME)
 endif()
 
 add_library(smoothmail_ui STATIC
+    src/ui/visiblesplitter.h
     src/ui/systemsettingsdialog.cpp src/ui/systemsettingsdialog.h
     src/ui/downloadhistorydialog.cpp src/ui/downloadhistorydialog.h
     src/ui/foldermodel.cpp src/ui/foldermodel.h

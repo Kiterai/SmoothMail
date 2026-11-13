@@ -14,6 +14,7 @@
 #include <QMenuBar>
 #include <QPainter>
 #include <QSplitter>
+#include "visiblesplitter.h"
 #include <QStandardItemModel>
 #include <QStatusBar>
 #include <QSystemTrayIcon>
@@ -201,7 +202,8 @@ void MainWindow::createMenus()
 
 void MainWindow::createPanes()
 {
-    auto *horizontal = new QSplitter(Qt::Horizontal, this);
+    auto *horizontal = new VisibleSplitter(Qt::Horizontal, this);
+    horizontal->setObjectName(QStringLiteral("folderMessageSplitter"));
     horizontal->setObjectName(QStringLiteral("mainSplitter"));
     auto *folders = new QTreeView(horizontal);
     m_folderView = folders;
@@ -297,8 +299,8 @@ void MainWindow::createPanes()
         if (!name.isEmpty()) emit refreshRequested(id, name);
     });
 
-    auto *vertical = new QSplitter(Qt::Vertical, horizontal);
-    vertical->setHandleWidth(5);
+    auto *vertical = new VisibleSplitter(Qt::Vertical, horizontal);
+    vertical->setObjectName(QStringLiteral("messageViewerSplitter"));
     vertical->setObjectName(QStringLiteral("mailSplitter"));
     auto *listPane = new QWidget(vertical);
     auto *listLayout = new QVBoxLayout(listPane); listLayout->setContentsMargins(0, 0, 0, 0);

@@ -1,5 +1,6 @@
 #include "ui/mainwindow.h"
 #include "ui/foldermodel.h"
+#include "ui/visiblesplitter.h"
 
 #include <QAction>
 #include <QSplitter>
@@ -24,6 +25,31 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void splitterLinesContrastAndRemainDraggable_data()
+    {
+        QTest::addColumn<bool>("dark"); QTest::addColumn<bool>("vertical");
+        for (bool dark : {false, true}) for (bool vertical : {false, true})
+            QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(dark ? "dark" : "light", vertical ? "vertical" : "horizontal"))) << dark << vertical;
+    }
+    void splitterLinesContrastAndRemainDraggable()
+    {
+        QFETCH(bool, dark); QFETCH(bool, vertical);
+        smoothmail::VisibleSplitter splitter(vertical ? Qt::Vertical : Qt::Horizontal);
+        QPalette palette = splitter.palette(); palette.setColor(QPalette::Window, dark ? Qt::black : Qt::white); splitter.setPalette(palette);
+        splitter.addWidget(new QWidget); splitter.addWidget(new QWidget); splitter.resize(500, 500); splitter.setSizes({240, 240});
+        splitter.show(); QVERIFY(QTest::qWaitForWindowExposed(&splitter)); auto *handle = splitter.handle(1);
+        QVERIFY(handle->isVisible()); const auto image = handle->grab().toImage();
+        const auto point = handle->rect().center(); const auto ratio = image.devicePixelRatio();
+        const auto pixel = image.pixelColor(qRound(point.x() * ratio), qRound(point.y() * ratio));
+        QCOMPARE(pixel, QColor(dark ? Qt::white : Qt::black));
+        const auto before = splitter.sizes().first();
+        QTest::mousePress(handle, Qt::LeftButton, Qt::NoModifier, point);
+        QTest::mouseMove(handle, point + (vertical ? QPoint(0, 30) : QPoint(30, 0)));
+        QTest::mouseRelease(handle, Qt::LeftButton);
+        QTRY_VERIFY(splitter.sizes().first() != before);
+        smoothmail::MainWindow window(false);
+        for (auto *pane : window.findChildren<QSplitter *>()) QVERIFY(dynamic_cast<smoothmail::VisibleSplitter *>(pane));
+    }
     void contextRefreshTargetsClickedItemWithoutChangingGlobalActions()
     {
         using namespace smoothmail; MainWindow window(false); Account account; account.id = QStringLiteral("target"); account.email = QStringLiteral("target@example.test"); window.setAccounts({account});

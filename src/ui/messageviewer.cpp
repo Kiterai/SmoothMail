@@ -15,6 +15,7 @@
 #include <QTextCursor>
 #include <QShortcut>
 #include <QSplitter>
+#include "visiblesplitter.h"
 #include <QScrollBar>
 #include <QTimer>
 #include "core/displaytime.h"
@@ -49,8 +50,8 @@ MessageViewer::MessageViewer(QWidget *parent)
 {
     auto *layout = new QVBoxLayout(this);
     m_summary->setObjectName(QStringLiteral("messageSummary"));
-    auto *splitter = new QSplitter(Qt::Vertical, this); splitter->setObjectName(QStringLiteral("headerBodySplitter"));
-    splitter->setHandleWidth(5); splitter->setChildrenCollapsible(false);
+    auto *splitter = new VisibleSplitter(Qt::Vertical, this); splitter->setObjectName(QStringLiteral("headerBodySplitter"));
+    splitter->setChildrenCollapsible(false);
     auto *information = new QWidget(this); auto *informationLayout = new QVBoxLayout(information); informationLayout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(information);
     m_summary->setTextFormat(Qt::RichText);
