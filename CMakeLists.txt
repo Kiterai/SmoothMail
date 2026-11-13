@@ -12,8 +12,13 @@ if(SMOOTHMAIL_DISTRIBUTION)
         message(FATAL_ERROR "Distribution requires Windows/MSVC Release")
     endif()
     # Avoid embedding the builder's source path in __FILE__ and compiler records.
-    add_compile_options("/pathmap:${CMAKE_CURRENT_SOURCE_DIR}=SmoothMail")
+    add_compile_options("/experimental:deterministic" "/pathmap:${CMAKE_CURRENT_SOURCE_DIR}=SmoothMail")
     add_link_options("/PDBALTPATH:smoothmail.pdb" "/INCREMENTAL:NO" "/Brepro")
+endif()
+
+option(SMOOTHMAIL_BUILD_PACKAGE_TESTS "Build the offline C++ distribution guard tests" OFF)
+if(SMOOTHMAIL_BUILD_PACKAGE_TESTS)
+    add_subdirectory(tools/windows-package)
 endif()
 
 # Qt is supplied by the developer. Do not fetch or install a second SDK.
@@ -22,6 +27,7 @@ find_package(Qt6Keychain CONFIG REQUIRED)
 find_package(ECM 6.31 CONFIG REQUIRED)
 list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 find_package(Sasl2 REQUIRED)
+find_package(KF6I18n 6.31 CONFIG REQUIRED)
 find_package(KPim6IMAP 6.8.3 CONFIG REQUIRED)
 find_package(KPim6SMTP 6.8.3 CONFIG REQUIRED)
 find_package(KF6KIO 6.31 CONFIG REQUIRED)
@@ -119,6 +125,9 @@ smoothmail_target_defaults(smoothmail)
 
 option(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE "Build opt-in live Google OAuth/authentication probe (never a CTest test)" OFF)
 if(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE)
+    add_executable(smoothmail_google_network_probe tests/manual/google_network_probe.cpp)
+    target_link_libraries(smoothmail_google_network_probe PRIVATE Qt6::Core Qt6::Network)
+    smoothmail_target_defaults(smoothmail_google_network_probe)
     add_executable(smoothmail_google_probe tests/manual/google_oauth_probe.cpp
         tests/manual/google_credential_probe.cpp tests/manual/google_credential_probe.h)
     target_link_libraries(smoothmail_google_probe PRIVATE smoothmail_transport smoothmail_oauth smoothmail_auth Qt6::Gui)

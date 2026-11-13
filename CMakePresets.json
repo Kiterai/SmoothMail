@@ -14,6 +14,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_MAKE_PROGRAM": "${sourceDir}/build/deps/build/tools/ninja-79feac0f3e3bc9da9effc586cd5fea41e7550051/ninja.exe",
+        "GETTEXT_MSGFMT_EXECUTABLE": "${sourceDir}/build/deps/native/x64-windows/tools/gettext/bin/msgfmt.exe",
+        "GETTEXT_MSGMERGE_EXECUTABLE": "${sourceDir}/build/deps/native/x64-windows/tools/gettext/bin/msgmerge.exe",
         "CMAKE_PREFIX_PATH": "${sourceDir}/build/deps/install/Debug",
         "BUILD_TESTING": "ON"
       }

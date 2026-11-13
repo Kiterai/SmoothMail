@@ -26,7 +26,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWindows.cmake
 CMake 3.30以降、Git、Qt 6.10以降が必要です。Windowsでは指定Qtと一致するMSVC x64開発環境で実行してください。
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildMimeDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildMimeDependencies.cmake
 ```
 
 - 明示的に実行した場合だけ、公式リポジトリからECM・KCodecs・KMimeを取得します。
@@ -43,7 +43,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja
 ### 構築済みの基礎Frameworks
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildFrameworkDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildFrameworkDependencies.cmake
 ```
 
 MIME依存に加え、CoreAddons・KConfig・KCrash 6.31.0を構築します。QML/Pythonバインディング等の不要な機能は無効にします。Qt 6.12.0 / MSVC 2022でDebug DLLの構築・ローカルインストールを確認済みです。
@@ -69,8 +69,8 @@ KI18nのWindows構築にはlibintl、KIOにはKConfig/CoreAddons/I18nに加え�
 ### gettextとビルド用ツール
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildWinFlexBison.cmake
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildNativeDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWinFlexBison.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildNativeDependencies.cmake
 ```
 
 WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**gettext-libintlとlibiconvのDebug/Release、およびgettextホストツールの構築・インストール成功を確認済みです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
@@ -84,7 +84,7 @@ gettext/Flex/Bison等のGPLビルドツールは、アプリへリンクするLG
 基礎Frameworksとネイティブ依存の構築後に実行します。
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildI18nDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildI18nDependencies.cmake
 ```
 
 KI18n/KService 6.31.0のDebug DLL構築に成功しています。スクリプトはDebug/Releaseに合わせたlibintlを明示指定し、gettextホストツールとは分離します。別prefixを使う場合は`-DSMOOTHMAIL_NATIVE_PREFIX=/path/to/native/x64-windows`を指定してください。
@@ -107,7 +107,7 @@ KI18nによる英語フォールバックの引数・複数形処理、KService�
 利用者の承認を得て、メールに不要なfavicon機能を除外する限定パッチを暫定適用しています。ライセンス表記は変更しません。変更内容・失われる機能・配布上の注意点は`THIRD_PARTY_NOTICES.md`と`patches/kio/README.md`に明記しています。残るビルド対象・依存の配布監査は未完了です。
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildKioDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildKioDependencies.cmake
 cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_KIO=ON
 cmake --build --preset dev
 ctest --preset dev
@@ -124,7 +124,7 @@ ctest --preset dev
 ### KIMAP／KSMTPの構築とローカル検証
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildMailDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildMailDependencies.cmake
 cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_MAIL=ON
 cmake --build --preset dev
 ctest --preset dev
@@ -162,8 +162,8 @@ KSMTP 26.08.3の`LoginJobPrivate::selectAuthentication()`は、優先認証方�
 ## WindowsのSASLクライアント
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildSaslDependencies.cmake
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildXOAuth2Dependency.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildSaslDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildXOAuth2Dependency.cmake
 cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_SASL=ON
 cmake --build --preset dev
 ctest --preset dev
@@ -185,7 +185,7 @@ Windowsの開発用起動フォルダを作成する`StageWindowsRuntime.cmake`�
 秘密情報保存用のQtKeychainは、次の手順で指定Qt SDKに対して構築します（別Qtの取得なし）。
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe -P cmake/BuildKeychainDependencies.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildKeychainDependencies.cmake
 ```
 
 0.15.0の固定ソースを無変更でDebug DLLとして構築済みです。アプリでは平文フォールバックを明示的に禁止します。Windowsバックエンドの動作検証は、ホストの資格情報を変更しないようWindows Sandbox内で行います。

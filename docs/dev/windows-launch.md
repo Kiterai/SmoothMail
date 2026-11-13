@@ -56,5 +56,5 @@ cmake ^
 
 - 2026-11-13、SDK未導入の新しいWindows Sandboxに、この起動用フォルダだけをコピーし、PATHをWindowsのみにして`start-smoothmail.cmd`から起動できることを確認しました。
 - 追加のテスト用EXEとQt Test DLLだけを別フォルダへ置き、メール/Qt/SASLの実行依存にはこの起動用フォルダだけを使って合成通信テストを実行。TLS/STARTTLS、証明書拒否、XOAUTH2、同期、SMTP送信・下書きの14ケースが成功しました（失敗・スキップなし、init/cleanup含む）。`build/sandbox-mail-output/runtime-probe-results.txt`に記録しています。実Googleアカウントの認証ではありません。
-- 認証なしのGoogleサーバー確認（`tests/manual/google_readiness.py`）は、明示許可されたSafe Shell外で成功。IMAP 993、SMTP 465、SMTP STARTTLS 587で証明書検証付きTLS 1.3とXOAUTH2広告を確認しました。認証・メール送受信・このアプリでのOAuth成功を意味しません。
+- 認証なしのGoogleサーバー確認（当時の手動プローブ）は、明示許可されたSafe Shell外で成功。IMAP 993、SMTP 465、SMTP STARTTLS 587で証明書検証付きTLS 1.3とXOAUTH2広告を確認しました。認証・メール送受信・このアプリでのOAuth成功を意味しません。現在のC++版は`smoothmail_google_network_probe --readiness`です（`SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE=ON`で構築）。実サービスへ接続するため明示的な手動実行専用で、ビルド・CTestからは接続しません。
 - 通常のSafe Shell内では同確認がWinError 10013で拒否されるため、外側で実行する場合は権限許可が必要です。スクリプトは資格情報を読み込まず、認証・メール送信を行いません。

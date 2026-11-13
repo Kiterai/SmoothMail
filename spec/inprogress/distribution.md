@@ -6,11 +6,11 @@
 
 - **対象仕様:** [配布形態](../distribution.md)、[Qt SDKとビルド環境](../tech.md)。
 - **状態:** パッケージ生成処理は実装済み。実Release ZIPの生成・クリーン環境検証は未完了。
-- **事情:** 現開発環境にはアプリの推移依存一式のRelease prefixがなく、Release CRT等と配布用legalディレクトリの手動準備も必要。依存の手動収集は仕様上もビルド担当者の責務であり、パッケージ処理は自動取得・構築しない。
-- **済んでいること:** `tools/package-windows.py`によるReleaseビルド→必要ファイル収集→検査→ZIP化の入口とガード、合成資材を使った自動試験。既存SDKを変更しないDebug開発用ランタイムの生成・Sandbox起動確認。
+- **事情:** 新仕様に合わせた依存の内部取得・構築とCMake/C++の配布経路を実装したが、配布用legalディレクトリと実同梱物全体の監査は未完了。依存の手動収集は今後の前提にしない。Release CRTはMSVC開発環境から探索する。
+- **済んでいること:** `cmake/PackageWindows.cmake`による依存取得・Release構築→必要ファイル収集→検査→ZIP化の入口。旧Python補助・ガードはCMake/C++へ移植し、合成ZIPを独立したCMake/libarchiveで展開・SHA256照合。内部Ninja構築、統合Debug/Release依存構築、両構成のアプリビルド、Release DLL収集とホスト18 CTest対象成功。既存SDKと通常起動用runtimeは変更していない。実Releaseランタイムの公開はDIST-04により停止。
 - **未完了の範囲:** 実際のRelease依存でコマンド一行の生成を完走すること、ZIPだけをクリーンWindowsへ持ち込み、展開したEXEから直接起動してDLL／プラグイン探索・通信を確認すること。Debug版や試験用ZIPを製品配布物とは扱わない。
 - **完了条件:** 指定Qt SDKとABI・構成を合わせたRelease依存、変更済み依存のreceipt、再配布可能なCRT、DIST-02の通知類を準備。生成コマンド・成果物ハッシュ・検査結果・クリーン環境での直接起動／通信結果を記録する。
-- **資料:** [配布手順と現在の不足](../../docs/dev/distribution.md)、[依存構築](../../docs/dev/dependencies.md)、[生成処理](../../tools/package-windows.py)。
+- **資料:** [配布手順と現在の不足](../../docs/dev/distribution.md)、[依存構築](../../docs/dev/dependencies.md)、[生成処理](../../cmake/PackageWindows.cmake)。
 
 ## DIST-02: 配布物の監査
 
@@ -21,3 +21,16 @@
 - **未完了の範囲:** 実同梱物に対応する`legal/manifest.json`と通知一式の準備、LGPL等の条件・CRT再配布権限の確認、不要なGPL系worker／ビルド専用ツール等の非混入確認。バイナリやZIPに個人情報・PC内情報がないことの最終レビュー。
 - **完了条件:** 全同梱ファイルの構成表とライセンス対応表を作成し、通知・対応ソース・改変／再構築手順を整備。自動検査と人による成果物レビューの結果を記録する。検査通過だけで法的条件の充足や個人情報の完全非混入を断定しない。
 - **資料:** [第三者通知](../../THIRD_PARTY_NOTICES.md)、[legal形式・プライバシー検査](../../docs/dev/distribution.md)。
+
+## DIST-03: キャッシュのない環境での取得検証
+
+- **状態:** 固定NinjaソースのGit HTTPS取得・MSVC/NMake構築に成功。CMake downloaderのオフラインガードも成功。ただし全資材の新規HTTPS取得完走は未確認。
+- **事情:** この環境のCMakeからGitHub releaseへ接続するとTLS接続エラー（status 35）。既存のvcpkg/SASL/資材キャッシュを利用する構築成功とは区別する。
+- **完了条件:** 利用するプロキシ/CAを正しく設定したクリーン環境で、vcpkg本体・SASL・GNU/MSYS2等の資材取得とハッシュ検証を確認する。証明書検証を無効化したり、未検証キャッシュを配布して迂回しない。
+
+## DIST-04: 上流依存の絶対インストールパス
+
+- **状態:** 収集した実ReleaseランタイムをC++補助で検査し、`KF6ConfigCore.dll`にビルド先prefixが残るため拒否することを確認。ZIPは公開していない。
+- **原因:** 上流KConfig 6.31.0の`src/core/CMakeLists.txt`が`KCONF_UPDATE_INSTALL_LOCATION`へ絶対libexecパスを定義し、`KConfig::checkUpdate()`が利用する。これは`__FILE__`ではないためコンパイラのパスマッピングでは除去できない。
+- **未完了の範囲:** 上流の正当な再配置対応または独立パッチ・通知・receiptを伴う安全な対応の設計と検証。他の同梱DLLも含む全体検査。
+- **完了条件:** ビルド者のパスを埋め込まず、実行ファイル探索の安全性と必要機能を維持して構築し、実ランタイム全体の検査を通す。バイナリ文字列の書換えや検査除外で回避しない。

@@ -1,11 +1,11 @@
 # WindowsポータブルZIP
 
-## 前提（配布担当者が手動で準備）
+## 前提
 
-- Windows x64、指定Qtと一致するMSVC x64開発者コマンドプロンプト、CMake・Ninja・Python 3.11以降。
+- Windows x64、指定Qtと一致するMSVC/Windows SDKのx64開発者コマンドプロンプト、CMake 3.30以降・Git・Python（KI18nからのみ利用）。
 - 既存Qt SDKのRelease DLL／プラグイン。SDKの再インストールは不要です。
-- Qtと同じABIの**Release**依存prefix、libintl/libiconvのRelease bin、MSVCの再配布可能なRelease CRT bin。Debug DLLやDebug CRTは使用できません。
-- 変更済み依存のreceiptを含むprefix。[依存構築](dependencies.md)にあるRelease手順・限定パッチの条件を満たす必要があります。パッケージ処理は依存の取得・ビルドを行いません。
+- Ninja・vcpkg・Qt以外の依存は内部取得・構築します。Debug/Releaseは分離し、変更済み依存のreceiptも生成・検証します。既存Qtは変更しません。
+- MSVCの再配布可能なRelease CRTは`VCToolsRedistDir`から探索します。候補を一意に決定できなければ`-DCRT_BIN=.../x64/Microsoft.VC143.CRT`を指定します。Debug CRTは使用できません。
 - 配布用のライセンス原文、著作権表示、対応ソースの入手方法・変更差分・ビルド方法などの通知をまとめたlegalディレクトリ。
 
 ## 1コマンドで生成
@@ -13,10 +13,10 @@
 リポジトリで次を実行します。パスは準備済みの入力へ変更してください。
 
 ```bat
-python tools/package-windows.py --qt-root C:/Qt/6.12.0/msvc2022_64 --dependency-prefix C:/deps/Release --native-bin C:/deps/native/bin --crt-bin C:/redist/x64/Microsoft.VC143.CRT --legal-dir C:/release-legal --output dist/SmoothMail-windows-x64.zip
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
 ```
 
-アプリのReleaseビルド→必要DLL・プラグインとCRTの収集→ライセンス収集→個人パス・Debug混入の検査→ZIP化を行います。`SmoothMail/`へ展開し、**smoothmail.exeを直接起動**します。開発用バッチ、PDB、DB、ログ、資格情報、CMakeキャッシュは同梱しません。
+依存の取得・Release構築→アプリのReleaseビルド→必要DLL・プラグインとCRTの収集→ライセンス収集→個人パス・Debug混入の検査→ZIP化を行います。制御はCMake、PE/テキスト/ZIP検査と決定的圧縮は`tools/windows-package/`のC++補助ツールです。Python/curlを呼びません。`SmoothMail/`へ展開し、**smoothmail.exeを直接起動**します。開発用バッチ、PDB、DB、ログ、資格情報、CMakeキャッシュ、補助ツールは同梱しません。
 
 新規の専用ビルドディレクトリを使い、既存ビルドやZIPは上書きしません。SDKは変更せず、Qtの再配置用処理はステージ先のコピーだけへ適用します。未解決／競合DLL、指定外ディレクトリからのDLL解決、Debug混入、ライセンス不足、埋め込まれた絶対パスを検出すると公開せず停止します。
 
@@ -39,14 +39,16 @@ python tools/package-windows.py --qt-root C:/Qt/6.12.0/msvc2022_64 --dependency-
 }
 ```
 
-同様にKDE各ライブラリ、QtKeychain、SASLと機構、libintl/libiconv、MSVC CRT等を追加してください。ファイルはmanifestからの相対パスで、空でないUTF-8テキストを用意します。参照した原文をそのままコピーし、著作権者の表示を削除しません。開発用receiptはビルド者のローカルパスを含むため、そのまま同梱しません。
+同様にKDE各ライブラリ、QtKeychain、SASLと機構、libintl/libiconv、MSVC CRT等を追加してください。ファイルはmanifestからの相対パスで、空でないUTF-8テキストを用意します。参照した原文をそのままコピーし、著作権者の表示を削除しません。開発用receipt・ビルド記録は製品通知ではなく、そのまま同梱しません。
 
 自動検査はDLLへの通知の対応付けを確認するもので、法的条件の充足を保証するものではありません。LGPLの対応ソース提供・改変通知・差替え可能性や、Microsoft CRT等の再配布権限は配布担当者が確認してください。
 
 ## プライバシーと検証
 
-ZIPは固定タイムスタンプ・相対名で作り、ユーザー名やホスト名を記録しません。アプリのコンパイルではソースパスをマッピングし、最後にASCII／UTF-16の絶対パスと入力ディレクトリ情報を検査します。依存DLLがビルドパスを保持していた場合も停止します。必要に応じて依存をパスマッピング等を使って手動で再構築してください。バイナリを闇雲に書き換えて検査を回避することはしません。
+ZIPは固定タイムスタンプ・権限・相対名で作り、ユーザー名やホスト名を記録しません。アプリと依存のRelease構築ではソースパスをマッピングし、最後にASCII／両alignmentのUTF-16の絶対パスと入力ディレクトリ情報を検査します。既存Qtや依存DLLがビルドパスを保持していた場合も停止します。バイナリを書き換えて検査を回避することはしません。
+
+オフライン検証: `tools/windows-package`をReleaseでconfigure/buildし、QtのbinをPATHへ追加して`ctest --test-dir <補助ツールのbuild> --output-on-failure`を実行します。合成PE・パス・legal・非上書き・決定的ZIPを検査し、CMake/libarchiveで独立にZIP展開・SHA256照合も行います。実Release ZIPの検証とは区別します。
 
 ハッシュ一覧はZIP内の`runtime-sha256.txt`です。自動検査だけで任意の個人情報を完全に検出できるとは限らないため、実配布前には成果物・通知をレビューし、開発ツールのないWindowsで展開・直接起動・通信も確認してください。
 
-現在のこの開発環境にはRelease依存prefixがないため、実Release ZIPの生成・クリーン環境でのRelease起動確認は未完了です。Debugランタイムを配布物の代用にはしていません。
+この環境では統合処理によるDebug/Release依存とアプリの構築、Release DLL収集まで確認しました。ただし実ランタイム検査で`KF6ConfigCore.dll`の設定更新ツール用の絶対インストールパスを検出し、公開を停止しています。legal一式の監査、実Release ZIPの生成・クリーン環境での起動確認、キャッシュなしの全取得検証も未完了です。[未完了事項](../../spec/inprogress/distribution.md)を参照してください。Debugランタイムや合成ZIPを配布物の代用にはしていません。
