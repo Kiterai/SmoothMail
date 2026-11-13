@@ -1,0 +1,8 @@
+diff --git a/src/kcodecs.cpp b/src/kcodecs.cpp
+--- a/src/kcodecs.cpp
++++ b/src/kcodecs.cpp
+@@ -371,3 +371,3 @@
+         // space
+-        if (isspace(*scursor) && onlySpacesSinceLastWord) {
++        if (isspace(static_cast<unsigned char>(*scursor)) && onlySpacesSinceLastWord) {
+             spaceBuffer += *scursor++;

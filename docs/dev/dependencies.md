@@ -123,7 +123,11 @@ KIMAPには`patches/kimap/26.08.3-fix-sasl-continuation.patch`を適用します
 
 KSMTPにも`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。STARTTLS後に以前のAUTH等の広告情報を残さないための修正です。未修正版ではTLS後にXOAUTH2が広告されなくてもAUTHを送ることを合成サーバーで再現し、修正後はAUTHと秘密情報を送らず拒否することを確認しています。差分・通知は`share/licenses/ksmtp`へ配置します。
 
-変更済みKIO/KIMAP/KSMTPの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`python tests/test_modified_receipt.py`で検証できます。
+変更済みKIO/KIMAP/KSMTP/KMime/KCodecsの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`python tests/test_modified_receipt.py`で検証できます。
+
+KCodecs 6.31.0にも`patches/kcodecs/6.31.0-safe-ctype.patch`を適用します。RFC 2047デコーダーの`isspace`引数をunsigned charへ変換します。`BuildMimeDependencies.cmake`がECM、修正KCodecs、修正KMimeの順に構築します。検証済みDebug構築先は`build/deps/build/Debug/kcodecs-safe-ctype-msvc-debug`。上流LICENSES・差分・変更通知・receiptを`share/licenses/kcodecs`へ配置し、Qt SDKは変更しません。
+
+KMime 6.31.0には`patches/kmime/6.31.0-safe-ctype.patch`を適用します。非ASCIIバイトをC文字判定関数へ渡す際のunsigned char変換で、Debug CRTアサートと未定義動作を修正します。MIME bootstrapは独立した修正ソースから構築し、WindowsではMSVCコンパイラー/リンカーを明示します。検証済みDebugビルドは`build/deps/build/Debug/kmime-safe-ctype-msvc-debug`で、Qt SDKは変更していません。上流ライセンスと変更通知を保持します。
 
 `mailtransport`はループバック限定の合成サーバーとダミー資格情報を使用します。PLAIN／LOGIN／XOAUTH2の通信、未広告のOAuth方式の拒否、STARTTLS非対応時の認証禁止を対象とし、認証成功ケースは明示的な非暗号化設定です。実サービス、TLSハンドシェイク・証明書検証、Google／MicrosoftのOAuth認可フローの検証ではありません。
 

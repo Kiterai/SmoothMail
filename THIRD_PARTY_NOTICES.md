@@ -33,6 +33,14 @@ KIOはファイルごとに許諾条件が異なります。対象2ファイル�
 
 ## その他の依存
 
+### KCodecs 6.31.0のRFC 2047文字判定修正
+
+上流 https://invent.kde.org/frameworks/kcodecs の固定コミット`220095a518c36c1b7aa6b5f49996177617979031`へ、`patches/kcodecs/6.31.0-safe-ctype.patch`を適用します。2026-11-13、SmoothMail contributorsによる`src/kcodecs.cpp`の局所変更です。`decodeRFC2047String`で`isspace`へ渡す入力バイトをunsigned charへ変換し、Debug CRTアサートと未定義動作を修正します。元の著作権・LGPL-2.0-or-laterを保持し、上流LICENSES・差分・変更通知・receiptをprefixの`share/licenses/kcodecs`へ配置します。上流リリースの標準実装ではなく、対応ソース提供・ライブラリ差替え等の義務は引き続き残ります。
+
+### KMime 6.31.0のC文字判定引数の修正
+
+上流 https://invent.kde.org/frameworks/kmime の固定コミット`d28bed05be65e7f1234bb852ad81a67b13df53ea`に、`patches/kmime/6.31.0-safe-ctype.patch`を適用します。2026-11-13にSmoothMail contributorsが`src/headerparsing.cpp`、`headers.cpp`、`parsers.cpp`、`util_p.cpp`を変更し、非ASCIIの入力バイトを`isdigit`/`isspace`/`toupper`へ渡す際に`unsigned char`へ変換します。MSVC Debug CRTのアサートと、他ランタイムでの未定義動作を避けるための局所変更です。アサートの無効化や不正なメール原文の書換えはしません。対象ファイルのLGPL-2.0-or-laterおよび元の著作権表示を保持します。上流の標準実装ではなく、上流LICENSES・差分・変更通知・ビルド検証用receiptをprefixの`share/licenses/kmime`へ配置します。対応ソース提供等の配布義務は引き続き残ります。
+
 ### KSMTP 26.08.3の能力情報リセット
 
 上流 https://invent.kde.org/pim/ksmtp の固定コミット`f78c9bbcf690f5f829ccaf31921caec650579f20`に、`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。2026-11-13にSmoothMail contributorsが`src/session.cpp`を変更し、EHLO握手開始時に古いAUTH/SIZE/STARTTLS/DSN/SMTPUTF8広告を破棄します。これにより、STARTTLS前の認証方式をTLS後の認証前チェックで誤って許可することを防ぎます。元のLGPL-2.1-or-laterおよび著作権表示は保持します。上流未採用の変更であり、差分・上流LICENSES・変更通知をprefixの`share/licenses/ksmtp`へ配置します。対応ソース提供等の配布義務は残ります。

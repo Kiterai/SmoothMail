@@ -7,8 +7,13 @@
 #include <QUuid>
 #include <exception>
 #include <cstdlib>
+#include <QCryptographicHash>
+#include <QLoggingCategory>
 #ifdef Q_OS_WIN
 #include <windows.h>
+#ifdef _MSC_VER
+#include <crtdbg.h>
+#endif
 #endif
 
 namespace smoothmail::diagnostics {
@@ -16,8 +21,71 @@ namespace {
 QMutex mutex;
 QFile log;
 QString marker;
+std::terminate_handler previousTerminate = nullptr;
+QtMessageHandler previousMessage = nullptr;
+bool sessionActive = false;
 #ifdef Q_OS_WIN
 HANDLE fatalFile = INVALID_HANDLE_VALUE;
+LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
+LONG recording = 0;
+void writeFixed(const char *text)
+{
+    DWORD size = 0, written;
+    while (text[size]) ++size;
+    WriteFile(fatalFile, text, size, &written, nullptr);
+}
+void writeNumber(const char *label, quintptr value)
+{
+    char buffer[128]; unsigned position = 0; const char digits[] = "0123456789abcdef";
+    while (*label && position < 80) buffer[position++] = *label++;
+    for (int shift = sizeof(value) * 8 - 4; shift >= 0; shift -= 4) buffer[position++] = digits[(value >> shift) & 15];
+    buffer[position++] = '\r'; buffer[position++] = '\n'; DWORD written;
+    WriteFile(fatalFile, buffer, position, &written, nullptr);
+}
+void recordStack(const char *reason)
+{
+    // Only code addresses/module basenames. Never write stack memory or report
+    // text: either can contain credentials, server replies, or mail content.
+    if (InterlockedCompareExchange(&recording, 1, 0)) return;
+    writeFixed(reason); writeFixed("\r\n"); writeNumber("thread=0x", GetCurrentThreadId());
+    void *frames[40]{}; const auto count = CaptureStackBackTrace(1, 40, frames, nullptr);
+    for (USHORT i = 0; i < count; ++i) {
+        MEMORY_BASIC_INFORMATION region{}; char path[MAX_PATH]{};
+        const auto address = reinterpret_cast<quintptr>(frames[i]);
+        if (!VirtualQuery(frames[i], &region, sizeof(region))) { writeNumber("unknown address=0x", address); continue; }
+        const auto length = GetModuleFileNameA(static_cast<HMODULE>(region.AllocationBase), path, MAX_PATH);
+        if (!length || length >= MAX_PATH) { writeNumber("unknown address=0x", address); continue; }
+        unsigned start = 0; for (unsigned j = 0; j < length; ++j) if (path[j] == '\\' || path[j] == '/') start = j + 1;
+        DWORD written; WriteFile(fatalFile, path + start, length - start, &written, nullptr);
+        writeNumber(" offset=0x", address - reinterpret_cast<quintptr>(region.AllocationBase));
+    }
+    FlushFileBuffers(fatalFile); InterlockedExchange(&recording, 0);
+}
+#if defined(_MSC_VER) && defined(_DEBUG)
+template<typename Character> bool containsFixed(const Character *text, const Character *needle)
+{
+    if (!text) return false;
+    for (unsigned i = 0; i < 8192 && text[i]; ++i) {
+        unsigned j = 0; while (needle[j] && i + j < 8192 && text[i + j] && text[i + j] == needle[j]) ++j;
+        if (!needle[j]) return true;
+    }
+    return false;
+}
+int __cdecl crtReport(int type, char *message, int *)
+{
+    if (type != _CRT_ASSERT) return FALSE;
+    recordStack(containsFixed(message, "c >= -1") && containsFixed(message, "c <= 255") ? "crt-assert-ctype-domain" : "crt-assert");
+    // Do not ignore an assertion or continue with potentially corrupted state.
+    // Avoid the CRT report dialog and recursive report/breakpoint path.
+    TerminateProcess(GetCurrentProcess(), 0xc0000420); return TRUE;
+}
+int __cdecl crtReportWide(int type, wchar_t *message, int *)
+{
+    if (type != _CRT_ASSERT) return FALSE;
+    recordStack(containsFixed(message, L"c >= -1") && containsFixed(message, L"c <= 255") ? "crt-assert-ctype-domain" : "crt-assert");
+    TerminateProcess(GetCurrentProcess(), 0xc0000420); return TRUE;
+}
+#endif
 LONG WINAPI fatal(EXCEPTION_POINTERS *exception)
 {
     // No Qt, heap allocation, locks, mail data, or memory dumps in this path.
@@ -51,9 +119,25 @@ LONG WINAPI fatal(EXCEPTION_POINTERS *exception)
         }
     }
     FlushFileBuffers(fatalFile);
+    recordStack("windows-exception-stack");
     return EXCEPTION_CONTINUE_SEARCH;
 }
 #endif
+void qtMessage(QtMsgType type, const QMessageLogContext &context, const QString &message)
+{
+#ifdef Q_OS_WIN
+    if (type == QtFatalMsg) {
+        recordStack("qt-fatal");
+        // Qt's Debug abort path may open a blocking CRT dialog. A fatal
+        // message must still terminate, never continue or echo its text.
+        TerminateProcess(GetCurrentProcess(), 0x40000015);
+        return;
+    }
+#endif
+    // Keep an explicitly installed host handler (for example Qt Test). Do not
+    // persist or default-print arbitrary parser/server diagnostic text.
+    if (previousMessage) previousMessage(type, context, message);
+}
 void terminated()
 {
 #ifdef Q_OS_WIN
@@ -61,12 +145,14 @@ void terminated()
     DWORD written;
     WriteFile(fatalFile, message, sizeof(message) - 1, &written, nullptr);
     FlushFileBuffers(fatalFile);
+    recordStack("std-terminate-stack");
 #endif
     std::abort();
 }
 }
 bool start(const QString &directory)
 {
+    if (log.isOpen()) return false;
     QDir dir(directory);
     if (!dir.mkpath(QStringLiteral("."))) return false;
     // Each process owns its marker; a second instance cannot erase a live session.
@@ -100,11 +186,22 @@ bool start(const QString &directory)
     fatalFile = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_WRITE, FILE_SHARE_READ,
                             nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
     if (fatalFile == INVALID_HANDLE_VALUE) return false;
-    SetUnhandledExceptionFilter(fatal);
+    previousFilter = SetUnhandledExceptionFilter(fatal);
+#if defined(_MSC_VER) && defined(_DEBUG)
+    _CrtSetReportHook2(_CRT_RPTHOOK_INSTALL, crtReport);
+    _CrtSetReportHookW2(_CRT_RPTHOOK_INSTALL, crtReportWide);
 #endif
-    std::set_terminate(terminated);
+#endif
+    previousTerminate = std::set_terminate(terminated);
+    previousMessage = qInstallMessageHandler(qtMessage);
+    sessionActive = true;
     event("session-start");
     log.write("version=" + QCoreApplication::applicationVersion().toUtf8() + " qt=" QT_VERSION_STR " build=" __DATE__ " " __TIME__ "\n"); log.flush();
+    QFile executable(QCoreApplication::applicationFilePath());
+    if (executable.open(QIODevice::ReadOnly)) {
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        if (hash.addData(&executable)) { log.write("exe-sha256=" + hash.result().toHex() + '\n'); log.flush(); }
+    }
     return true;
 }
 void event(const char *stage, qint64 count)
@@ -119,14 +216,23 @@ void event(const char *stage, qint64 count)
 }
 void finish()
 {
+    if (!sessionActive) return;
     event("session-clean-exit");
     const QMutexLocker lock(&mutex);
     log.close();
     if (!marker.isEmpty()) QFile::remove(marker);
 #ifdef Q_OS_WIN
-    SetUnhandledExceptionFilter(nullptr);
+    SetUnhandledExceptionFilter(previousFilter);
+#if defined(_MSC_VER) && defined(_DEBUG)
+    _CrtSetReportHook2(_CRT_RPTHOOK_REMOVE, crtReport);
+    _CrtSetReportHookW2(_CRT_RPTHOOK_REMOVE, crtReportWide);
+#endif
     if (fatalFile != INVALID_HANDLE_VALUE) CloseHandle(fatalFile);
     fatalFile = INVALID_HANDLE_VALUE;
 #endif
+    qInstallMessageHandler(previousMessage); previousMessage = nullptr;
+    if (previousTerminate) std::set_terminate(previousTerminate);
+    previousTerminate = nullptr;
+    sessionActive = false;
 }
 }

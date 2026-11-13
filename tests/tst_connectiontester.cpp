@@ -25,7 +25,9 @@ private slots:
     {
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true;
         constexpr int count = 10034;
-        for (int i = 1; i <= count; ++i) server.messages.insert(i * 2, "From: fixture@example.test\r\nSubject: " + QByteArray::number(i) + "\r\n\r\nbatch body");
+        for (int i = 1; i <= count; ++i) server.messages.insert(i * 2, "From: fixture@example.test\r\nSubject: " + QByteArray::number(i)
+            + (i == 5901 ? QByteArray(" ") + QByteArray::fromHex("e697a5e69cace8aa9e")
+                + "\r\nDate: " + QByteArray::fromHex("e5b9b4") : QByteArray{}) + "\r\n\r\nbatch body");
         QVERIFY(server.listen());
         Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("large@example.test"),
             {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},

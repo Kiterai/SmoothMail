@@ -1,5 +1,15 @@
 # Windows SandboxのGUIチェック
 
+## KCodecs修正後の追加検証（最新）
+
+再発ログで特定したKCodecsのRFC 2047文字分類不具合を修正し、11 EXEで**133 passed / 0 failed / 0 skipped**（init/cleanup含む）。mimeregressionは12件（1152入力と日本語/encoded-wordの復号検査）、他は前回と同じ121件です。10034件同期の5901件目に非ASCII Subjectを加えて同期・キャッシュ再利用・途中切断回復を検証しました。ホストCTest15対象（ネットワーク系3対象除外）とPython9件も成功しています。記録は`build/codecs-check/output/`、変更前の意図的な2ケースの異常終了は`build/codecs-check/baseline/`に分離しています。実メール・実資格情報は使わず、この追加調査のSandboxは両方とも終了済みです。詳細は`crash-investigation-20261113.md`を参照してください。
+
+## CRT異常終了対策後の追加検証
+
+最新記録は`build/crash-check/fixed-output/`です。修正KMimeを正規のMSVC Debug設定で構築し、ネットワーク無効のSandboxで11 EXE、**128 passed / 0 failed / 0 skipped**（init/cleanup含む）を確認しました。diagnostics 7、mimeregression 7、mimeparser 15、mainwindow 11、accountdialog 7、messageviewer 24、accountrepository 10、connectiontester 19、mailtransport 15、oauthclient 8、guismoke 5です。高位バイト640入力、不正Dateを5901件目に置いた10034件同期、CRT/Qt Fatalの秘密非記録を含みます。ホストCTestはネットワーク系3対象を除く15対象、Pythonは配置3件・receipt6件が成功しました。ホスト側の成功はSandbox専用ケースの実行を意味しません。
+
+変更前の3ケースの意図的な異常終了は`build/crash-check/baseline/`に分離しています。実メール・実アカウントは使っていません。この調査で起動したSandboxはすべて終了済みです。原因の確定範囲は`crash-investigation-20261113.md`を参照してください。
+
 ## 大量メール・ページ表示の追加検証
 
 最新記録は`build/paging-check/output-round2/`です。ネットワーク無効のWindows Sandboxのループバック合成サーバーで、1万34件の初回同期・キャッシュ本文再利用・途中切断時の旧公開保持と、15 MiB級9通（原文合計135 MiB超）の同期を確認しました。本文の取得窓は最大100件、通常8 MiB単位です。

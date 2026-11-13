@@ -1,0 +1,59 @@
+diff --git a/src/headerparsing.cpp b/src/headerparsing.cpp
+--- a/src/headerparsing.cpp
++++ b/src/headerparsing.cpp
+@@ -1771,3 +1771,3 @@
+     int digits = 0;
+-    for (; scursor != send && isdigit(*scursor) ; scursor++, digits++) {
++    for (; scursor != send && isdigit(static_cast<unsigned char>(*scursor)) ; scursor++, digits++) {
+         result *= 10;
+@@ -1864,3 +1864,3 @@
+     // there might be no timezone but a year following
+-    if ((scursor == send) || isdigit(*scursor)) {
++    if ((scursor == send) || isdigit(static_cast<unsigned char>(*scursor))) {
+         timeZoneKnown = false;
+@@ -1960,3 +1960,3 @@
+     // ANSI-C asctime() format is: Wed Jun 30 21:49:08 1993
+-    if (!isdigit(*scursor) && parseMonthName(scursor, send, maybeMonth)) {
++    if (!isdigit(static_cast<unsigned char>(*scursor)) && parseMonthName(scursor, send, maybeMonth)) {
+         asctimeFormat = true;
+diff --git a/src/headers.cpp b/src/headers.cpp
+--- a/src/headers.cpp
++++ b/src/headers.cpp
+@@ -1236,3 +1236,3 @@
+     const char *start = scursor;
+-    while (scursor != send && !isspace(*scursor)) {
++    while (scursor != send && !isspace(static_cast<unsigned char>(*scursor))) {
+         ++scursor;
+@@ -1448,3 +1448,3 @@
+         const char *start = scursor;
+-        while (scursor != send && !isspace(*scursor) && *scursor != ',') {
++        while (scursor != send && !isspace(static_cast<unsigned char>(*scursor)) && *scursor != ',') {
+             ++scursor;
+diff --git a/src/parsers.cpp b/src/parsers.cpp
+--- a/src/parsers.cpp
++++ b/src/parsers.cpp
+@@ -124,3 +124,3 @@
+         }
+-        if (std::isdigit(s[idx + 6]) && std::isdigit(s[idx + 7]) && std::isdigit(s[idx + 8])) {
++        if (std::isdigit(static_cast<unsigned char>(s[idx + 6])) && std::isdigit(static_cast<unsigned char>(s[idx + 7])) && std::isdigit(static_cast<unsigned char>(s[idx + 8]))) {
+             return idx;
+@@ -228,4 +228,4 @@
+                 //everything between "begin ### " and the next LF is considered as the filename
+-                if (m_src[beginPos+5] != ' ' || !std::isdigit(m_src[beginPos+6]) || !std::isdigit(m_src[beginPos+7])
+-                    || !std::isdigit(m_src[beginPos+8]) || m_src[beginPos+9] != ' ') {
++                if (m_src[beginPos+5] != ' ' || !std::isdigit(static_cast<unsigned char>(m_src[beginPos+6])) || !std::isdigit(static_cast<unsigned char>(m_src[beginPos+7]))
++                    || !std::isdigit(static_cast<unsigned char>(m_src[beginPos+8])) || m_src[beginPos+9] != ' ') {
+                     success = false;
+@@ -287,3 +287,3 @@
+         auto endIdx = idx;
+-        for (; endIdx < src.size() && std::isdigit(src[endIdx]); ++endIdx) {}
++        for (; endIdx < src.size() && std::isdigit(static_cast<unsigned char>(src[endIdx])); ++endIdx) {}
+         if (endIdx <= idx) {
+diff --git a/src/util_p.cpp b/src/util_p.cpp
+--- a/src/util_p.cpp
++++ b/src/util_p.cpp
+@@ -88,3 +88,3 @@
+     for (s = haystack; *s; s++) {
+-        if (toupper(*needle) == toupper(*s) && strncasecmp(s, needle, nlen) == 0) {
++        if (toupper(static_cast<unsigned char>(*needle)) == toupper(static_cast<unsigned char>(*s)) && strncasecmp(s, needle, nlen) == 0) {
+             return (char *)((uintptr_t)s);

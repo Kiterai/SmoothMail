@@ -2,6 +2,14 @@
 
 現仕様の完成には至っていません。実装と検証を区別して管理します。
 
+## 最新：KCodecs側での再発対策
+
+新しい呼出し履歴からKCodecsの`decodeRFC2047String`内の`isspace`引数を特定し、非ASCII Subjectで同じ停止位置を再現して修正しました。KCodecsも独立パッチとconfigure時receipt検証の対象です。修正後はSandbox11 EXEで133 passed / 0 failed / 0 skipped、ホストCTest15対象とPython9件が成功。1152合成入力、日本語混在の復号、5901件目に非ASCII Subjectを含む10034件同期を含みます。記録は`build/codecs-check/output/`、手元起動先`build/local-run`は更新済みです。実メールでの再試行は利用者環境で確認が必要です。
+
+## 最新の追加検証：CRT異常終了対策
+
+KMimeの符号付きcharを文字判定関数へ渡す不具合を合成入力で再現・修正し、CRT/Qt Fatalの安全なコードフレーム記録とEXE SHA-256を追加しました。元の実メールでの原因確定ではなく、同じ読込の再試行が必要です。修正後のSandboxは11 EXEで128 passed / 0 failed / 0 skipped、ホストCTestは15対象、Pythonは9件成功。以前の全15 EXEの実行とは対象範囲が異なります。記録は`build/crash-check/fixed-output/`、手元起動先は更新済み`build/local-run`です。詳細は`crash-investigation-20261113.md`を参照してください。
+
 ## 実装済み
 
 - 3ペイン画面、メニュー、トレイ常駐、テキスト/HTMLソース表示、ヘッダ折り畳み、安全なURL装飾。

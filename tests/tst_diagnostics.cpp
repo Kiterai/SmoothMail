@@ -46,6 +46,8 @@ private slots:
         QTest::addColumn<QString>("mode");
         QTest::newRow("windows-seh") << QStringLiteral("seh");
         QTest::newRow("std-terminate") << QStringLiteral("terminate");
+        QTest::newRow("crt-assert") << QStringLiteral("crt");
+        QTest::newRow("qt-fatal") << QStringLiteral("qt");
     }
     void fatalExceptions()
     {
@@ -57,7 +59,10 @@ private slots:
         QVERIFY(child.waitForFinished(15000));
         QVERIFY(child.exitCode() != 0);
         const auto fatal = contents(dir, QStringLiteral("*.fatal.txt"));
-        QVERIFY2(fatal.contains(mode == QStringLiteral("seh") ? "code=0xc0000005" : "std-terminate"), fatal.constData());
+        const auto expected = mode == QStringLiteral("seh") ? "code=0xc0000005" : mode == QStringLiteral("terminate") ? "std-terminate" : mode == QStringLiteral("crt") ? "crt-assert" : "qt-fatal";
+        QVERIFY2(fatal.contains(expected), "Expected sanitized fatal marker was not recorded");
+        QVERIFY(fatal.contains("offset=0x"));
+        QVERIFY(!fatal.contains("dummy-secret"));
         QCOMPARE(dir.entryList({QStringLiteral("*.active")}, QDir::Files).size(), 1);
         const auto output = qEnvironmentVariable("SMOOTHMAIL_GUI_OUTPUT");
         if (!output.isEmpty()) {
@@ -83,6 +88,10 @@ int main(int argc, char **argv)
         if (mode == QStringLiteral("seh")) RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, nullptr);
 #endif
         if (mode == QStringLiteral("terminate")) std::terminate();
+#ifdef _MSC_VER
+        if (mode == QStringLiteral("crt")) _ASSERTE(false && "dummy-secret");
+#endif
+        if (mode == QStringLiteral("qt")) qFatal("dummy-secret");
         fprintf(stdout, "ready\n"); fflush(stdout);
         return app.exec();
     }
