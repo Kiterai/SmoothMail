@@ -5,6 +5,7 @@
 #include "core/mailpage.h"
 #include "core/downloadentry.h"
 #include "core/pendingflag.h"
+#include "core/pendingfolder.h"
 #include <QObject>
 #include <QThread>
 #include <atomic>
@@ -32,6 +33,11 @@ public:
     void loadMessage(const MailRecord &identity);
     void updateFlags(const MailRecord &identity, bool seen, bool important);
     void queueFlag(const MailRecord &identity, bool importantFlag, bool enabled);
+    QString prepareSync(const Account &account);
+    void queueFolder(const QString &id, const QString &operation, const QString &source, const QString &destination);
+    QString pendingFolders(const QString &id, qint64 after, qint64 through, QList<PendingFolder> &batch);
+    QString folderRevision(const QString &id, qint64 &revision);
+    QString finishFolder(const PendingFolder &operation, bool preserveMessages, const QList<MailFolder> &serverFolders);
     QString pendingFlags(const QString &id, const QString &folder, qint64 after, qint64 through, QList<PendingFlag> &batch);
     QString flagRevision(qint64 &revision);
     QString acknowledgeFlag(const PendingFlag &flag, bool serverSeen, bool serverImportant, bool exists = true);
@@ -60,6 +66,7 @@ signals:
     void pageLoaded(const smoothmail::MailPage &page);
     void messageLoaded(const smoothmail::MailRecord &message, const QString &error);
     void flagsUpdated(const smoothmail::MailRecord &identity, const QString &error);
+    void folderQueued(const QString &id, const QString &error);
 
 private:
     struct State;

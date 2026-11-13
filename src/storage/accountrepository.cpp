@@ -15,6 +15,7 @@
 #include <QTimeZone>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <limits>
 
 namespace smoothmail {
 namespace {
@@ -63,6 +64,43 @@ MailRecord summaryRecord(const QSqlQuery &query, const QString &id, const QStrin
     }
     return record;
 }
+bool underFolder(const QString &name, const QString &parent, QChar separator)
+{
+    return name == parent || (!separator.isNull() && name.startsWith(parent + separator));
+}
+QString journal(QSqlDatabase &db, const QString &id, QList<PendingFolder> &items, qint64 after = 0,
+                qint64 through = std::numeric_limits<qint64>::max(), int limit = 10000)
+{
+    QSqlQuery query(db); query.prepare(QStringLiteral("SELECT revision,operation,source,destination,separator FROM pending_folders WHERE account=? AND revision>? AND revision<=? ORDER BY revision LIMIT ?"));
+    for (const auto &value : QVariantList{id, after, through, limit}) query.addBindValue(value);
+    if (!query.exec()) return query.lastError().text();
+    while (query.next()) { const auto separator = query.value(4).toString(); items.append({query.value(0).toLongLong(), id, query.value(1).toString(), query.value(2).toString(), query.value(3).toString(), separator.isEmpty() ? QChar{} : separator.front()}); }
+    return {};
+}
+void overlayFolders(QList<MailFolder> &folders, const QList<PendingFolder> &operations)
+{
+    for (const auto &op : operations) {
+        if (op.operation == QStringLiteral("create")) {
+            bool exists = false; for (const auto &folder : folders) if (folder.name == op.destination) exists = true;
+            if (!exists) folders.append({op.destination, op.separator, {}, 0});
+        }
+        else for (qsizetype i = folders.size(); i-- > 0;) if (underFolder(folders.at(i).name, op.source, op.separator)) {
+            if (op.operation == QStringLiteral("delete")) folders.removeAt(i);
+            else folders[i].name = op.destination + folders.at(i).name.mid(op.source.size());
+        }
+    }
+}
+QString serverFolder(QSqlDatabase &db, const QString &id, const QString &local, QString &remote, bool &exists)
+{
+    QList<PendingFolder> operations; const auto error = journal(db, id, operations); if (!error.isEmpty()) return error;
+    remote = local; exists = true;
+    for (qsizetype i = operations.size(); i-- > 0;) {
+        const auto &op = operations.at(i);
+        if (op.operation == QStringLiteral("rename") && underFolder(remote, op.destination, op.separator)) remote = op.source + remote.mid(op.destination.size());
+        else if (op.operation == QStringLiteral("create") && underFolder(remote, op.destination, op.separator)) { exists = false; break; }
+    }
+    return {};
+}
 }
 struct AccountRepository::State
 {
@@ -94,7 +132,7 @@ struct AccountRepository::State
         }
         const auto version = query.value(0).toInt();
         query.finish();
-        if (version > 3) {
+        if (version > 4) {
             error = QStringLiteral("このアプリより新しいデータベース形式です。");
             return;
         }
@@ -110,7 +148,9 @@ struct AccountRepository::State
                   QStringLiteral("CREATE INDEX IF NOT EXISTS cache_index_date ON cache_index(account,folder,json_extract(meta,'$.date'),uid)"),
                  QStringLiteral("CREATE TABLE IF NOT EXISTS downloads (id TEXT PRIMARY KEY,account TEXT,folder TEXT,uidvalidity INTEGER,uid INTEGER,subject TEXT,path TEXT,size INTEGER,saved_at TEXT)"),
                   QStringLiteral("CREATE TABLE IF NOT EXISTS pending_flags (account TEXT NOT NULL,folder TEXT NOT NULL,uidvalidity INTEGER NOT NULL,uid INTEGER NOT NULL,mask INTEGER NOT NULL,enabled INTEGER NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(account,folder,uidvalidity,uid,mask))"),
-                  QStringLiteral("PRAGMA user_version=3")}) {
+                  QStringLiteral("CREATE TABLE IF NOT EXISTS cache_reset (account TEXT PRIMARY KEY)"),
+                  QStringLiteral("CREATE TABLE IF NOT EXISTS pending_folders (revision INTEGER PRIMARY KEY AUTOINCREMENT,account TEXT NOT NULL,operation TEXT NOT NULL,source TEXT NOT NULL,destination TEXT NOT NULL,separator TEXT NOT NULL)"),
+                  QStringLiteral("PRAGMA user_version=4")}) {
             if (!query.exec(sql)) {
                 error = query.lastError().text();
                 db.rollback();
@@ -216,15 +256,19 @@ void AccountRepository::update(const Account &account)
         if (!error.isEmpty() || !m_state->error.isEmpty()) { fail(error.isEmpty() ? m_state->error : error); return; }
         if (!db.transaction()) { fail(db.lastError().text()); return; }
         QSqlQuery query(db);
+        query.prepare(QStringLiteral("SELECT config FROM accounts WHERE id=?")); query.addBindValue(account.id);
+        if (!query.exec() || !query.next()) { db.rollback(); fail(QStringLiteral("設定が見つかりません。")); return; }
+        const auto previous = QJsonDocument::fromJson(query.value(0).toByteArray()).object(); query.finish();
+        const bool resetCache = previous.value("imap") != accountJson(account).value("imap");
         query.prepare(QStringLiteral("UPDATE accounts SET config=? WHERE id=?"));
         query.addBindValue(QJsonDocument(accountJson(account)).toJson(QJsonDocument::Compact));
         query.addBindValue(account.id);
         if (!query.exec() || query.numRowsAffected() != 1) { db.rollback(); fail(QStringLiteral("設定を更新できません。")); return; }
-        // Changed servers/users must never reuse another mailbox's UID cache.
-        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders"), QStringLiteral("pending_flags")}) {
-            query.prepare(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=?"));
-            query.addBindValue(account.id);
-            if (!query.exec()) { db.rollback(); fail(query.lastError().text()); return; }
+        // An active synchronization owns its starting settings. Defer cache
+        // identity changes until a synchronization starts with the new settings.
+        if (resetCache) {
+            const auto error = sql(db, QStringLiteral("INSERT OR IGNORE INTO cache_reset VALUES(?)"), {account.id});
+            if (!error.isEmpty()) { db.rollback(); fail(error); return; }
         }
         if (!db.commit()) { db.rollback(); fail(db.lastError().text()); return; }
         emit inserted(account.id); reload();
@@ -238,7 +282,7 @@ void AccountRepository::remove(const QString &id)
         if (!m_state->error.isEmpty()) { fail(m_state->error); return; }
         if (!db.transaction()) { fail(db.lastError().text()); return; }
         QSqlQuery query(db);
-        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders"), QStringLiteral("pending_flags"), QStringLiteral("accounts")}) {
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders"), QStringLiteral("pending_flags"), QStringLiteral("pending_folders"), QStringLiteral("cache_reset"), QStringLiteral("accounts")}) {
             query.prepare(QStringLiteral("DELETE FROM ") + table + (table == QStringLiteral("accounts") ? QStringLiteral(" WHERE id=?") : QStringLiteral(" WHERE account=?")));
             query.addBindValue(id);
             if (!query.exec()) { db.rollback(); fail(query.lastError().text()); return; }
@@ -375,6 +419,8 @@ void AccountRepository::loadCache(const QString &id, bool metadataOnly)
             }
         }
         if (metadataOnly) {
+            QList<PendingFolder> operations; const auto error = journal(m_state->db, id, operations);
+            if (!error.isEmpty()) { fail(error); return; } overlayFolders(folders, operations);
             QString selected;
             for (const auto &folder : folders) {
                 bool selectable = true; for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") selectable = false;
@@ -417,6 +463,112 @@ QString AccountRepository::recentBoundary(const QString &id, const QString &fold
             boundary = QDateTime::fromMSecsSinceEpoch(query.value(0).toLongLong(), QTimeZone::UTC).addSecs(-3600);
     }, Qt::BlockingQueuedConnection);
     return error;
+}
+QString AccountRepository::prepareSync(const Account &account)
+{
+    QString error;
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        auto &db = m_state->db; error = m_state->error; if (!error.isEmpty()) return;
+        QSqlQuery query(db); query.prepare(QStringLiteral("SELECT config,EXISTS(SELECT 1 FROM cache_reset WHERE account=accounts.id) FROM accounts WHERE id=?")); query.addBindValue(account.id);
+        if (!query.exec() || !query.next()) { error = QStringLiteral("同期先アカウントがありません。"); return; }
+        const bool reset = query.value(1).toBool() && QJsonDocument::fromJson(query.value(0).toByteArray()).object().value("imap") == accountJson(account).value("imap"); query.finish();
+        if (!reset) return;
+        if (!db.transaction()) { error = db.lastError().text(); return; }
+        for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("cache_folders"), QStringLiteral("pending_flags"), QStringLiteral("pending_folders"), QStringLiteral("cache_reset")}) {
+            error = sql(db, QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=?"), {account.id});
+            if (!error.isEmpty()) break;
+        }
+        if (error.isEmpty() && !db.commit()) error = db.lastError().text();
+        if (!error.isEmpty()) db.rollback();
+    }, Qt::BlockingQueuedConnection);
+    return error;
+}
+void AccountRepository::queueFolder(const QString &id, const QString &operation, const QString &source, const QString &destination)
+{
+    QMetaObject::invokeMethod(m_worker, [this, id, operation, source, destination] {
+        auto &db = m_state->db;
+        const auto fail = [this, id](const QString &error) { emit folderQueued(id, error); };
+        if (!m_state->error.isEmpty()) { fail(m_state->error); return; }
+        const auto validName = [](const QString &name) { return !name.isEmpty() && name.size() <= 4096 && !name.contains(u'\r') && !name.contains(u'\n') && !name.contains(QChar::Null); };
+        if ((operation != QStringLiteral("create") && operation != QStringLiteral("rename") && operation != QStringLiteral("delete"))
+            || (operation != QStringLiteral("create") && !validName(source)) || (operation != QStringLiteral("delete") && !validName(destination))) { fail(QStringLiteral("フォルダ操作が不正です。")); return; }
+        QSqlQuery query(db); query.prepare(QStringLiteral("SELECT 1 FROM accounts WHERE id=?")); query.addBindValue(id);
+        if (!query.exec() || !query.next()) { fail(QStringLiteral("アカウントが見つかりません。")); return; } query.finish();
+        QList<MailFolder> folders;
+        query.prepare(QStringLiteral("SELECT name,separator,unread FROM cache_folders WHERE account=?")); query.addBindValue(id);
+        if (!query.exec()) { fail(query.lastError().text()); return; }
+        while (query.next()) { const auto sep = query.value(1).toString(); folders.append({query.value(0).toString(), sep.isEmpty() ? QChar{} : sep.front(), {}, query.value(2).toLongLong()}); } query.finish();
+        QList<PendingFolder> operations; auto error = journal(db, id, operations);
+        if (!error.isEmpty()) { fail(error); return; }
+        if (operations.size() >= 10000) { fail(QStringLiteral("保留中のフォルダ操作が上限に達しています。先に同期してください。")); return; }
+        overlayFolders(folders, operations);
+        bool foundSource = operation == QStringLiteral("create"), foundDestination = false;
+        QChar separator = folders.isEmpty() ? QChar(u'/') : folders.first().separator;
+        for (const auto &folder : folders) {
+            if (folder.name == source) { foundSource = true; separator = folder.separator; }
+            if (folder.name == destination) foundDestination = true;
+        }
+        if (operation == QStringLiteral("create")) {
+            qsizetype longest = -1;
+            for (const auto &folder : folders) if (!folder.separator.isNull() && destination.startsWith(folder.name + folder.separator) && folder.name.size() > longest) { longest = folder.name.size(); separator = folder.separator; }
+        }
+        if (!foundSource || (foundDestination && operation != QStringLiteral("delete"))
+            || (operation == QStringLiteral("rename") && underFolder(destination, source, separator))
+            || (!separator.isNull() && destination.count(separator) > 64)) { fail(QStringLiteral("対象がないか、変更先が既に存在するか、フォルダの階層が不正です。")); return; }
+        error = sql(db, QStringLiteral("INSERT INTO pending_folders(account,operation,source,destination,separator) VALUES(?,?,?,?,?)"),
+            {id, operation, source.isNull() ? QStringLiteral("") : source, destination.isNull() ? QStringLiteral("") : destination, separator.isNull() ? QStringLiteral("") : QString(separator)});
+        emit folderQueued(id, error);
+    }, Qt::QueuedConnection);
+}
+QString AccountRepository::folderRevision(const QString &id, qint64 &revision)
+{
+    QString error; revision = 0;
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        error = m_state->error; if (!error.isEmpty()) return;
+        QSqlQuery query(m_state->db); query.prepare(QStringLiteral("SELECT COALESCE(MAX(revision),0) FROM pending_folders WHERE account=?")); query.addBindValue(id);
+        if (!query.exec() || !query.next()) error = query.lastError().text(); else revision = query.value(0).toLongLong();
+    }, Qt::BlockingQueuedConnection); return error;
+}
+QString AccountRepository::pendingFolders(const QString &id, qint64 after, qint64 through, QList<PendingFolder> &batch)
+{
+    QString error; batch.clear();
+    QMetaObject::invokeMethod(m_worker, [&, this] { error = m_state->error; if (error.isEmpty()) error = journal(m_state->db, id, batch, after, through, 100); }, Qt::BlockingQueuedConnection);
+    return error;
+}
+QString AccountRepository::finishFolder(const PendingFolder &op, bool preserveMessages, const QList<MailFolder> &folders)
+{
+    QString error;
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        auto &db = m_state->db;
+        if (!db.transaction()) { error = db.lastError().text(); return; }
+        QSqlQuery query(db); query.prepare(QStringLiteral("SELECT 1 FROM accounts WHERE id=?")); query.addBindValue(op.accountId);
+        if (!query.exec() || !query.next()) { db.rollback(); error = QStringLiteral("アカウントが削除されました。"); return; } query.finish();
+        query.prepare(QStringLiteral("SELECT name FROM cache_folders WHERE account=?")); query.addBindValue(op.accountId);
+        if (!query.exec()) { error = query.lastError().text(); db.rollback(); return; }
+        QStringList affected;
+        while (query.next()) if (op.operation != QStringLiteral("create") && underFolder(query.value(0).toString(), op.source, op.separator)) affected.append(query.value(0).toString()); query.finish();
+        for (const auto &name : affected) {
+            for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index"), QStringLiteral("pending_flags")}) {
+                if (op.operation == QStringLiteral("rename") && preserveMessages) {
+                    const auto target = op.destination + name.mid(op.source.size());
+                    error = sql(db, QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=? AND folder=?"), {op.accountId, target});
+                    if (error.isEmpty()) error = sql(db, QStringLiteral("UPDATE ") + table + QStringLiteral(" SET folder=? WHERE account=? AND folder=?"), {target, op.accountId, name});
+                } else error = sql(db, QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=? AND folder=?"), {op.accountId, name});
+                if (!error.isEmpty()) break;
+            }
+            if (!error.isEmpty()) break;
+        }
+        if (error.isEmpty()) error = sql(db, QStringLiteral("DELETE FROM cache_folders WHERE account=?"), {op.accountId});
+        for (const auto &folder : folders) {
+            if (!error.isEmpty()) break;
+            QJsonArray flags; for (const auto &flag : folder.flags) flags.append(QString::fromLatin1(flag));
+            error = sql(db, QStringLiteral("INSERT INTO cache_folders VALUES(?,?,?,?,(SELECT COUNT(*) FROM cache_messages WHERE account=? AND folder=? AND (flags & 1)=0))"),
+                {op.accountId, folder.name, folder.separator.isNull() ? QStringLiteral("") : QString(folder.separator), QJsonDocument(flags).toJson(QJsonDocument::Compact), op.accountId, folder.name});
+        }
+        if (error.isEmpty()) error = sql(db, QStringLiteral("DELETE FROM pending_folders WHERE account=? AND revision=?"), {op.accountId, op.revision});
+        if (error.isEmpty() && !db.commit()) error = db.lastError().text();
+        if (!error.isEmpty()) db.rollback();
+    }, Qt::BlockingQueuedConnection); return error;
 }
 QString AccountRepository::beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary)
 {
@@ -548,23 +700,27 @@ void AccountRepository::loadPage(const MailQuery &request)
         auto &db = m_state->db;
         const auto deliverError = [&](const QString &error) { page.error = error; emit pageLoaded(page); };
         if (!m_state->error.isEmpty()) { deliverError(m_state->error); return; }
+        QString remote; bool exists = false;
+        const auto pathError = serverFolder(db, request.accountId, request.folder, remote, exists);
+        if (!pathError.isEmpty()) { deliverError(pathError); return; }
+        if (!exists) { emit pageLoaded(page); return; }
         // Upgrade v1 caches one message at a time, without ever loading a folder.
         QSqlQuery missing(db);
         missing.prepare(QStringLiteral("SELECT c.uidvalidity,c.uid,c.flags,c.raw FROM cache_messages c WHERE c.account=? AND c.folder=? AND NOT EXISTS (SELECT 1 FROM cache_index i WHERE i.account=c.account AND i.folder=c.folder AND i.uidvalidity=c.uidvalidity AND i.uid=c.uid)"));
-        missing.addBindValue(request.accountId); missing.addBindValue(request.folder);
+        missing.addBindValue(request.accountId); missing.addBindValue(remote);
         if (!missing.exec()) { deliverError(missing.lastError().text()); return; }
         while (missing.next()) {
             if (serial != m_pageRequest.load() || m_thread.isInterruptionRequested()) return;
             const auto parsed = MimeParser::parse(missing.value(3).toByteArray());
             if (!parsed.ok()) { deliverError(parsed.error); return; }
             const int flags = missing.value(2).toInt();
-            const MailRecord record{request.accountId, request.folder, missing.value(0).toLongLong(), missing.value(1).toLongLong(), bool(flags & 1), bool(flags & 2), parsed.message};
+            const MailRecord record{request.accountId, remote, missing.value(0).toLongLong(), missing.value(1).toLongLong(), bool(flags & 1), bool(flags & 2), parsed.message};
             const auto error = indexMessage(db, QStringLiteral("cache_index"), record);
             if (!error.isEmpty()) { deliverError(error); return; }
         }
         missing.finish();
         QString where = QStringLiteral(" WHERE account=? AND folder=?");
-        QVariantList values{request.accountId, request.folder};
+        QVariantList values{request.accountId, remote};
         if (!request.text.isEmpty()) { where += QStringLiteral(" AND instr(search_text,?)>0"); values.append(request.text.toCaseFolded()); }
         if (request.importantOnly) where += QStringLiteral(" AND (flags & 2)!=0");
         if (request.unreadOnly) where += QStringLiteral(" AND (flags & 1)=0");
@@ -597,9 +753,12 @@ void AccountRepository::loadMessage(const MailRecord &identity)
     const auto serial = ++m_bodyRequest;
     QMetaObject::invokeMethod(m_worker, [this, identity, serial] {
         if (serial != m_bodyRequest.load()) return;
+        QString remote; bool exists = false;
+        const auto pathError = serverFolder(m_state->db, identity.accountId, identity.folder, remote, exists);
+        if (!pathError.isEmpty() || !exists) { emit messageLoaded(identity, pathError.isEmpty() ? QStringLiteral("このフォルダはまだサーバに作成されていません。") : pathError); return; }
         QSqlQuery query(m_state->db);
         query.prepare(QStringLiteral("SELECT raw,flags FROM cache_messages WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"));
-        for (const auto &value : QVariantList{identity.accountId, identity.folder, identity.uidValidity, identity.uid}) query.addBindValue(value);
+        for (const auto &value : QVariantList{identity.accountId, remote, identity.uidValidity, identity.uid}) query.addBindValue(value);
         if (!query.exec() || !query.next()) { emit messageLoaded(identity, QStringLiteral("メッセージが見つかりません。")); return; }
         auto record = identity; const auto parsed = MimeParser::parse(query.value(0).toByteArray());
         record.document = parsed.message; record.seen = query.value(1).toInt() & 1; record.important = query.value(1).toInt() & 2;
@@ -628,7 +787,10 @@ void AccountRepository::queueFlag(const MailRecord &identity, bool importantFlag
     QMetaObject::invokeMethod(m_worker, [this, identity, importantFlag, enabled] {
         auto &db = m_state->db; QString error = m_state->error;
         if (!error.isEmpty() || !db.transaction()) { emit flagsUpdated(identity, error.isEmpty() ? db.lastError().text() : error); return; }
-        const QVariantList key{identity.accountId, identity.folder, identity.uidValidity, identity.uid};
+        QString remote; bool exists = false;
+        error = serverFolder(db, identity.accountId, identity.folder, remote, exists);
+        if (!error.isEmpty() || !exists) { db.rollback(); emit flagsUpdated(identity, error.isEmpty() ? QStringLiteral("保留中フォルダにメールがありません。") : error); return; }
+        const QVariantList key{identity.accountId, remote, identity.uidValidity, identity.uid};
         QSqlQuery query(db); query.prepare(QStringLiteral("SELECT flags FROM cache_messages WHERE account=? AND folder=? AND uidvalidity=? AND uid=?"));
         for (const auto &value : key) query.addBindValue(value);
         if (!query.exec() || !query.next()) { db.rollback(); emit flagsUpdated(identity, QStringLiteral("フラグ変更対象のメールが見つかりません。")); return; }
@@ -641,7 +803,7 @@ void AccountRepository::queueFlag(const MailRecord &identity, bool importantFlag
         }
         auto pending = key; pending.append(mask); pending.append(enabled ? 1 : 0); pending.append(++m_state->flagRevision);
         if (error.isEmpty()) error = sql(db, QStringLiteral("INSERT OR REPLACE INTO pending_flags VALUES(?,?,?,?,?,?,?)"), pending);
-        if (error.isEmpty() && (before & 1) != (flags & 1)) error = sql(db, QStringLiteral("UPDATE cache_folders SET unread=MAX(0,unread+?) WHERE account=? AND name=?"), {enabled ? -1 : 1, identity.accountId, identity.folder});
+        if (error.isEmpty() && (before & 1) != (flags & 1)) error = sql(db, QStringLiteral("UPDATE cache_folders SET unread=MAX(0,unread+?) WHERE account=? AND name=?"), {enabled ? -1 : 1, identity.accountId, remote});
         if (error.isEmpty() && !db.commit()) error = db.lastError().text();
         if (!error.isEmpty()) db.rollback();
         emit flagsUpdated(identity, error);

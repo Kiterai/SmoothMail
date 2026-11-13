@@ -36,6 +36,7 @@ public:
         : QObject(parent), m_protocol(protocol), m_mechanisms(mechanisms)
     {
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
+            m_pausedHeaders.clear();
             m_socket = qobject_cast<QSslSocket *>(m_server.nextPendingConnection());
             m_socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
             m_socket->setLocalCertificate(certificate);
@@ -110,6 +111,9 @@ public:
     QMap<QByteArray, QMap<qint64, QByteArray>> folderMessages;
     QMap<QByteArray, QMap<qint64, QList<QByteArray>>> folderFlags;
     bool ignoreFlagWrites = false;
+    bool pauseHeaders = false;
+    int pausedHeaderCount() const { return m_pausedHeaders.size(); }
+    void resumeHeaders() { pauseHeaders = false; const auto pending = m_pausedHeaders; m_pausedHeaders.clear(); for (const auto &line : pending) if (m_socket && m_socket->isOpen()) handle(line); }
     bool provideDraftFolder = false;
     QList<QByteArray> deliveredMessages;
     QList<QByteArray> savedDrafts;
@@ -127,6 +131,7 @@ public:
 
 private:
     QByteArray m_selected = "INBOX";
+    QList<QByteArray> m_pausedHeaders;
     QMap<qint64, QByteArray> &selectedMessages() { return m_selected == "INBOX" ? messages : folderMessages[m_selected]; }
     QMap<qint64, QList<QByteArray>> &selectedFlags() { return m_selected == "INBOX" ? messageFlags : folderFlags[m_selected]; }
     static bool includesUid(const QByteArray &set, qint64 uid)
@@ -232,9 +237,18 @@ private:
             if (rejectFolderChanges) { write(m_tag + " NO synthetic permission denied"); return; }
             const auto names = line.split('"');
             const auto source = names.value(1);
-            if (command == "CREATE") extraFolders.insert(source);
-            else if (command == "RENAME") { extraFolders.remove(source); extraFolders.insert(names.value(3)); }
-            else extraFolders.remove(source);
+            if (command == "CREATE") {
+                if (extraFolders.contains(source)) { write(m_tag + " NO already exists"); return; }
+                extraFolders.insert(source);
+            } else if (command == "RENAME") {
+                if (!extraFolders.contains(source) || extraFolders.contains(names.value(3))) { write(m_tag + " NO cannot rename"); return; }
+                const auto old = extraFolders;
+                for (const auto &name : old) if (name == source || name.startsWith(source + '/')) {
+                    const auto target = names.value(3) + name.mid(source.size());
+                    extraFolders.remove(name); extraFolders.insert(target);
+                    folderMessages[target] = folderMessages.take(name); folderFlags[target] = folderFlags.take(name);
+                }
+            } else { extraFolders.remove(source); folderMessages.remove(source); folderFlags.remove(source); }
             write(m_tag + " OK changed");
         } else if (provideMailbox && command == "STATUS") {
             const auto mailbox = line.split('"').value(1);
@@ -276,6 +290,7 @@ private:
             }
             write(m_tag + " OK store completed");
         } else if (provideMailbox && (command == "FETCH" || (command == "UID" && fields.value(commandIndex + 1) == "FETCH"))) {
+            if (pauseHeaders && line.contains("HEADER")) { m_pausedHeaders.append(line); return; }
             const bool flagsOnly = !line.contains("BODY") && !line.contains("RFC822");
             if (disconnectOnBodyFetch && !line.contains("HEADER") && !flagsOnly) { m_socket->disconnectFromHost(); return; }
             const bool uidBased = command == "UID";

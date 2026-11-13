@@ -5,6 +5,7 @@
 #include <QSslConfiguration>
 #include <QUuid>
 #include <QtTest>
+#include <QElapsedTimer>
 #include "storage/accountrepository.h"
 #include "core/diagnostics.h"
 
@@ -21,6 +22,41 @@ private slots:
         if (!output.isEmpty()) QVERIFY(diagnostics::start(output + QStringLiteral("/transport-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
+    void cancelsStalledSynchronizationAndCanRetry()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; server.pauseHeaders = true;
+        server.messages.insert(1, "Subject: fixture\r\n\r\nbody"); QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("cancel@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, QStringLiteral("dummy")); QTRY_COMPARE_WITH_TIMEOUT(server.pausedHeaderCount(), 1, 10000);
+        service.cancelSynchronization(QStringLiteral("another-account")); QVERIFY(service.busy());
+        QElapsedTimer elapsed; elapsed.start(); service.cancelSynchronization(account.id);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 3000); QVERIFY(elapsed.elapsed() < 3000); QVERIFY(!result.first().at(4).toString().isEmpty()); QCOMPARE(server.fullFetchCount, 0);
+        server.pauseHeaders = false; result.clear(); service.synchronize(account, QStringLiteral("dummy")); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+    }
+    void synchronizesDeferredFolderOperationsBeforeFlags()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; server.extraFolders.insert("Archive");
+        server.folderMessages["Archive"].insert(7, "Subject: retained\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nbody"); QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("folders@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted), queued(&cache, &AccountRepository::folderQueued), changed(&cache, &AccountRepository::flagsUpdated);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+        server.commands.clear(); cache.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("Archive"), QStringLiteral("Renamed"));
+        cache.queueFolder(account.id, QStringLiteral("create"), {}, QStringLiteral("Parent")); cache.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("Parent"), QStringLiteral("Final"));
+        QTRY_COMPARE(queued.size(), 3); for (const auto &item : queued) QVERIFY(item.at(1).toString().isEmpty());
+        cache.queueFlag({account.id, QStringLiteral("Renamed"), 10, 7}, false, true); QTRY_COMPARE(changed.size(), 1); QVERIFY(changed.first().at(1).toString().isEmpty()); QVERIFY(server.commands.isEmpty());
+        server.rejectFolderChanges = true; result.clear(); service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(!result.first().at(4).toString().isEmpty());
+        qint64 through = 0; QList<PendingFolder> operations; QVERIFY(cache.folderRevision(account.id, through).isEmpty()); QVERIFY(cache.pendingFolders(account.id, 0, through, operations).isEmpty()); QCOMPARE(operations.size(), 3);
+        server.rejectFolderChanges = false; result.clear(); service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString()));
+        QVERIFY(server.extraFolders.contains("Renamed")); QVERIFY(server.extraFolders.contains("Final")); QVERIFY(!server.extraFolders.contains("Archive")); QVERIFY(server.folderFlags["Renamed"][7].contains("\\Seen")); QCOMPARE(server.fullFetchCount, 1);
+        QVERIFY(cache.pendingFolders(account.id, 0, through, operations).isEmpty()); QVERIFY(operations.isEmpty());
+        cache.queueFolder(account.id, QStringLiteral("delete"), QStringLiteral("Final"), {}); QTRY_COMPARE(queued.size(), 4); QVERIFY(server.extraFolders.contains("Final"));
+        result.clear(); service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty()); QVERIFY(!server.extraFolders.contains("Final"));
+    }
     void recentRefreshesAllFoldersAndHonorsExactBoundary()
     {
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true;

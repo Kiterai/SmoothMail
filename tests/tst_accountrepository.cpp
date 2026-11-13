@@ -35,6 +35,49 @@ private slots:
             delete repository; // Race the worker's self-queued reload with its deletion barrier.
         }
     }
+    void folderJournalKeepsMailReadableAcrossRestartAndRename()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("folders.sqlite"));
+        const auto account = makeAccount(QStringLiteral("folders@example.test"));
+        const auto parsed = MimeParser::parse("Subject: retained\r\n\r\nreadable while pending"); QVERIFY(parsed.ok());
+        const QList<MailFolder> folders{{QStringLiteral("INBOX"), u'/', {}, 0}, {QStringLiteral("Archive"), u'/', {}, 1}, {QStringLiteral("Archive/Child"), u'/', {}, 0}};
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), queued(&repository, &AccountRepository::folderQueued);
+            repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+            repository.saveSnapshot(account.id, QStringLiteral("Archive"), folders, {{account.id, QStringLiteral("Archive"), 10, 7, false, false, parsed.message}}); QTRY_COMPARE(saved.size(), 1);
+            repository.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("Archive"), QStringLiteral("Renamed"));
+            repository.queueFolder(account.id, QStringLiteral("create"), {}, QStringLiteral("Renamed/New"));
+            repository.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("Renamed/New"), QStringLiteral("Renamed/New2"));
+            repository.queueFolder(account.id, QStringLiteral("delete"), QStringLiteral("Renamed/Child"), {});
+            QTRY_COMPARE(queued.size(), 4); for (const auto &item : queued) QVERIFY2(item.at(1).toString().isEmpty(), qPrintable(item.at(1).toString()));
+        }
+        AccountRepository repository(path); QSignalSpy cached(&repository, &AccountRepository::cacheLoaded), pages(&repository, &AccountRepository::pageLoaded), bodies(&repository, &AccountRepository::messageLoaded), flags(&repository, &AccountRepository::flagsUpdated);
+        repository.loadCache(account.id, true); QTRY_COMPARE(cached.size(), 1);
+        QStringList names; for (const auto &folder : qvariant_cast<QList<MailFolder>>(cached.first().at(2))) names.append(folder.name);
+        QVERIFY(names.contains(QStringLiteral("Renamed/New2"))); QVERIFY(!names.contains(QStringLiteral("Archive"))); QVERIFY(!names.contains(QStringLiteral("Renamed/Child")));
+        MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("Renamed"); repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        auto page = qvariant_cast<MailPage>(pages.last().first()); QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().folder, query.folder);
+        repository.loadMessage(page.messages.first()); QTRY_COMPARE(bodies.size(), 1); QVERIFY(qvariant_cast<MailRecord>(bodies.first().first()).document.parts.first().text.contains(QStringLiteral("readable")));
+        repository.queueFlag(page.messages.first(), true, true); QTRY_COMPARE(flags.size(), 1); QVERIFY(flags.first().at(1).toString().isEmpty());
+        qint64 through = 0; QList<PendingFolder> operations; QVERIFY(repository.folderRevision(account.id, through).isEmpty()); QVERIFY(repository.pendingFolders(account.id, 0, through, operations).isEmpty()); QCOMPARE(operations.size(), 4);
+        const QList<MailFolder> renamed{{QStringLiteral("INBOX"), u'/', {}, 0}, {QStringLiteral("Renamed"), u'/', {}, 1}, {QStringLiteral("Renamed/Child"), u'/', {}, 0}};
+        QVERIFY(repository.finishFolder(operations.first(), true, renamed).isEmpty());
+        qint64 flagRevision = 0; QList<PendingFlag> pending; QVERIFY(repository.flagRevision(flagRevision).isEmpty()); QVERIFY(repository.pendingFlags(account.id, query.folder, 0, flagRevision, pending).isEmpty()); QCOMPARE(pending.size(), 1);
+        pages.clear(); repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.first().first()); QCOMPARE(page.total, 1); QVERIFY(page.messages.first().important);
+    }
+    void accountEditsDoNotInvalidateActiveSnapshot()
+    {
+        AccountRepository repository(QStringLiteral(":memory:")); auto account = makeAccount(QStringLiteral("edit-active@example.test")); const auto original = account;
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), pages(&repository, &AccountRepository::pageLoaded);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const auto parsed = MimeParser::parse("Subject: old server\r\n\r\nbody"); const MailRecord message{account.id, QStringLiteral("INBOX"), 10, 1, false, false, parsed.message};
+        const QList<MailFolder> folders{{message.folder, u'/', {}, 1}}; repository.saveSnapshot(account.id, message.folder, folders, {message}); QTRY_COMPARE(saved.size(), 1);
+        account.imap.host = QStringLiteral("new.example.test"); repository.update(account); QTRY_COMPARE(inserted.size(), 2);
+        QVERIFY(repository.prepareSync(original).isEmpty());
+        MailQuery query; query.accountId = account.id; query.folder = message.folder; repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1);
+        QVERIFY(repository.beginSync(account.id, message.folder, 10).isEmpty()); QVERIFY(repository.stageMessages({message}).isEmpty()); QVERIFY(repository.commitSync(folders, 1).isEmpty()); repository.abortSync();
+        QVERIFY(repository.prepareSync(account).isEmpty()); repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.first().first()).total, 0);
+    }
     void pendingFlagsSurviveRestartAndPreserveNewerEdits()
     {
         QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("flags.sqlite"));

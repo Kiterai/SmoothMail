@@ -4,6 +4,7 @@
 #include "messagecomposer.h"
 #include <QObject>
 #include <QThread>
+#include <atomic>
 
 namespace smoothmail {
 class AccountRepository;
@@ -20,6 +21,7 @@ public:
     void setMessageFlag(const Account &account, const QString &secret, const MailRecord &identity, bool importantFlag, bool enabled);
     void submit(const Account &account, const QString &secret, const ComposeData &draft, bool saveAsDraft);
     bool busy() const { return m_busy; }
+    void cancelSynchronization(const QString &accountId);
     void changeFolder(const Account &account, const QString &secret, const QString &operation,
                       const QString &source, const QString &destination);
 signals:
@@ -36,5 +38,7 @@ private:
     QThread m_thread;
     QString m_pluginDirectory;
     bool m_busy = false;
+    QString m_syncAccount;
+    std::atomic_bool m_cancelSync{false};
 };
 } // namespace smoothmail
