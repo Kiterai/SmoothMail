@@ -11,6 +11,8 @@
 
 細線指定への追従：1pxの線に加え、隣接画素が背景色であることを明暗×縦横で検査。ビルドとホストCTest15対象が成功。初回リンクでtst_messageviewerのincremental COMDATエラーLNK1163が出たため、生成済み.ilkを`.ilk-before-thin-splitter`へ退避して再リンクし成功した。新しいSandboxは起動していない。新runtimeは`build/thin-splitter-check/runtime/`、SmoothMail起動中のため通常local-runは未変更（spec/inprogressのUI-01）。以下の202件と配備記録は2px版の実施履歴。
 
+その後、利用者の終了報告を受け、Get-ProcessでSmoothMailがないことを確認して1px版をlocal-runへ配備済み。ステージ全42ファイルのSHA256とbuild/dev EXEを照合し、旧版を`build/local-run-before-thin-splitter`へ保持。配備後の全ファイルも照合した。UI-01は完了とし、記録を`docs/dev/thin-splitter-deployment-20261114.md`へ移した。アプリの起動や実アカウント接続はしていない。
+
 - `build/reply-source-check/output/` の12 EXE全Totalsを集計：202 passed / 0 failed / 0 skipped、failures.txt空、complete.txtあり。ホストCTest15対象、Python31件も成功。
 - GUIの03-populated-main-headers.pngと05-reply-dialog.pngで明確な境界線・ラベル・ホバー背景・維持された作成本文を目視確認。fixtureのみで、実サービス再試験ではない。
 - Sandbox `5839c19a-73b4-4779-82a1-fba409351519` は終了成功。runtime全42ファイルのinventory、全テストEXEとbuild/dev、配備EXEのSHA256一致を確認。SmoothMailが起動していないことを確認して旧local-runを`build/local-run-before-reply-source`へ移し、検証済み版を配備した。PDBはsymbols/に保持。

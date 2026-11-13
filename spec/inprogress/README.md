@@ -13,7 +13,6 @@
 | DIST-01 | Windows Release ZIPの生成・直接起動 | 生成手順は実装済み。Release依存の準備待ち、実成果物の検証未完了 | [配布](distribution.md#dist-01-release配布物) |
 | DIST-02 | 同梱依存全体のライセンス・プライバシー監査 | 自動ガードは実装済み。配布対象に即した通知整備・最終監査は未完了 | [配布](distribution.md#dist-02-配布物の監査) |
 | AUTH-02 | Microsoft実アカウント対応の検証 | 実装・合成試験済み。アプリ登録・本人認可等の準備待ち、実試験未実施 | [実認証](live-authentication.md#auth-02-microsoft実アカウント) |
-| UI-01 | 細い境界線版の通常起動先更新 | 実装・ホスト検証済み。SmoothMail起動中のため差し替え待ち | [配備待ち](thin-splitter-deployment.md) |
 
 ## 実装上の制限・対応範囲の判断待ち
 
@@ -33,6 +32,8 @@
 
 - **AUTH-01:** 通常GUIでのGoogle登録から再起動・更新まで。
 - **CHECK-01:** 報告済み同期障害の利用者環境での解消確認。
+
+**UI-01（細い境界線版の通常起動先更新）**も、利用者のアプリ終了報告後に配備・SHA256照合を完了し、未完了一覧から除外した。[配備完了記録](../../docs/dev/thin-splitter-deployment-20261114.md)
 
 ## 未完了と混同しないもの
 
