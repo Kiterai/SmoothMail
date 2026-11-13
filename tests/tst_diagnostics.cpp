@@ -5,6 +5,8 @@
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QScopeGuard>
+#include <QThread>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <crtdbg.h>
@@ -22,6 +24,37 @@ class DiagnosticsTest final : public QObject
         return output;
     }
 private slots:
+    void structuredFailuresAndWarningsContainOnlySafeMetadata()
+    {
+        using namespace smoothmail::diagnostics;
+        QTemporaryDir temporary; QVERIFY(temporary.isValid()); QDir dir(temporary.path());
+        QVERIFY(start(dir.path())); const auto finishSession = qScopeGuard([] { finish(); });
+        const auto operation = nextOperation(), nested = nextOperation(); QVERIFY(nested > operation);
+        {
+            const OperationScope scope(operation);
+            FolderValidationFailure failure; failure.total = 4; failure.emptyCount = 1; failure.duplicateCount = 2; failure.negativeUnreadCount = 1;
+            failure.firstEmptyIndex = 1; failure.firstEmptyNoSelect = true; failure.firstDuplicateIndex = 3; failure.duplicateOfIndex = 2; failure.firstNegativeIndex = 4; failure.firstNegativeUnread = -7;
+            folderValidationFailure(FolderWriteSource::SyncCommit, failure);
+            { const OperationScope inner(nested); smoothmail::diagnostics::event("nested-test"); }
+            smoothmail::diagnostics::event("restored-test");
+            QTest::ignoreMessage(QtWarningMsg, "dummy-secret mail@example.test private-folder");
+            QMessageLogger("private/path", 123, "private-function", "org.kde.pim.kimap").warning("dummy-secret mail@example.test private-folder");
+            QTest::ignoreMessage(QtCriticalMsg, "dummy-secret");
+            QMessageLogger("private/path", 456, "private-function", "private-category").critical("dummy-secret");
+        }
+        QCOMPARE(currentOperation(), OperationId(0));
+        QScopedPointer<QThread> worker(QThread::create([operation] { const OperationScope scope(operation); smoothmail::diagnostics::event("cross-thread-test"); }));
+        worker->start(); QVERIFY(worker->wait(5000));
+        const auto log = contents(dir, QStringLiteral("*.log"));
+        QVERIFY(log.contains("folder-metadata-invalid source=sync-commit total=4 empty_count=1 duplicate_count=2 negative_unread_count=1"));
+        QVERIFY(log.contains("first_empty_index=1 first_empty_noselect=1 first_duplicate_index=3 duplicate_of_index=2 first_negative_index=4 first_negative_unread=-7 op=" + QByteArray::number(operation)));
+        QVERIFY(log.contains("nested-test op=" + QByteArray::number(nested)));
+        QVERIFY(log.contains("restored-test op=" + QByteArray::number(operation)));
+        QVERIFY(log.contains("cross-thread-test op=" + QByteArray::number(operation)));
+        QVERIFY(log.contains("qt-warning-kimap 123 op=" + QByteArray::number(operation)));
+        QVERIFY(log.contains("qt-critical-other 456 op=" + QByteArray::number(operation)));
+        for (const auto *secret : {"dummy-secret", "mail@example.test", "private-folder", "private/path", "private-function", "private-category"}) QVERIFY(!log.contains(secret));
+    }
     void cleanExitAndKilledProcess()
     {
         QTemporaryDir temporary; QVERIFY(temporary.isValid()); QDir dir(temporary.path());

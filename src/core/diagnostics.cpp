@@ -9,6 +9,8 @@
 #include <cstdlib>
 #include <QCryptographicHash>
 #include <QLoggingCategory>
+#include <QScopedValueRollback>
+#include <atomic>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #ifdef _MSC_VER
@@ -24,6 +26,30 @@ QString marker;
 std::terminate_handler previousTerminate = nullptr;
 QtMessageHandler previousMessage = nullptr;
 bool sessionActive = false;
+std::atomic<OperationId> operationSerial{0};
+thread_local OperationId operationId = 0;
+thread_local bool writingDiagnostic = false;
+void appendRecord(const QByteArray &entry)
+{
+    if (writingDiagnostic) return;
+    const QScopedValueRollback<bool> guard(writingDiagnostic, true);
+    const QMutexLocker lock(&mutex);
+    if (!log.isOpen()) return;
+    // Bound disk use per session. Fatal output has a separate pre-opened handle.
+    if (log.size() > 4 * 1024 * 1024) { log.resize(0); log.seek(0); }
+    log.write(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toUtf8()
+        + ' ' + entry + (operationId ? " op=" + QByteArray::number(operationId) : QByteArray{}) + '\n');
+    log.flush();
+}
+const char *qtStage(QtMsgType type, const char *category)
+{
+    const bool warning = type == QtWarningMsg;
+    if (category && qstrncmp(category, "org.kde.pim.kimap", 17) == 0) return warning ? "qt-warning-kimap" : "qt-critical-kimap";
+    if (category && qstrncmp(category, "org.kde.pim.ksmtp", 17) == 0) return warning ? "qt-warning-ksmtp" : "qt-critical-ksmtp";
+    if (category && qstrncmp(category, "qt.sql", 6) == 0) return warning ? "qt-warning-sql" : "qt-critical-sql";
+    if (category && qstrncmp(category, "qt.network", 10) == 0) return warning ? "qt-warning-network" : "qt-critical-network";
+    return warning ? "qt-warning-other" : "qt-critical-other";
+}
 #ifdef Q_OS_WIN
 HANDLE fatalFile = INVALID_HANDLE_VALUE;
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
@@ -125,6 +151,11 @@ LONG WINAPI fatal(EXCEPTION_POINTERS *exception)
 #endif
 void qtMessage(QtMsgType type, const QMessageLogContext &context, const QString &message)
 {
+    if (!writingDiagnostic && (type == QtWarningMsg || type == QtCriticalMsg)) {
+        // Categories are mapped to a fixed allowlist; neither arbitrary category
+        // strings nor the message/file/function can be persisted.
+        event(qtStage(type, context.category), context.line);
+    }
 #ifdef Q_OS_WIN
     if (type == QtFatalMsg) {
         recordStack("qt-fatal");
@@ -149,6 +180,25 @@ void terminated()
 #endif
     std::abort();
 }
+}
+OperationId nextOperation() { return ++operationSerial; }
+OperationId currentOperation() { return operationId; }
+OperationScope::OperationScope(OperationId operation) : m_previous(operationId) { operationId = operation; }
+OperationScope::~OperationScope() { operationId = m_previous; }
+void folderValidationFailure(FolderWriteSource source, const FolderValidationFailure &failure)
+{
+    const char *origin = source == FolderWriteSource::Snapshot ? "snapshot" : source == FolderWriteSource::SyncCommit ? "sync-commit" : "unknown";
+    appendRecord(QByteArray("folder-metadata-invalid source=") + origin
+        + " total=" + QByteArray::number(failure.total)
+        + " empty_count=" + QByteArray::number(failure.emptyCount)
+        + " duplicate_count=" + QByteArray::number(failure.duplicateCount)
+        + " negative_unread_count=" + QByteArray::number(failure.negativeUnreadCount)
+        + " first_empty_index=" + QByteArray::number(failure.firstEmptyIndex)
+        + " first_empty_noselect=" + QByteArray::number(int(failure.firstEmptyNoSelect))
+        + " first_duplicate_index=" + QByteArray::number(failure.firstDuplicateIndex)
+        + " duplicate_of_index=" + QByteArray::number(failure.duplicateOfIndex)
+        + " first_negative_index=" + QByteArray::number(failure.firstNegativeIndex)
+        + " first_negative_unread=" + QByteArray::number(failure.firstNegativeUnread));
 }
 bool start(const QString &directory)
 {
@@ -206,18 +256,13 @@ bool start(const QString &directory)
 }
 void event(const char *stage, qint64 count)
 {
-    const QMutexLocker lock(&mutex);
-    if (!log.isOpen()) return;
-    // Bound disk use per session. Fatal output has a separate pre-opened handle.
-    if (log.size() > 4 * 1024 * 1024) { log.resize(0); log.seek(0); }
-    log.write(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toUtf8()
-              + ' ' + stage + (count >= 0 ? ' ' + QByteArray::number(count) : QByteArray{}) + '\n');
-    log.flush();
+    appendRecord(QByteArray(stage) + (count >= 0 ? ' ' + QByteArray::number(count) : QByteArray{}));
 }
 void finish()
 {
     if (!sessionActive) return;
     event("session-clean-exit");
+    const QScopedValueRollback<bool> guard(writingDiagnostic, true);
     const QMutexLocker lock(&mutex);
     log.close();
     if (!marker.isEmpty()) QFile::remove(marker);
