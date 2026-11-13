@@ -211,7 +211,7 @@ void MainWindow::createPanes()
         if (chosen == remove) {
             QMessageBox warning(QMessageBox::Warning, QStringLiteral("削除の確認"),
                 folder.isEmpty() ? QStringLiteral("このアカウントの設定・保存済みメール・秘密情報をこのPCから削除します。サーバ上のメールとダウンロード済みファイルは削除しません。続けますか？")
-                    : QStringLiteral("このフォルダをサーバから削除します。メールが失われる可能性があります。子フォルダがある場合はサーバの規則により失敗することがあります。続けますか？"),
+                    : QStringLiteral("このフォルダをローカルで非表示にし、次の同期でサーバから削除します。メールが失われる可能性があります。子フォルダがある場合はサーバの規則により失敗することがあります。続けますか？"),
                 QMessageBox::Yes | QMessageBox::Cancel, this);
             warning.setTextFormat(Qt::PlainText); warning.setDefaultButton(QMessageBox::Cancel);
             if (warning.exec() == QMessageBox::Yes) {
@@ -408,7 +408,7 @@ void MainWindow::applySnapshot(const QString &id, const QString &folder, const Q
     if (remoteUpdate) m_lastSuccess = QDateTime::currentDateTime();
     rebuildFolders();
     if (visible) { if (m_pagedStorage) requestPage(); else rebuildMessages(); }
-    if (remoteUpdate && m_pendingCreateId == id && present.contains(m_pendingCreateName)) {
+    if (m_pendingCreateId == id && present.contains(m_pendingCreateName)) {
         const auto name = m_pendingCreateName;
         cancelPendingFolderEdit();
         QTimer::singleShot(0, this, [this, id, name] {
@@ -555,6 +555,13 @@ void MainWindow::clearAccountCache(const QString &id)
         if (m_pagedStorage) requestPage();
         findChild<QAction *>(QStringLiteral("composeAction"))->setEnabled(false);
     }
+}
+void MainWindow::followFolderRename(const QString &id, const QString &source, const QString &destination)
+{
+    if (m_accountId != id) return;
+    QChar separator; for (const auto &folder : m_folderCache.value(id)) if (folder.name == source) separator = folder.separator;
+    if (m_folder != source && (separator.isNull() || !m_folder.startsWith(source + separator))) return;
+    m_folder = destination + m_folder.mid(source.size()); m_loadedMessage.reset(); requestPage();
 }
 
 void MainWindow::editFolder(const QModelIndex &index, bool create)

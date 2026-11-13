@@ -6,6 +6,10 @@
 #include "ui/mainwindow.h"
 #include "storage/accountregistrar.h"
 #include "mail/mimeparser.h"
+#include "mail/mailservice.h"
+#include <algorithm>
+#include <QElapsedTimer>
+#include "core/diagnostics.h"
 
 #include <QAction>
 #include <QApplication>
@@ -100,7 +104,9 @@ private slots:
         QCoreApplication::setApplicationName(QStringLiteral("SmoothMail GUI Sandbox"));
         QStandardPaths::setTestModeEnabled(true);
         QCOMPARE(QGuiApplication::platformName(), QStringLiteral("windows"));
+        QVERIFY(diagnostics::start(qEnvironmentVariable("SMOOTHMAIL_GUI_OUTPUT") + QStringLiteral("/gui-diagnostics")));
     }
+    void cleanupTestCase() { diagnostics::finish(); }
     void nativeControllerWorkflow()
     {
         QFile cert(QStringLiteral(":/test/tls-cert.pem")), key(QStringLiteral(":/test/tls-key.pem"));
@@ -259,26 +265,30 @@ private slots:
         QTest::mouseClick(account->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok), Qt::LeftButton);
         QTRY_VERIFY_WITH_TIMEOUT(account.isNull(), 15000);
         QTRY_VERIFY(folders->model()->index(0, 0).data().toString().startsWith(QStringLiteral("edited@example.test")));
+        action(window, "refreshAction")->trigger();
         QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         contextAction(folders, folders->model()->index(0, 0), QStringLiteral("新規フォルダ"));
         QTRY_VERIFY_WITH_TIMEOUT(folders->findChild<QLineEdit *>(), 15000);
         auto *inlineEditor = folders->findChild<QLineEdit *>(); QVERIFY(inlineEditor);
         inlineEditor->setText(QStringLiteral("Parent")); QTest::keyClick(inlineEditor, Qt::Key_Return);
-        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(folderIndex(folders, QStringLiteral("Parent")).isValid(), 10000);
+        QVERIFY(!imap.extraFolders.contains("Parent")); action(window, "refreshAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent"), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         contextAction(folders, folderIndex(folders, QStringLiteral("Parent")), QStringLiteral("新規フォルダ"));
         QTRY_VERIFY_WITH_TIMEOUT(folders->findChild<QLineEdit *>(), 15000);
         inlineEditor = folders->findChild<QLineEdit *>(); QVERIFY(inlineEditor);
         inlineEditor->setText(QStringLiteral("Child")); QTest::keyClick(inlineEditor, Qt::Key_Return);
-        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent/Child"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(folderIndex(folders, QStringLiteral("Parent/Child")).isValid(), 10000);
+        QVERIFY(!imap.extraFolders.contains("Parent/Child")); action(window, "refreshAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent/Child"), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         contextAction(folders, folderIndex(folders, QStringLiteral("Parent/Child")), QStringLiteral("名前の変更"));
         inlineEditor = folders->findChild<QLineEdit *>(); QVERIFY(inlineEditor);
         inlineEditor->setText(QStringLiteral("Renamed")); QTest::keyClick(inlineEditor, Qt::Key_Return);
-        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent/Renamed"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(folderIndex(folders, QStringLiteral("Parent/Renamed")).isValid(), 10000);
+        QVERIFY(imap.extraFolders.contains("Parent/Child")); action(window, "refreshAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(imap.extraFolders.contains("Parent/Renamed"), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         capture(QStringLiteral("10-folder-edit"));
         // The warning defaults to Cancel; cancellation must issue no DELETE.
@@ -287,12 +297,57 @@ private slots:
         QVERIFY(imap.extraFolders.contains("Parent/Renamed"));
         QTimer::singleShot(200, &window, [] { if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) box->done(QMessageBox::Yes); });
         contextAction(folders, folderIndex(folders, QStringLiteral("Parent/Renamed")), QStringLiteral("削除"));
+        QTRY_VERIFY(!folderIndex(folders, QStringLiteral("Parent/Renamed")).isValid());
+        QVERIFY(imap.extraFolders.contains("Parent/Renamed")); action(window, "refreshAction")->trigger();
         QTRY_VERIFY_WITH_TIMEOUT(!imap.extraFolders.contains("Parent/Renamed"), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         QTimer::singleShot(200, &window, [] { if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) box->done(QMessageBox::Yes); });
         contextAction(folders, folders->model()->index(0, 0), QStringLiteral("アカウントの削除"));
         QTRY_COMPARE_WITH_TIMEOUT(folders->model()->rowCount(), 0, 10000);
         QCOMPARE(imap.messages.size(), 2); // Account deletion never deletes server mail.
+    }
+    void editsFoldersSendsMailAndDeletesAccountDuringFetch()
+    {
+        MailTestServer oldServer(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}), nextServer(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        MailTestServer smtp(MailTestServer::Protocol::Smtp, {QStringLiteral("PLAIN")});
+        oldServer.provideMailbox = nextServer.provideMailbox = true; oldServer.pauseHeaders = true;
+        oldServer.messages.insert(1, "Subject: old snapshot\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nold body");
+        nextServer.messages.insert(9, "Subject: new snapshot\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nnew body");
+        QVERIFY(oldServer.listen()); QVERIFY(nextServer.listen()); QVERIFY(smtp.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("inflight@example.test"),
+            {QStringLiteral("127.0.0.1"), smtp.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None},
+            {QStringLiteral("127.0.0.1"), oldServer.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("inflight.sqlite"));
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved);
+            repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+            const auto parsed = MimeParser::parse(oldServer.messages.value(1)); QVERIFY(parsed.ok());
+            repository.saveSnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 1}}, {{account.id, QStringLiteral("INBOX"), 10, 1, false, false, parsed.message}}); QTRY_COMPARE(saved.size(), 1);
+        }
+        CredentialStore credentials;
+        for (const auto &protocol : {QStringLiteral("imap"), QStringLiteral("smtp")}) { bool done = false; QString error; credentials.write(AccountRegistrar::secretKey(account.id, protocol), QStringLiteral("sandbox-only-dummy"), [&](const QString &, const QString &value) { error = value; done = true; }); QTRY_VERIFY(done); QVERIFY(error.isEmpty()); }
+        MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_COMPARE_WITH_TIMEOUT(oldServer.pausedHeaderCount(), 1, 10000);
+        auto *folders = window.findChild<QTreeView *>(QStringLiteral("folderTree")); auto *messages = window.findChild<QTreeView *>(QStringLiteral("messageList")); QTRY_COMPARE(messages->model()->rowCount(), 1);
+        window.folderOperationRequested(account.id, QStringLiteral("create"), {}, QStringLiteral("Offline")); QTRY_VERIFY(folderIndex(folders, QStringLiteral("Offline")).isValid()); QVERIFY(!oldServer.extraFolders.contains("Offline"));
+        action(window, "composeAction")->trigger(); QPointer<ComposeDialog> compose = window.findChild<ComposeDialog *>(); QVERIFY(compose);
+        compose->findChild<QLineEdit *>(QStringLiteral("composeTo"))->setText(QStringLiteral("receiver@example.test")); compose->findChild<QLineEdit *>(QStringLiteral("composeSubject"))->setText(QStringLiteral("send during fetch"));
+        compose->findChild<QPlainTextEdit *>(QStringLiteral("composeBody"))->setPlainText(QStringLiteral("synthetic body")); QTest::mouseClick(compose->findChild<QPushButton *>(QStringLiteral("composeSend")), Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(smtp.deliveredMessages.size(), 1, 10000); QTRY_VERIFY(compose.isNull()); QCOMPARE(oldServer.pausedHeaderCount(), 1);
+        contextAction(folders, folders->model()->index(0, 0), QStringLiteral("アカウントの編集")); QPointer<AccountDialog> dialog = window.findChild<AccountDialog *>(); QVERIFY(dialog); QTRY_VERIFY(dialog->isEnabled());
+        dialog->findChild<QSpinBox *>(QStringLiteral("IMAP4Port"))->setValue(nextServer.port()); dialog->findChild<QLineEdit *>(QStringLiteral("accountEmail"))->setText(QStringLiteral("changed@example.test"));
+        QTest::mouseClick(dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok), Qt::LeftButton); QTRY_VERIFY(dialog.isNull());
+        QTRY_VERIFY(folders->model()->index(0, 0).data().toString().startsWith(QStringLiteral("changed@example.test"))); QVERIFY(nextServer.commands.isEmpty());
+        oldServer.resumeHeaders(); QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000); QVERIFY(nextServer.commands.isEmpty());
+        action(window, "refreshAction")->trigger(); QTRY_VERIFY_WITH_TIMEOUT(nextServer.receivedAuthentication(), 10000); QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
+        QTRY_COMPARE(messages->model()->index(0, 3).data().toString(), QStringLiteral("new snapshot")); QVERIFY(!nextServer.extraFolders.contains("Offline"));
+        nextServer.pauseHeaders = true; action(window, "refreshAction")->trigger(); QTRY_COMPARE_WITH_TIMEOUT(nextServer.pausedHeaderCount(), 1, 10000);
+        QElapsedTimer elapsed; elapsed.start(); window.deleteAccountRequested(account.id);
+        QTRY_COMPARE_WITH_TIMEOUT(folders->model()->rowCount(), 0, 3000);
+        const auto services = controller.findChildren<MailService *>();
+        QTRY_VERIFY_WITH_TIMEOUT(std::none_of(services.cbegin(), services.cend(), [](const MailService *service) { return service->busy(); }), 3000);
+        QVERIFY(elapsed.elapsed() < 3000); QCOMPARE(nextServer.messages.size(), 1);
+        for (const auto &protocol : {QStringLiteral("imap"), QStringLiteral("smtp")}) { bool done = false; credentials.remove(AccountRegistrar::secretKey(account.id, protocol), [&](const QString &, const QString &) { done = true; }); QTRY_VERIFY(done); }
     }
     void paginatesAndFiltersLargeMailboxWithoutBlockingGui()
     {

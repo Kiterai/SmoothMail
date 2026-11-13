@@ -32,7 +32,6 @@ private:
     void removeSecrets(const QString &id, int index = 0);
     bool m_accountMutation = false;
     QString m_editedId;
-    QString m_reloadId;
     void refresh(const QString &accountId, const QString &folder, bool full = false);
     void processNext();
     void compose(bool reply);
@@ -47,6 +46,7 @@ private:
     CredentialStore *m_credentials;
     AccountRegistrar *m_registrar;
     MailService *m_mail;
+    MailService *m_actions;
     AuthenticationBroker *m_authentication;
     OAuthClient *m_authorization;
     bool m_authorizingSmtp = false;
@@ -59,5 +59,7 @@ private:
     Request m_current;
     QSet<QString> m_completedSyncs;
     QHash<QString, QString> m_cacheReloadErrors;
+    QSet<QString> m_deletedAccounts;
+    quint64 m_requestSerial = 0;
 };
 } // namespace smoothmail

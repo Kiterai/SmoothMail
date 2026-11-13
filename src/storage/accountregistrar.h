@@ -12,6 +12,7 @@ public:
     AccountRegistrar(AccountRepository *repository, CredentialStore *credentials, QObject *parent = nullptr);
     void add(Account account, const QString &smtpPassword, const QString &imapPassword);
     void edit(Account account, const QString &smtpPassword, const QString &imapPassword);
+    bool busy() const { return m_busy; }
     static QString secretKey(const QString &accountId, const QString &protocol, AuthenticationMode mode = AuthenticationMode::Plain);
 signals:
     void finished(const QString &id, const QString &error);

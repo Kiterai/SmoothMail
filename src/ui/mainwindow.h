@@ -45,6 +45,7 @@ public:
     void applyPage(const MailPage &page);
     void displayLoadedMessage(const MailRecord &message, const QString &error);
     void showSyncProgress(const QString &id, qint64 done, qint64 total);
+    void followFolderRename(const QString &id, const QString &source, const QString &destination);
 signals:
     void editAccountRequested(const QString &id);
     void deleteAccountRequested(const QString &id);

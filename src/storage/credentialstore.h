@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <functional>
+#include <QQueue>
 
 namespace smoothmail {
 class CredentialStore final : public QObject
@@ -15,5 +16,9 @@ public:
     void remove(const QString &key, Completion completion);
 private:
     QString m_service;
+    void enqueue(std::function<void()> job);
+    void advance();
+    QQueue<std::function<void()>> m_jobs;
+    bool m_running = false;
 };
 } // namespace smoothmail

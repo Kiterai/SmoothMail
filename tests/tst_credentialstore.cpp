@@ -24,6 +24,20 @@ private slots:
         QTest::newRow("unicode") << QStringLiteral("日本語 dummy secret");
         QTest::newRow("long-token") << QString(8192, u'x');
     }
+    void serializesEditsAndDeletion()
+    {
+        QSignalSpy finished(this, &CredentialStoreTest::completed);
+        const auto callback = [this](const QString &value, const QString &error) { emit completed(value, error); };
+        m_store->write(QStringLiteral("ordering"), QStringLiteral("old dummy"), callback);
+        m_store->write(QStringLiteral("ordering"), QStringLiteral("new dummy"), callback);
+        m_store->read(QStringLiteral("ordering"), callback);
+        m_store->remove(QStringLiteral("ordering"), callback);
+        m_store->read(QStringLiteral("ordering"), callback, true);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 5, 10000);
+        for (const auto &item : finished) QVERIFY(item.at(1).toString().isEmpty());
+        QCOMPARE(finished.at(2).first().toString(), QStringLiteral("new dummy"));
+        QVERIFY(finished.last().first().toString().isEmpty());
+    }
     void roundTrip()
     {
         QFETCH(QString, secret);

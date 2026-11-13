@@ -1,5 +1,11 @@
 # Windows SandboxのGUIチェック
 
+## 取得中の操作481eb90対応（最新）
+
+最終記録は`build/inflight-check/output-final/`です。12 EXEで**149 passed / 0 failed / 0 skipped**（init/cleanup含む）：connectiontester 23、accountrepository 14、credentialstore 6、guismoke 6、mainwindow 12、mimeregression 12、diagnostics 7、mimeparser 15、accountdialog 7、messageviewer 24、mailtransport 15、oauthclient 8。ホストCTest15対象（ネットワーク系3対象除外）とPython9件も成功しました。
+
+停止したヘッダ取得中のローカル作成・SMTP送信・アカウント編集、新設定が次回取得で適用されること、アカウント削除による3秒未満の中断を検証しています。フォルダの保留/再起動/改名中の本文/同期後のフラグ、資格情報ジョブの順序、20回の削除/即時終了の競合検査も含みます。実アカウント・実メール・登録JSONは持ち込んでいません。今回起動した3つのSandboxはすべて終了済みです。
+
 ## 同期・フラグ・一覧仕様803f145対応（最新）
 
 最終記録は`build/behavior-check/output-verified/`です。11 EXEで**137 passed / 0 failed / 0 skipped**（init/cleanup含む）：connectiontester 21、mainwindow 12、accountrepository 11、guismoke 5、mimeregression 12、diagnostics 7、mimeparser 15、accountdialog 7、messageviewer 24、mailtransport 15、oauthclient 8。ホストCTest15対象（ネットワーク系3対象除外）・Python9件も成功しました。
