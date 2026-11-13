@@ -1,0 +1,29 @@
+#pragma once
+#include "core/systemsettings.h"
+#include <QDialog>
+class QSpinBox;
+class QLineEdit;
+class QPushButton;
+class QLabel;
+namespace smoothmail {
+class SystemSettingsDialog final : public QDialog {
+    Q_OBJECT
+public:
+    SystemSettingsDialog(const SystemSettings &settings, const QString &secret, QWidget *parent = nullptr);
+    void saved(const QString &error);
+signals:
+    void saveRequested(const smoothmail::SystemSettings &settings, const QString &secret);
+protected:
+    void reject() override;
+private:
+    SystemSettings value() const;
+    bool changed() const;
+    SystemSettings m_original;
+    QString m_secret;
+    QSpinBox *m_page, *m_interval;
+    QLineEdit *m_client, *m_password;
+    QPushButton *m_save;
+    QLabel *m_error;
+    bool m_saving = false;
+};
+}
