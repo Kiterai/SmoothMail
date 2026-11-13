@@ -24,6 +24,54 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void movesKeepCollidingMessagesDistinctAndUndoAcrossAcknowledgement()
+    {
+        AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("moves@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), changed(&repository, &AccountRepository::localOperationFinished), pages(&repository, &AccountRepository::pageLoaded), bodies(&repository, &AccountRepository::messageLoaded), flags(&repository, &AccountRepository::flagsUpdated);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const QList<MailFolder> folders{{QStringLiteral("A"), u'/', {}, 1}, {QStringLiteral("B"), u'/', {}, 1}, {QStringLiteral("Target"), u'/', {}, 0}};
+        const auto a = MimeParser::parse("Subject: A\r\n\r\nbody A"), b = MimeParser::parse("Subject: B\r\n\r\nbody B");
+        const MailRecord first{account.id, QStringLiteral("A"), 10, 7, false, false, a.message}, second{account.id, QStringLiteral("B"), 10, 7, false, false, b.message};
+        repository.saveSnapshot(account.id, first.folder, folders, {first}); QTRY_COMPARE(saved.size(), 1);
+        repository.saveSnapshot(account.id, second.folder, folders, {second}); QTRY_COMPARE(saved.size(), 2);
+        repository.setFlagIntent(QStringLiteral("flag"), first, true, true); QTRY_COMPARE(flags.size(), 1);
+        repository.setMoveIntent(QStringLiteral("a"), first, QStringLiteral("Target")); repository.setMoveIntent(QStringLiteral("b"), second, QStringLiteral("Target")); QTRY_COMPARE(changed.size(), 2);
+        for (const auto &result : changed) QVERIFY2(result.at(1).toString().isEmpty(), qPrintable(result.at(1).toString()));
+        MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("Target"); query.pageSize = 1;
+        repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 2); QCOMPARE(page.messages.size(), 1);
+        const auto record = page.messages.first(); QVERIFY(!record.storageFolder.isEmpty()); repository.loadMessage(record); QTRY_COMPARE(bodies.size(), 1);
+        QCOMPARE(qvariant_cast<MailRecord>(bodies.first().first()).document.subject, record.storageFolder);
+        qint64 through = 0; QList<PendingMove> pending; QVERIFY(repository.moveRevision(account.id, through).isEmpty()); QVERIFY(repository.pendingMoves(account.id, 0, through, pending).isEmpty()); QCOMPARE(pending.size(), 2);
+        const auto moving = pending.first(); QVERIFY(repository.markMove(moving.revision).isEmpty());
+        // Two undo/redo changes while MOVE is in flight must retain the reverse intent.
+        repository.setMoveIntent(QStringLiteral("a"), first, first.folder); repository.setMoveIntent(QStringLiteral("a"), first, QStringLiteral("Target")); repository.setMoveIntent(QStringLiteral("a"), first, first.folder); QTRY_COMPARE(changed.size(), 5);
+        QVERIFY(repository.finishMove(moving, 20, 90).isEmpty());
+        QVERIFY(repository.moveRevision(account.id, through).isEmpty()); QVERIFY(repository.pendingMoves(account.id, 0, through, pending).isEmpty()); QCOMPARE(pending.size(), 2);
+        const auto reverse = pending.last(); QCOMPARE(reverse.identity.folder, QStringLiteral("Target")); QCOMPARE(reverse.identity.uid, 90); QCOMPARE(reverse.destination, first.folder);
+        repository.setFlagIntent(QStringLiteral("flag"), first, true, false); QTRY_COMPARE(flags.size(), 2); QVERIFY(flags.last().at(1).toString().isEmpty());
+        qint64 flagThrough = 0; QList<PendingFlag> edits; QVERIFY(repository.flagRevision(flagThrough).isEmpty()); QVERIFY(repository.pendingFlags(account.id, QStringLiteral("Target"), 0, flagThrough, edits).isEmpty()); QCOMPARE(edits.size(), 1); QCOMPARE(edits.first().identity.uid, 90); QVERIFY(!edits.first().enabled);
+        QVERIFY(repository.markMove(reverse.revision).isEmpty()); QVERIFY(repository.finishMove(reverse, 10, 8).isEmpty());
+        repository.setMoveIntent(QStringLiteral("a"), first, QStringLiteral("Target")); QTRY_COMPARE(changed.size(), 6);
+        QVERIFY(repository.moveRevision(account.id, through).isEmpty()); QVERIFY(repository.pendingMoves(account.id, 0, through, pending).isEmpty()); QCOMPARE(pending.last().identity.uid, 8);
+        repository.setMoveIntent(QStringLiteral("a"), first, first.folder); QTRY_COMPARE(changed.size(), 7);
+        QVERIFY(!repository.markMove(pending.last().revision).isEmpty()); // A stale batch cannot send a cancelled MOVE.
+        repository.setMoveIntent(QStringLiteral("invalid"), second, QStringLiteral("Missing")); QTRY_COMPARE(changed.size(), 8); QVERIFY(!changed.last().at(1).toString().isEmpty());
+    }
+    void fetchedEmptyFoldersDoNotTriggerReloadAndCreationCanBeUndone()
+    {
+        AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("initial@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), fetch(&repository, &AccountRepository::initialFetchRequired), queued(&repository, &AccountRepository::folderQueued), changed(&repository, &AccountRepository::localOperationFinished);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const QList<MailFolder> folders{{QStringLiteral("INBOX"), u'/', {}, 0}, {QStringLiteral("Other"), u'/', {}, 0}};
+        repository.saveSnapshot(account.id, QStringLiteral("INBOX"), folders, {}); QTRY_COMPARE(saved.size(), 1);
+        repository.ensureFolderLoaded(account.id, QStringLiteral("INBOX")); repository.ensureFolderLoaded(account.id, QStringLiteral("Other")); QTRY_COMPARE(fetch.size(), 1); QCOMPARE(fetch.first().at(1).toString(), QStringLiteral("Other"));
+        repository.restoreCreatedFolder(account.id, QStringLiteral("New")); QTRY_COMPARE(queued.size(), 1);
+        repository.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("New"), QStringLiteral("Renamed")); QTRY_COMPARE(queued.size(), 2);
+        repository.cancelCreatedFolder(account.id, QStringLiteral("Renamed")); QTRY_COMPARE(queued.size(), 3); QVERIFY(queued.last().at(1).toString().isEmpty());
+        qint64 through = 0; QList<PendingFolder> pending; QVERIFY(repository.folderRevision(account.id, through).isEmpty()); QVERIFY(repository.pendingFolders(account.id, 0, through, pending).isEmpty()); QCOMPARE(pending.size(), 3); QCOMPARE(pending.last().operation, QStringLiteral("delete-empty"));
+        repository.restoreCreatedFolder(account.id, QStringLiteral("Renamed")); QTRY_COMPARE(queued.size(), 4);
+        pending.clear(); QVERIFY(repository.folderRevision(account.id, through).isEmpty()); QVERIFY(repository.pendingFolders(account.id, 0, through, pending).isEmpty()); QCOMPARE(pending.size(), 4); QCOMPARE(pending.last().destination, QStringLiteral("Renamed"));
+    }
     void deletionCannotQueueReloadAfterStateDestruction()
     {
         for (int i = 0; i < 20; ++i) {
@@ -68,15 +116,20 @@ private slots:
     void accountEditsDoNotInvalidateActiveSnapshot()
     {
         AccountRepository repository(QStringLiteral(":memory:")); auto account = makeAccount(QStringLiteral("edit-active@example.test")); const auto original = account;
-        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), pages(&repository, &AccountRepository::pageLoaded);
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved), pages(&repository, &AccountRepository::pageLoaded), flags(&repository, &AccountRepository::flagsUpdated), operations(&repository, &AccountRepository::localOperationFinished);
         repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
         const auto parsed = MimeParser::parse("Subject: old server\r\n\r\nbody"); const MailRecord message{account.id, QStringLiteral("INBOX"), 10, 1, false, false, parsed.message};
         const QList<MailFolder> folders{{message.folder, u'/', {}, 1}}; repository.saveSnapshot(account.id, message.folder, folders, {message}); QTRY_COMPARE(saved.size(), 1);
+        repository.setFlagIntent(QStringLiteral("old-server-flag"), message, true, true); QTRY_COMPARE(flags.size(), 1);
         account.imap.host = QStringLiteral("new.example.test"); repository.update(account); QTRY_COMPARE(inserted.size(), 2);
         QVERIFY(repository.prepareSync(original).isEmpty());
         MailQuery query; query.accountId = account.id; query.folder = message.folder; repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1);
         QVERIFY(repository.beginSync(account.id, message.folder, 10).isEmpty()); QVERIFY(repository.stageMessages({message}).isEmpty()); QVERIFY(repository.commitSync(folders, 1).isEmpty()); repository.abortSync();
         QVERIFY(repository.prepareSync(account).isEmpty()); repository.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.first().first()).total, 0);
+        // A new server may legitimately reuse both UIDVALIDITY and UID. Never
+        // recreate a missing handle and apply an old Undo to its unrelated mail.
+        repository.saveSnapshot(account.id, message.folder, folders, {message}); QTRY_COMPARE(saved.size(), 2);
+        repository.setFlagIntent(QStringLiteral("old-server-flag"), message, true, false); QTRY_COMPARE(operations.size(), 1); QVERIFY(!operations.first().at(1).toString().isEmpty());
     }
     void pendingFlagsSurviveRestartAndPreserveNewerEdits()
     {
@@ -346,6 +399,7 @@ private slots:
         repository.loadDownloadHistory(); QTRY_COMPARE(history.size(), 1);
         const auto entries = qvariant_cast<QList<DownloadEntry>>(history.first().first());
         QCOMPARE(entries.size(), 2); QCOMPARE(entries.first().size, 3);
+        QCOMPARE(entries.first().mimeType, QStringLiteral("application/octet-stream"));
         QCOMPARE(entries.first().uidValidity, 10);
         repository.saveAttachment(record, QStringLiteral("1.9999"), directory);
         QTRY_COMPARE(saved.size(), 3);

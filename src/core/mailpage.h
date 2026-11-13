@@ -9,6 +9,7 @@ struct MailQuery {
     Qt::SortOrder order = Qt::DescendingOrder;
     quint64 generation = 0;
     qint64 revealUid = 0, revealValidity = 0;
+    int pageSize = MailPageSize;
 };
 struct MailPage {
     MailQuery query;

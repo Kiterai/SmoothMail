@@ -112,6 +112,8 @@ public:
     QMap<QByteArray, QMap<qint64, QList<QByteArray>>> folderFlags;
     bool ignoreFlagWrites = false;
     bool pauseHeaders = false;
+    bool supportMove = true, omitMoveMapping = false;
+    QMap<QByteArray, qint64> uidNextFloor;
     int pausedHeaderCount() const { return m_pausedHeaders.size(); }
     void resumeHeaders() { pauseHeaders = false; const auto pending = m_pausedHeaders; m_pausedHeaders.clear(); for (const auto &line : pending) if (m_socket && m_socket->isOpen()) handle(line); }
     bool provideDraftFolder = false;
@@ -184,6 +186,7 @@ private:
         const auto command = fields.at(commandIndex).toUpper();
         if (command == "CAPABILITY") {
             QByteArray capabilities("* CAPABILITY IMAP4rev1");
+            if (supportMove) capabilities += " MOVE UIDPLUS";
             if (tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) capabilities += " STARTTLS";
             for (const auto &mechanism : advertisedMechanisms()) {
                 capabilities += " AUTH=" + mechanism.toLatin1();
@@ -264,7 +267,8 @@ private:
             write("* FLAGS (\\Seen \\Flagged)");
             write("* " + QByteArray::number(advertisedMessageCount < 0 ? data.size() : advertisedMessageCount) + " EXISTS");
             write("* OK [UIDVALIDITY " + QByteArray::number(uidValidity) + "] stable UIDs");
-            write("* OK [UIDNEXT " + QByteArray::number(data.isEmpty() ? 1 : data.lastKey() + 1) + "] next UID");
+            auto &next = uidNextFloor[m_selected]; next = qMax(next, data.isEmpty() ? qint64(1) : data.lastKey() + 1);
+            write("* OK [UIDNEXT " + QByteArray::number(next) + "] next UID");
             write(m_tag + (command == "EXAMINE" ? " OK [READ-ONLY] selected" : " OK [READ-WRITE] selected"));
         } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "SEARCH") {
             QByteArray result("* SEARCH");
@@ -275,6 +279,14 @@ private:
                 if (!since.isValid() || (date.isValid() && date.date() >= since)) result += ' ' + QByteArray::number(it.key());
             }
             write(result); write(m_tag + " OK search completed");
+        } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "MOVE") {
+            const auto target = line.split('"').value(1); const auto uid = fields.value(commandIndex + 2).toLongLong();
+            if (!supportMove || (!extraFolders.contains(target) && target != "INBOX")) { write(m_tag + " NO unsupported move target"); return; }
+            auto &source = selectedMessages(); auto &destination = target == "INBOX" ? messages : folderMessages[target];
+            if (!source.contains(uid)) { write(m_tag + " OK no message"); return; }
+            const qint64 newUid = qMax(uidNextFloor.value(target, 1), destination.isEmpty() ? qint64(1) : destination.lastKey() + 1); uidNextFloor[target] = newUid + 1;
+            destination.insert(newUid, source.take(uid)); auto &targetFlags = target == "INBOX" ? messageFlags : folderFlags[target]; targetFlags[newUid] = selectedFlags().take(uid);
+            write(m_tag + (omitMoveMapping ? QByteArray(" OK moved") : " OK [COPYUID " + QByteArray::number(uidValidity) + ' ' + QByteArray::number(uid) + ' ' + QByteArray::number(newUid) + "] moved"));
         } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "STORE") {
             if (rejectFlagChanges) { write(m_tag + " NO synthetic store rejected"); return; }
             const auto requested = fields.value(commandIndex + 2);

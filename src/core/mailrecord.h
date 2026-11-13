@@ -17,6 +17,7 @@ struct MailRecord {
     bool seen = false;
     bool important = false;
     MessageDocument document;
+    QString storageFolder;
 };
 }
 Q_DECLARE_METATYPE(QList<smoothmail::MailFolder>)

@@ -14,6 +14,7 @@ struct DownloadEntry {
     QString path;
     qint64 size = 0;
     QDateTime savedAt;
+    QString mimeType;
 };
 }
 Q_DECLARE_METATYPE(smoothmail::DownloadEntry)

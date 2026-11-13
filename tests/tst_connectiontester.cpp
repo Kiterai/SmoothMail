@@ -22,6 +22,45 @@ private slots:
         if (!output.isEmpty()) QVERIFY(diagnostics::start(output + QStringLiteral("/transport-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
+    void nativeMoveRemapsFlagsAndSupportsReverseMove_data()
+    {
+        QTest::addColumn<bool>("supported"); QTest::addColumn<bool>("mapping");
+        QTest::newRow("mapped") << true << true;
+        QTest::newRow("unsupported") << false << true;
+        QTest::newRow("lost-mapping") << true << false;
+    }
+    void nativeMoveRemapsFlagsAndSupportsReverseMove()
+    {
+        QFETCH(bool, supported); QFETCH(bool, mapping);
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; server.supportMove = supported; server.omitMoveMapping = !mapping;
+        server.extraFolders.insert("Target"); server.messages.insert(7, "Subject: move fixture\r\n\r\nbody"); server.folderMessages["Target"].insert(90, "Subject: existing\r\n\r\nbody"); QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("move@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")}, {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted), changed(&cache, &AccountRepository::localOperationFinished), flags(&cache, &AccountRepository::flagsUpdated);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        const auto sync = [&] { result.clear(); service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All); };
+        sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+        const MailRecord identity{account.id, QStringLiteral("INBOX"), 10, 7};
+        cache.setFlagIntent(QStringLiteral("flag"), identity, true, true); QTRY_COMPARE(flags.size(), 1);
+        cache.setMoveIntent(QStringLiteral("move"), identity, QStringLiteral("Target")); QTRY_COMPARE(changed.size(), 1); QVERIFY(changed.first().at(1).toString().isEmpty());
+        server.commands.clear(); sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
+        if (!supported) {
+            QVERIFY(!result.first().at(4).toString().isEmpty()); QVERIFY(server.messages.contains(7));
+            for (const auto &command : server.commands) QVERIFY(!command.contains(" UID MOVE ") && !command.contains(" UID COPY ") && !command.contains("EXPUNGE"));
+            return;
+        }
+        QVERIFY(!server.messages.contains(7)); QVERIFY(server.folderMessages["Target"].contains(91));
+        if (!mapping) {
+            QVERIFY(!result.first().at(4).toString().isEmpty()); server.commands.clear(); sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+            for (const auto &command : server.commands) QVERIFY(!command.contains(" UID MOVE "));
+            return;
+        }
+        QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString())); QVERIFY(server.folderFlags["Target"][91].contains("\\Flagged"));
+        cache.setMoveIntent(QStringLiteral("move"), identity, QStringLiteral("INBOX")); QTRY_COMPARE(changed.size(), 2); QVERIFY(changed.last().at(1).toString().isEmpty());
+        sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString())); QVERIFY(!server.folderMessages["Target"].contains(91)); QVERIFY(server.messages.contains(8));
+        cache.setFlagIntent(QStringLiteral("flag"), identity, true, false); QTRY_COMPARE(flags.size(), 2); QVERIFY(flags.last().at(1).toString().isEmpty());
+        sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty()); QVERIFY(!server.messageFlags[8].contains("\\Flagged"));
+    }
     void cancelsStalledSynchronizationAndCanRetry()
     {
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; server.pauseHeaders = true;
@@ -34,6 +73,21 @@ private slots:
         QElapsedTimer elapsed; elapsed.start(); service.cancelSynchronization(account.id);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 3000); QVERIFY(elapsed.elapsed() < 3000); QVERIFY(!result.first().at(4).toString().isEmpty()); QCOMPARE(server.fullFetchCount, 0);
         server.pauseHeaders = false; result.clear(); service.synchronize(account, QStringLiteral("dummy")); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+    }
+    void folderCreationUndoRedoUsesOrderedInversesAndRefusesNonemptyDelete()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("create@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")}, {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted), queued(&cache, &AccountRepository::folderQueued); cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        const auto sync = [&] { result.clear(); service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All); };
+        sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+        cache.restoreCreatedFolder(account.id, QStringLiteral("Created")); QTRY_COMPARE(queued.size(), 1); cache.cancelCreatedFolder(account.id, QStringLiteral("Created")); QTRY_COMPARE(queued.size(), 2); cache.restoreCreatedFolder(account.id, QStringLiteral("Created")); QTRY_COMPARE(queued.size(), 3);
+        for (const auto &entry : queued) QVERIFY(entry.at(1).toString().isEmpty());
+        sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString())); QVERIFY(server.extraFolders.contains("Created"));
+        // A message arriving after the last cache fetch must not be deleted by undo.
+        server.folderMessages["Created"].insert(1, "Subject: newly arrived\r\n\r\nbody"); cache.cancelCreatedFolder(account.id, QStringLiteral("Created")); QTRY_COMPARE(queued.size(), 4);
+        sync(); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(!result.first().at(4).toString().isEmpty()); QVERIFY(server.extraFolders.contains("Created")); QCOMPARE(server.folderMessages["Created"].size(), 1);
     }
     void synchronizesDeferredFolderOperationsBeforeFlags()
     {

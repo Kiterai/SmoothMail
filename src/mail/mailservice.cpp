@@ -16,6 +16,7 @@
 #include <KIMAP/DeleteJob>
 #include <KIMAP/StoreJob>
 #include <KIMAP/SearchJob>
+#include <KIMAP/MoveJob>
 #include <KMime/Headers>
 #include <KSMTP/LoginJob>
 #include <KSMTP/Session>
@@ -293,7 +294,13 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                         KIMAP::CreateJob job(&session); job.setMailBox(op.destination); jobError = runJob(job);
                     } else if (op.operation == QStringLiteral("rename") && containsFolder(op.source) && !containsFolder(op.destination)) {
                         KIMAP::RenameJob job(&session); job.setSourceMailBox(op.source); job.setDestinationMailBox(op.destination); jobError = runJob(job); renamed = jobError.isEmpty();
-                    } else if (op.operation == QStringLiteral("delete") && containsFolder(op.source)) {
+                    } else if ((op.operation == QStringLiteral("delete") || op.operation == QStringLiteral("delete-empty")) && containsFolder(op.source)) {
+                        if (op.operation == QStringLiteral("delete-empty")) {
+                            for (const auto &folder : folders) if (!op.separator.isNull() && folder.name.startsWith(op.source + op.separator)) return QStringLiteral("子フォルダがあるため、作成の取り消しでは削除しません。");
+                            KIMAP::SelectJob check(&session); check.setMailBox(op.source); check.setOpenReadOnly(true); jobError = runJob(check);
+                            if (!jobError.isEmpty()) return jobError;
+                            if (check.messageCount() != 0) return QStringLiteral("フォルダが空でないため、作成の取り消しでは削除しません。");
+                        }
                         KIMAP::DeleteJob job(&session); job.setMailBox(op.source); jobError = runJob(job);
                     }
                     if (!jobError.isEmpty()) return jobError;
@@ -305,6 +312,36 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     folderAfter = op.revision;
                 }
                 jobError = cache->pendingFolders(account.id, folderAfter, folderThrough, operations); if (!jobError.isEmpty()) return jobError;
+            }
+            bool forceFull = mode == SyncMode::All;
+            qint64 moveThrough = 0, moveAfter = 0; QList<PendingMove> moves;
+            if (cache) { jobError = cache->moveRevision(account.id, moveThrough); if (jobError.isEmpty()) jobError = cache->pendingMoves(account.id, 0, moveThrough, moves); if (!jobError.isEmpty()) return jobError; }
+            if (!moves.isEmpty()) {
+                KIMAP::CapabilitiesJob capabilities(&session); jobError = runJob(capabilities); if (!jobError.isEmpty()) return jobError;
+                if (!capabilities.capabilities().contains(QStringLiteral("MOVE")) || !capabilities.capabilities().contains(QStringLiteral("UIDPLUS"))) return QStringLiteral("安全なメール移動にはサーバのMOVEとUIDPLUS対応が必要です。保留操作は元に戻せます。");
+            }
+            while (!moves.isEmpty()) {
+                for (const auto &move : moves) {
+                    if (interrupted()) return QStringLiteral("中断しました。");
+                    if (move.destination == move.identity.folder) { jobError = cache->abandonMove(move.revision); if (!jobError.isEmpty()) return jobError; moveAfter = move.revision; continue; }
+                    KIMAP::SelectJob destination(&session); destination.setMailBox(move.destination); destination.setOpenReadOnly(true); jobError = runJob(destination); if (!jobError.isEmpty()) return jobError;
+                    const auto targetValidity = destination.uidValidity();
+                    KIMAP::SelectJob source(&session); source.setMailBox(move.identity.folder); jobError = runJob(source); if (!jobError.isEmpty()) return jobError;
+                    if (source.uidValidity() != move.identity.uidValidity) { jobError = cache->abandonMove(move.revision); if (!jobError.isEmpty()) return jobError; forceFull = true; moveAfter = move.revision; continue; }
+                    bool present = false;
+                    KIMAP::FetchJob check(&session); check.setUidBased(true); check.setSequenceSet(KIMAP::ImapSet(move.identity.uid)); KIMAP::FetchJob::FetchScope flags; flags.mode = KIMAP::FetchJob::FetchScope::Flags; check.setScope(flags);
+                    connect(&check, &KIMAP::FetchJob::messagesAvailable, &check, [&](const QMap<qint64, KIMAP::Message> &items) { for (const auto &item : items) if (item.uid == move.identity.uid) present = true; });
+                    jobError = runJob(check); if (!jobError.isEmpty()) return jobError;
+                    if (!present) { jobError = cache->abandonMove(move.revision); if (!jobError.isEmpty()) return jobError; forceFull = true; moveAfter = move.revision; continue; }
+                    jobError = cache->markMove(move.revision); if (!jobError.isEmpty()) return jobError;
+                    KIMAP::MoveJob moving(&session); moving.setUidBased(true); moving.setSequenceSet(KIMAP::ImapSet(move.identity.uid)); moving.setMailBox(move.destination); jobError = runJob(moving); if (!jobError.isEmpty()) return jobError;
+                    const auto intervals = moving.resultingUids().intervals();
+                    if (intervals.size() != 1 || intervals.first().begin() != intervals.first().end() || intervals.first().begin() <= 0) return QStringLiteral("移動後のUIDを確認できません。次回取得でサーバ状態を確認します。移動は盲目的に再送しません。");
+                    KIMAP::SelectJob verify(&session); verify.setMailBox(move.destination); verify.setOpenReadOnly(true); jobError = runJob(verify); if (!jobError.isEmpty()) return jobError;
+                    if (verify.uidValidity() != targetValidity) return QStringLiteral("移動先のUIDVALIDITYが変化しました。再取得してください。");
+                    jobError = cache->finishMove(move, targetValidity, intervals.first().begin()); if (!jobError.isEmpty()) return jobError; forceFull = true; moveAfter = move.revision;
+                }
+                jobError = cache->pendingMoves(account.id, moveAfter, moveThrough, moves); if (!jobError.isEmpty()) return jobError;
             }
             QStringList selectable;
             for (auto &folder : folders) {
@@ -331,7 +368,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 selected = selectable.contains(QStringLiteral("INBOX")) ? QStringLiteral("INBOX") : selectable.value(0);
             }
             const auto visibleFolder = selected;
-            const auto targets = mode == SyncMode::SelectedFolder ? QStringList{selected} : selectable;
+            const auto targets = mode == SyncMode::SelectedFolder && !forceFull ? QStringList{selected} : selectable;
             if (!cache && mode != SyncMode::SelectedFolder) return QStringLiteral("全フォルダ同期にはローカル保存先が必要です。");
             for (const auto &target : targets) {
             selected = target;
@@ -383,7 +420,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             // streaming path has no total mailbox count/byte cap.
             if (!cache && total > 10000) return QStringLiteral("一括取得の上限（10000件）を超えています。分割同期を使用してください。");
             QDateTime boundary;
-            if (cache && mode == SyncMode::Recent) {
+            if (cache && mode == SyncMode::Recent && !forceFull) {
                 jobError = cache->recentBoundary(account.id, selected, validity, boundary); if (!jobError.isEmpty()) return jobError;
             }
             QList<qint64> recentUids;

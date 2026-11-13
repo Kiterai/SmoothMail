@@ -6,6 +6,7 @@
 #include "core/downloadentry.h"
 #include "core/pendingflag.h"
 #include "core/pendingfolder.h"
+#include "core/pendingmove.h"
 #include <QObject>
 #include <QThread>
 #include <atomic>
@@ -30,6 +31,16 @@ public:
     void saveAttachment(const MailRecord &message, const QString &partId, const QString &directory);
     void loadDownloadHistory();
     void loadPage(const MailQuery &query);
+    void ensureFolderLoaded(const QString &id, const QString &folder);
+    void setFlagIntent(const QString &handle, const MailRecord &identity, bool important, bool enabled);
+    void setMoveIntent(const QString &handle, const MailRecord &identity, const QString &destination);
+    void cancelCreatedFolder(const QString &id, const QString &name);
+    void restoreCreatedFolder(const QString &id, const QString &name);
+    QString pendingMoves(const QString &id, qint64 after, qint64 through, QList<PendingMove> &moves);
+    QString moveRevision(const QString &id, qint64 &revision);
+    QString markMove(qint64 revision);
+    QString finishMove(const PendingMove &move, qint64 validity, qint64 uid);
+    QString abandonMove(qint64 revision);
     void loadMessage(const MailRecord &identity);
     void updateFlags(const MailRecord &identity, bool seen, bool important);
     void queueFlag(const MailRecord &identity, bool importantFlag, bool enabled);
@@ -67,6 +78,8 @@ signals:
     void messageLoaded(const smoothmail::MailRecord &message, const QString &error);
     void flagsUpdated(const smoothmail::MailRecord &identity, const QString &error);
     void folderQueued(const QString &id, const QString &error);
+    void initialFetchRequired(const QString &id, const QString &folder);
+    void localOperationFinished(const QString &id, const QString &error);
 
 private:
     struct State;
