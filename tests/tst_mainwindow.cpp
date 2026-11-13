@@ -15,12 +15,33 @@
 #include <QCheckBox>
 #include "ui/systemsettingsdialog.h"
 #include <QDialogButtonBox>
+#include <QScrollBar>
 
 class MainWindowTest final : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void messageSelectionKeepsHorizontalScrollPosition()
+    {
+        using namespace smoothmail;
+        MainWindow window(false); Account account; account.id = QStringLiteral("scroll"); account.email = QStringLiteral("scroll@example.test"); window.setAccounts({account});
+        QList<MailRecord> records;
+        for (int i = 1; i <= 80; ++i) { MailRecord record{account.id, QStringLiteral("INBOX"), 10, i}; record.document.subject = QString(500, u'x'); records.append(record); }
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, records, {});
+        window.resize(700, 600); window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList")); view->setColumnWidth(3, 1800); QCoreApplication::processEvents();
+        auto *bar = view->horizontalScrollBar(); QVERIFY(bar->maximum() > 100);
+        for (const int position : {0, 70}) {
+            bar->setValue(position); view->setCurrentIndex(view->model()->index(0, 3)); QCOMPARE(bar->value(), position);
+            const auto rect = view->visualRect(view->model()->index(1, 3)).intersected(view->viewport()->rect()); QVERIFY(!rect.isEmpty());
+            QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, rect.center()); QCOMPARE(bar->value(), position);
+            for (int i = 0; i < 30; ++i) QTest::keyClick(view, Qt::Key_Down);
+            QCOMPARE(bar->value(), position); QVERIFY(view->verticalScrollBar()->value() > 0);
+            QTest::keyClick(view, Qt::Key_Up); QCOMPARE(bar->value(), position);
+            view->scrollTo(view->model()->index(0, 3)); QCOMPARE(bar->value(), position);
+        }
+    }
     void configurablePagesNavigateAtListEdges()
     {
         using namespace smoothmail;

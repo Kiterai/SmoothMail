@@ -35,12 +35,27 @@
 #include <QSignalBlocker>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QScrollBar>
 #include "core/diagnostics.h"
 #include <algorithm>
 #include <functional>
 
 namespace smoothmail {
 namespace {
+
+class MessageTreeView final : public QTreeView
+{
+public:
+    using QTreeView::QTreeView;
+    void scrollTo(const QModelIndex &index, ScrollHint hint = EnsureVisible) override
+    {
+        // Selection should reveal the row vertically, not align a wide subject
+        // cell with the viewport. Explicit horizontal scrolling stays available.
+        const int horizontal = horizontalScrollBar()->value();
+        QTreeView::scrollTo(index, hint);
+        horizontalScrollBar()->setValue(horizontal);
+    }
+};
 
 QIcon applicationIcon()
 {
@@ -294,7 +309,7 @@ void MainWindow::createPanes()
     connect(m_importantOnly, &QCheckBox::toggled, this, [this] { requestPage(true); });
     connect(m_unreadOnly, &QCheckBox::toggled, this, [this] { requestPage(true); });
     connect(m_page, &QSpinBox::valueChanged, this, [this] { requestPage(); });
-    auto *messages = new QTreeView(listPane); listLayout->addWidget(messages);
+    auto *messages = new MessageTreeView(listPane); listLayout->addWidget(messages);
     m_messageView = messages;
     messages->setObjectName(QStringLiteral("messageList"));
     messages->installEventFilter(this);
