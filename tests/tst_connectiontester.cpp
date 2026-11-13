@@ -26,27 +26,107 @@ private slots:
         if (!output.isEmpty()) QVERIFY(diagnostics::start(output + QStringLiteral("/transport-diagnostics")));
     }
     void cleanupTestCase() { diagnostics::finish(); }
-    void duplicateFolderFailureHasCorrelatedPrivateDiagnosticsAndCanRetry()
+    void duplicateFolderListingIsMergedBeforeFetching_data()
     {
+        QTest::addColumn<int>("kind");
+        QTest::newRow("same-batch") << 0;
+        QTest::newRow("response-16-duplicates-2-across-batches") << 1;
+        QTest::newRow("placeholder-before-selectable") << 2;
+        QTest::newRow("selectable-before-placeholder") << 3;
+        QTest::newRow("both-noselect") << 4;
+        QTest::newRow("separator-conflict") << 5;
+        QTest::newRow("non-inbox-case-distinct") << 6;
+        QTest::newRow("raw-response-limit") << 7;
+        QTest::newRow("inbox-case-normalized") << 8;
+    }
+    void duplicateFolderListingIsMergedBeforeFetching()
+    {
+        QFETCH(int, kind);
         QTemporaryDir temporary; QVERIFY(temporary.isValid()); const auto output = qEnvironmentVariable("SMOOTHMAIL_GUI_OUTPUT");
         const auto directory = output.isEmpty() ? temporary.path() : output + QStringLiteral("/transport-diagnostics");
         if (output.isEmpty()) QVERIFY(diagnostics::start(directory));
         const auto finishSession = qScopeGuard([&] { if (output.isEmpty()) diagnostics::finish(); });
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true; server.duplicateInboxListing = true; QVERIFY(server.listen());
+        const QByteArray inbox("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
+        const QByteArray placeholder("* LIST (\\Noselect \\HasChildren \\X-Placeholder) \"/\" \"INBOX\"");
+        const QByteArray selectable("* LIST (\\HasNoChildren \\Noinferiors \\Marked \\X-Selectable) \"/\" \"INBOX\"");
+        if (kind == 1) {
+            server.listResponses = {"* LIST (\\Noselect) \"/\" \"fixture-1\"", inbox};
+            for (int i = 3; i <= 15; ++i) server.listResponses.append("* LIST (\\Noselect) \"/\" \"fixture-" + QByteArray::number(i) + '"');
+            server.listTailResponses = {inbox}; server.listTailDelayMs = 300;
+        }
+        if (kind == 2) server.listResponses = {placeholder, selectable};
+        if (kind == 3) server.listResponses = {selectable, placeholder};
+        if (kind == 4) server.listResponses = {placeholder, "* LIST (\\Noselect \\HasNoChildren) \"/\" \"INBOX\""};
+        if (kind == 5) server.listResponses = {inbox, "* LIST () \".\" \"INBOX\""};
+        if (kind == 6) server.listResponses = {inbox, "* LIST () \"/\" \"Archive\"", "* LIST () \"/\" \"archive\""};
+        if (kind == 7) for (int i = 0; i < 10001; ++i) server.listResponses.append(inbox);
+        if (kind == 8) server.listResponses = {"* LIST () \"/\" \"inbox\"", inbox};
+        server.messages.insert(7, "Subject: synthetic fixture\r\n\r\nsynthetic body");
         Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("private-account@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")}, {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
         AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted);
         cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
         MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
         service.synchronize(account, QStringLiteral("dummy-private-secret"), {}, &cache, MailService::SyncMode::All);
-        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QCOMPARE(result.first().at(4).toString(), QStringLiteral("フォルダ情報が不正です。"));
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
         QByteArray log;
         for (const auto &name : QDir(directory).entryList({QStringLiteral("*.log")}, QDir::Files)) { QFile file(QDir(directory).filePath(name)); QVERIFY(file.open(QIODevice::ReadOnly)); log += file.readAll(); }
-        const auto match = QRegularExpression(QStringLiteral("folder-metadata-invalid source=sync-commit total=2 empty_count=0 duplicate_count=1 negative_unread_count=0[^\\n]* op=(\\d+)")).match(QString::fromUtf8(log));
-        QVERIFY(match.hasMatch()); const auto suffix = " op=" + match.captured(1).toUtf8();
-        QVERIFY(log.contains("sync-start" + suffix)); QVERIFY(log.contains("sync-list-complete 2" + suffix));
-        QVERIFY(log.contains("sync-cache-rollback" + suffix)); QVERIFY(log.contains("sync-cache-failed" + suffix)); QVERIFY(log.contains("sync-failed 0" + suffix));
+        auto starts = QRegularExpression(QStringLiteral("sync-start op=(\\d+)")).globalMatch(QString::fromUtf8(log));
+        QString operation; while (starts.hasNext()) operation = starts.next().captured(1);
+        QVERIFY(!operation.isEmpty()); const auto suffix = " op=" + operation.toUtf8();
         for (const auto &secret : {account.id.toUtf8(), account.email.toUtf8(), QByteArray("dummy-private-secret"), QByteArray("INBOX"), QByteArray("127.0.0.1")}) QVERIFY(!log.contains(secret));
+        if (kind == 5 || kind == 7) {
+            QCOMPARE(result.first().at(4).toString(), kind == 5 ? QStringLiteral("同名フォルダの階層区切りが一致しません。") : QStringLiteral("フォルダ数が安全上限を超えています。"));
+            QVERIFY(log.contains((kind == 5 ? "sync-list-separator-conflict 2" : "sync-list-raw-total 10001") + suffix));
+            QCOMPARE(server.fullFetchCount, 0);
+            for (const auto &command : server.commands) QVERIFY(!command.contains(" STATUS ") && !command.contains(" SELECT ") && !command.contains(" EXAMINE "));
+            server.duplicateInboxListing = false; server.listResponses.clear(); result.clear();
+            service.synchronize(account, QStringLiteral("dummy-private-secret"), {}, &cache, MailService::SyncMode::All);
+            QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty()); QCOMPARE(server.fullFetchCount, 1);
+            return;
+        }
+        QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString()));
+        const int total = kind == 1 ? 15 : kind == 6 ? 3 : 1;
+        const auto folders = qvariant_cast<QList<MailFolder>>(result.first().at(2)); QCOMPARE(folders.size(), total);
+        QVERIFY(log.contains("sync-list-complete " + QByteArray::number(total) + suffix));
+        if (kind != 6) {
+            QVERIFY(log.contains("sync-list-duplicates-merged 1" + suffix));
+            QVERIFY(log.contains("sync-list-first-duplicate-index " + QByteArray::number(kind == 1 ? 16 : 2) + suffix));
+            QVERIFY(log.contains("sync-list-duplicate-of-index " + QByteArray::number(kind == 1 ? 2 : 1) + suffix));
+        }
+        QVERIFY(log.contains("sync-complete 0" + suffix)); QVERIFY(!log.contains("sync-failed 0" + suffix));
+        int statuses = 0, selections = 0;
+        for (const auto &command : server.commands) {
+            if (command.contains(" STATUS \"INBOX\" ")) ++statuses;
+            if (command.contains(" EXAMINE \"INBOX\"") || command.contains(" SELECT \"INBOX\"")) ++selections;
+        }
+        QCOMPARE(statuses, kind == 4 ? 0 : 1);
+        // One initial SELECT/EXAMINE and one final UIDVALIDITY/count/UIDNEXT
+        // verification; duplicate LIST rows must not start a second such pair.
+        QCOMPARE(selections, kind == 4 ? 0 : 2);
+        if (kind == 1) {
+            int batches = 0;
+            for (const auto &line : log.split('\n')) if (line.contains(" sync-list-batch ") && line.endsWith(suffix)) ++batches;
+            QVERIFY(batches >= 2); // KIMAP's 100 ms emission timer must have split this response.
+        }
+        if (kind == 2 || kind == 3 || kind == 4) {
+            QSet<QByteArray> flags; for (const auto &flag : folders.first().flags) flags.insert(flag.toUpper());
+            QCOMPARE(flags.contains("\\NOSELECT"), kind == 4); QVERIFY(flags.contains("\\HASCHILDREN")); QVERIFY(!flags.contains("\\HASNOCHILDREN")); QVERIFY(!flags.contains("\\NOINFERIORS"));
+            QVERIFY(flags.contains("\\X-PLACEHOLDER"));
+            if (kind != 4) { QVERIFY(flags.contains("\\MARKED")); QVERIFY(flags.contains("\\X-SELECTABLE")); }
+        }
+        QSignalSpy pages(&cache, &AccountRepository::pageLoaded); MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX");
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        const auto page = qvariant_cast<MailPage>(pages.first().first()); QVERIFY(page.error.isEmpty()); QCOMPARE(page.total, kind == 4 ? 0 : 1);
+        QCOMPARE(server.fullFetchCount, kind == 4 ? 0 : 1);
+        if (kind == 0) {
+            QSignalSpy queued(&cache, &AccountRepository::folderQueued);
+            cache.queueFolder(account.id, QStringLiteral("create"), {}, QStringLiteral("Created")); QTRY_COMPARE(queued.size(), 1); QVERIFY(queued.first().at(1).toString().isEmpty());
+            result.clear(); service.synchronize(account, QStringLiteral("dummy-private-secret"), {}, &cache, MailService::SyncMode::All);
+            QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty()); QVERIFY(server.extraFolders.contains("Created"));
+        }
         server.duplicateInboxListing = false; result.clear();
+        server.listResponses.clear(); server.listTailResponses.clear(); server.listTailDelayMs = 0;
         service.synchronize(account, QStringLiteral("dummy-private-secret"), {}, &cache, MailService::SyncMode::All);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
     }

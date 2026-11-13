@@ -27,6 +27,7 @@
 #include <QEventLoop>
 #include <QMutex>
 #include <QSet>
+#include <QHash>
 #include <QTimer>
 #include <QSslSocket>
 #include <functional>
@@ -36,6 +37,22 @@ extern "C" {
 
 namespace smoothmail {
 namespace {
+bool hasFolderFlag(const QList<QByteArray> &flags, const QByteArray &wanted)
+{
+    for (const auto &flag : flags) if (flag.compare(wanted, Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
+void mergeFolderFlags(QList<QByteArray> &flags, const QList<QByteArray> &incoming)
+{
+    // A hierarchy placeholder must not hide a selectable description of the
+    // same mailbox. Preserve role/extension flags rather than dropping a row.
+    const bool selectable = !hasFolderFlag(flags, "\\Noselect") || !hasFolderFlag(incoming, "\\Noselect");
+    for (const auto &flag : incoming) if (!hasFolderFlag(flags, flag)) flags.append(flag);
+    if (selectable) flags.removeIf([](const QByteArray &flag) { return flag.toUpper() == "\\NOSELECT"; });
+    if (hasFolderFlag(flags, "\\HasChildren")) flags.removeIf([](const QByteArray &flag) {
+        const auto upper = flag.toUpper(); return upper == "\\HASNOCHILDREN" || upper == "\\NOINFERIORS";
+    });
+}
 thread_local const std::atomic_bool *syncCancellation = nullptr;
 bool interrupted() { return QThread::currentThread()->isInterruptionRequested() || (syncCancellation && syncCancellation->load()); }
 struct CancellationScope {
@@ -265,6 +282,10 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             diagnostics::event("sync-list");
             const auto listFolders = [&]() -> QString {
             folders.clear();
+            struct ListedFolder { qsizetype position; qint64 firstResponse; };
+            QHash<QString, ListedFolder> listed;
+            qint64 rawCount = 0, duplicates = 0, firstDuplicate = 0, duplicateOf = 0;
+            QString listError;
             KIMAP::ListJob listing(&session);
             listing.setOption(KIMAP::ListJob::IncludeUnsubscribed);
             connect(&listing, &KIMAP::ListJob::mailBoxesReceived, &listing,
@@ -272,11 +293,38 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     diagnostics::event("sync-list-batch", boxes.size());
                     if (boxes.size() != flags.size()) diagnostics::event("sync-list-flags-count-mismatch", flags.size());
                     for (qsizetype i = 0; i < boxes.size(); ++i) {
-                        folders.append({boxes.at(i).name, boxes.at(i).separator, flags.value(i), 0});
+                        ++rawCount;
+                        if (!listError.isEmpty()) continue;
+                        if (rawCount > 10000) { listError = QStringLiteral("フォルダ数が安全上限を超えています。"); continue; }
+                        const auto &box = boxes.at(i);
+                        const auto found = listed.constFind(box.name);
+                        if (!box.name.isEmpty() && found != listed.cend()) {
+                            if (folders.at(found->position).separator != box.separator) {
+                                diagnostics::event("sync-list-separator-conflict", rawCount);
+                                diagnostics::event("sync-list-conflict-of-index", found->firstResponse);
+                                diagnostics::event("sync-list-first-separator", folders.at(found->position).separator.unicode());
+                                diagnostics::event("sync-list-conflicting-separator", box.separator.unicode());
+                                listError = QStringLiteral("同名フォルダの階層区切りが一致しません。"); continue;
+                            }
+                            if (!duplicates++) { firstDuplicate = rawCount; duplicateOf = found->firstResponse; }
+                            mergeFolderFlags(folders[found->position].flags, flags.value(i));
+                        } else {
+                            // Empty names remain invalid; do not disguise them
+                            // as a successfully normalized mailbox.
+                            if (!box.name.isEmpty()) listed.insert(box.name, {folders.size(), rawCount});
+                            folders.append({box.name, box.separator, flags.value(i), 0});
+                        }
                     }
                 });
             auto jobError = runJob(listing);
             if (!jobError.isEmpty()) return jobError;
+            diagnostics::event("sync-list-raw-total", rawCount);
+            if (duplicates) {
+                diagnostics::event("sync-list-duplicates-merged", duplicates);
+                diagnostics::event("sync-list-first-duplicate-index", firstDuplicate);
+                diagnostics::event("sync-list-duplicate-of-index", duplicateOf);
+            }
+            if (!listError.isEmpty()) return listError;
             diagnostics::event("sync-list-complete", folders.size());
             if (folders.size() > 10000) return QStringLiteral("フォルダ数が安全上限を超えています。");
             for (const auto &folder : folders) {

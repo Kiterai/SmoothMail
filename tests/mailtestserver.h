@@ -12,6 +12,7 @@
 #include <limits>
 #include <QDateTime>
 #include <QLocale>
+#include <QTimer>
 
 class MailTestTcpServer final : public QTcpServer
 {
@@ -98,6 +99,8 @@ public:
     QStringList postTlsMechanisms;
     bool provideMailbox = false;
     bool duplicateInboxListing = false;
+    QList<QByteArray> listResponses, listTailResponses;
+    int listTailDelayMs = 0;
     QSet<QByteArray> extraFolders;
     bool rejectFolderChanges = false;
     qint64 advertisedMessageCount = -1;
@@ -233,11 +236,20 @@ private:
                 write(m_protocol == Protocol::Imap ? imapEmptyChallenge : QByteArray("334 "));
             }
         } else if (provideMailbox && command == "LIST") {
-            write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
-            if (duplicateInboxListing) write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
-            if (provideDraftFolder) write("* LIST (\\Drafts) \"/\" \"Drafts\"");
-            for (const auto &name : extraFolders) write("* LIST () \"/\" \"" + name + '"');
-            write(m_tag + " OK list completed");
+            if (!listResponses.isEmpty()) { for (const auto &response : listResponses) write(response); }
+            else {
+                write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
+                if (duplicateInboxListing) write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
+                if (provideDraftFolder) write("* LIST (\\Drafts) \"/\" \"Drafts\"");
+                for (const auto &name : extraFolders) write("* LIST () \"/\" \"" + name + '"');
+            }
+            const auto completeList = [socket = QPointer<QSslSocket>(m_socket), tag = m_tag, tail = listTailResponses] {
+                if (!socket || !socket->isOpen()) return;
+                for (const auto &response : tail) socket->write(response + "\r\n");
+                socket->write(tag + " OK list completed\r\n");
+            };
+            if (listTailDelayMs) QTimer::singleShot(listTailDelayMs, this, completeList);
+            else completeList();
         } else if (provideMailbox && (command == "CREATE" || command == "RENAME" || command == "DELETE")) {
             if (rejectFolderChanges) { write(m_tag + " NO synthetic permission denied"); return; }
             const auto names = line.split('"');
