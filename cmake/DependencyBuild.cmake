@@ -43,9 +43,12 @@ endfunction()
 
 # Bootstrap Ninja without requiring Ninja (or Python) on PATH.
 function(smoothmail_prepare_ninja)
-    smoothmail_fetch_dependency(ninja source)
     string(JSON commit GET "${manifest}" ninja commit)
     set(binary "${DEPENDENCY_ROOT}/build/tools/ninja-${commit}")
+    file(MAKE_DIRECTORY "${DEPENDENCY_ROOT}/build/tools")
+    # Independent dependency stages may share this bootstrap tool.
+    file(LOCK "${binary}.lock" GUARD FUNCTION TIMEOUT 300)
+    smoothmail_fetch_dependency(ninja source)
     smoothmail_dependency_command("${CMAKE_COMMAND}" -S "${source}" -B "${binary}"
         -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
         -DCMAKE_CXX_FLAGS=/utf-8)
