@@ -1,0 +1,32 @@
+include_guard(GLOBAL)
+
+function(smoothmail_check_qt_review_output sdk output)
+    get_filename_component(output "${output}" ABSOLUTE)
+    file(REAL_PATH "${sdk}" sdk_real)
+    if(IS_SYMLINK "${output}")
+        message(FATAL_ERROR "Linked Qt source-review output.")
+    endif()
+    # Resolve the existing ancestor as well as lexical '..'. The output itself
+    # normally does not exist yet, and its parent can be an SDK directory alias.
+    set(ancestor "${output}")
+    while(NOT EXISTS "${ancestor}")
+        get_filename_component(parent "${ancestor}" DIRECTORY)
+        if(parent STREQUAL ancestor)
+            message(FATAL_ERROR "Cannot resolve Qt output ancestor.")
+        endif()
+        set(ancestor "${parent}")
+    endwhile()
+    file(REAL_PATH "${ancestor}" ancestor_real)
+    file(RELATIVE_PATH relative "${ancestor}" "${output}")
+    cmake_path(APPEND ancestor_real "${relative}" OUTPUT_VARIABLE output_real)
+    cmake_path(NORMAL_PATH output_real)
+    # This is a Windows/MSVC builder: drive and directory case must not bypass
+    # preservation of the existing SDK.
+    string(TOLOWER "${sdk_real}" sdk_folded)
+    string(TOLOWER "${output_real}" output_folded)
+    cmake_path(IS_PREFIX sdk_folded "${output_folded}" NORMALIZE inside_sdk)
+    cmake_path(IS_PREFIX output_folded "${sdk_folded}" NORMALIZE contains_sdk)
+    if(inside_sdk OR contains_sdk)
+        message(FATAL_ERROR "Qt source review must not modify/contain the existing SDK.")
+    endif()
+endfunction()

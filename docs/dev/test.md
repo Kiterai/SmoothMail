@@ -70,6 +70,6 @@ ctest --test-dir build/package-tests --output-on-failure
 
 CRTのimport選択ガードは `cmake -P tests/cmake/run_crt_guards.cmake` で単独実行できます。MSVC x64開発者環境では `cmake -P tests/cmake/run_crt_binary_guards.cmake` で、実再配布DLLのコピー一致・署名・版を確認し、改変コピー・未署名・版混在・不正/x86 PEの拒否を試験します。原本は変更せず、合成コピーは `build/` 以下に作ります。`VCToolsRedistDir` がある環境で配布補助をconfigureすると、これらもCTestへ登録されます。
 
-ソースアーカイブの検証・非改変・パッチ適用と再利用のガードは `cmake -P tests/cmake/run_source_archive_guards.cmake` です。Git管理情報を作らず、ネットワークを使わずに12ケースを確認します。配布補助のCTestにも含まれます。
+ソースアーカイブの検証・非改変・パッチ適用と再利用のガードは `cmake -P tests/cmake/run_source_archive_guards.cmake` です。Git管理情報を作らず、ネットワークを使わずに12ケースと、Qt再構築先のSDK保護6ケースを確認します。配布補助のCTestにも含まれます。
 
 実Google認可・送受信などの手動プローブ（`tests/manual/`）は通常テストに含めません。実行には対象アカウントの本人認可と、通信・メール作成・資格情報保存それぞれの許可が必要です。
