@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include "messageviewer.h"
+#include "aboutdialog.h"
 #include "core/threading.h"
 #include "core/displaytime.h"
 #include "foldermodel.h"
@@ -198,6 +199,17 @@ void MainWindow::createMenus()
     auto *addAccount = pendingAction(settings, QStringLiteral("アカウントの追加"), "addAccountAction");
     connect(addAccount, &QAction::triggered, this, &MainWindow::addAccountRequested);
     auto *system = settings->addAction(QStringLiteral("システム設定")); system->setObjectName(QStringLiteral("systemSettingsAction")); connect(system, &QAction::triggered, this, &MainWindow::systemSettingsRequested);
+    auto *help = menuBar()->addMenu(QStringLiteral("ヘルプ"));
+    auto *about = help->addAction(QStringLiteral("このソフトウェアについて..."));
+    about->setObjectName(QStringLiteral("aboutAction"));
+    connect(about, &QAction::triggered, this, [this] {
+        if (auto *dialog = findChild<AboutDialog *>()) {
+            dialog->show(); dialog->raise(); dialog->activateWindow(); return;
+        }
+        auto *dialog = new AboutDialog(this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->open();
+    });
 }
 
 void MainWindow::createPanes()

@@ -113,6 +113,7 @@ if(SMOOTHMAIL_BUILD_MIME)
 endif()
 
 add_library(smoothmail_ui STATIC
+    src/ui/aboutdialog.cpp src/ui/aboutdialog.h
     src/ui/visiblesplitter.h
     src/ui/systemsettingsdialog.cpp src/ui/systemsettingsdialog.h
     src/ui/downloadhistorydialog.cpp src/ui/downloadhistorydialog.h
@@ -130,6 +131,7 @@ add_library(smoothmail_ui STATIC
 target_include_directories(smoothmail_ui PUBLIC src)
 target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets smoothmail_storage smoothmail_threading)
 smoothmail_target_defaults(smoothmail_ui)
+include(cmake/LicenseResources.cmake)
 
 qt_add_executable(smoothmail WIN32 src/main.cpp src/app/applicationcontroller.cpp src/app/applicationcontroller.h)
 target_link_libraries(smoothmail PRIVATE smoothmail_ui smoothmail_transport smoothmail_oauth smoothmail_auth)
@@ -165,6 +167,11 @@ if(SMOOTHMAIL_BUILD_GUI_SMOKE)
 endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(tst_aboutdialog tests/tst_aboutdialog.cpp)
+    target_link_libraries(tst_aboutdialog PRIVATE smoothmail_ui Qt6::Test)
+    smoothmail_target_defaults(tst_aboutdialog)
+    add_test(NAME aboutdialog COMMAND tst_aboutdialog)
+    set_tests_properties(aboutdialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     add_executable(tst_diagnostics tests/tst_diagnostics.cpp)
     target_link_libraries(tst_diagnostics PRIVATE smoothmail_diagnostics Qt6::Test)
     smoothmail_target_defaults(tst_diagnostics)

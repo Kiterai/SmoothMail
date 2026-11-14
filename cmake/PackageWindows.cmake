@@ -46,6 +46,7 @@ endif()
 set(APPLICATION_BUILD "${job}/build")
 set(BUILD_TESTING OFF)
 set(SMOOTHMAIL_DISTRIBUTION ON)
+set(SMOOTHMAIL_LEGAL_DIR "${LEGAL_DIR}")
 include("${CMAKE_CURRENT_LIST_DIR}/BuildWindows.cmake")
 set(stage "${job}/runtime")
 smoothmail_dependency_command("${CMAKE_COMMAND}"
