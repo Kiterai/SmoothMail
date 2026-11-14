@@ -44,7 +44,7 @@ execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${repository}" rev-parse HEAD
     OUTPUT_VARIABLE app_commit OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
 # Only tracked build/source/test/license materials. No .git, agent logs, local
 # configuration, credentials, caches, receipts or personal environment dumps.
-set(archive_paths CMakeLists.txt CMakePresets.json LICENSE THIRD_PARTY_NOTICES.md README.md src tests tools cmake patches docs/dev spec)
+set(archive_paths CMakeLists.txt CMakePresets.json LICENSE THIRD_PARTY_NOTICES.md src tests tools cmake patches docs/dev spec)
 source_archive(SmoothMail "${repository}" "${app_commit}")
 unset(archive_paths)
 
