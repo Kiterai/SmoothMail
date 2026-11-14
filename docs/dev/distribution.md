@@ -18,7 +18,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=
 
 依存の取得・Release構築→アプリのReleaseビルド→必要DLL・プラグインとCRTの収集→ライセンス収集→個人パス・Debug混入の検査→ZIP化を行います。制御はCMake、PE/テキスト/ZIP検査と決定的圧縮は`tools/windows-package/`のC++補助ツールです。Python/curlを呼びません。`SmoothMail/`へ展開し、**smoothmail.exeを直接起動**します。開発用バッチ、PDB、DB、ログ、資格情報、CMakeキャッシュ、補助ツールは同梱しません。
 
-新規の専用ビルドディレクトリを使い、既存ビルドやZIPは上書きしません。SDKは変更せず、Qtの再配置用処理はステージ先のコピーだけへ適用します。未解決／競合DLL、指定外ディレクトリからのDLL解決、Debug混入、ライセンス不足、埋め込まれた絶対パスを検出すると公開せず停止します。
+新規の専用ビルドディレクトリを使い、既存ビルドやZIPは上書きしません。SDKは変更せず、Qtの再配置用処理はステージ先のコピーだけへ適用します。未解決／競合DLL、指定外ディレクトリからのDLL解決、Debug混入、ライセンス不足、未承認の埋め込みパスを検出すると公開せず停止します。
 
 ## legal/manifest.json
 
@@ -43,15 +43,17 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=
 
 自動検査はDLLへの通知の対応付けを確認するもので、法的条件の充足を保証するものではありません。LGPLの対応ソース提供・改変通知・差替え可能性や、Microsoft CRT等の再配布権限は配布担当者が確認してください。
 
+実候補39ファイルの[事前監査資料・確認事項](distribution-legal-audit.md)を作成しました。`cmake/PrepareWindowsLegalReview.cmake`は原文と19コンポーネントの対応表をレビュー用へ収集します。Qt/CRT等の不足を残す`manifest.review.json`は、配布承認済みの`manifest.json`ではありません。
+
 ## プライバシーと検証
 
-ZIPは固定タイムスタンプ・権限・相対名で作り、ユーザー名やホスト名を記録しません。アプリと依存のRelease構築ではソースパスをマッピングし、最後にASCII／両alignmentのUTF-16の絶対パスと入力ディレクトリ情報を検査します。既存Qtや依存DLLがビルドパスを保持していた場合も停止します。バイナリを書き換えて検査を回避することはしません。
+ZIPは固定タイムスタンプ・権限・相対名で作り、ユーザー名やホスト名を記録しません。アプリと依存のRelease構築ではソースパスをマッピングし、最後にASCII／両alignmentのUTF-16の絶対パスと入力ディレクトリ情報を検査します。Qt/SASLの確認済み供給元情報だけは[ハッシュと範囲を固定したポリシー](distribution-path-policy.md)で許容します。入力root・ユーザー名・PC名は許容範囲でも検査します。バイナリを書き換えて検査を回避することはしません。
 
 オフライン検証: `tools/windows-package`をReleaseでconfigure/buildし、QtのbinをPATHへ追加して`ctest --test-dir <補助ツールのbuild> --output-on-failure`を実行します。合成PE・パス・legal・非上書き・決定的ZIPを検査し、CMake/libarchiveで独立にZIP展開・SHA256照合も行います。実Release ZIPの検証とは区別します。
 
 ハッシュ一覧はZIP内の`runtime-sha256.txt`です。自動検査だけで任意の個人情報を完全に検出できるとは限らないため、実配布前には成果物・通知をレビューし、開発ツールのないWindowsで展開・直接起動・通信も確認してください。
 
-この環境では統合処理によるDebug/Release依存とアプリの構築、Release DLL収集まで確認しました。KConfigの設定更新ツール用の絶対パスは[限定パッチ](../../patches/kconfig/README.md)で対処し、KConfig DLLの検査を通過しました。ただし実ランタイム全体の検査は他のDLLで停止しています。legal一式の監査、実Release ZIPの生成・クリーン環境での起動確認、キャッシュなしの全取得検証も未完了です。[未完了事項](../../spec/inprogress/distribution.md)を参照してください。Debugランタイムや合成ZIPを配布物の代用にはしていません。
+この環境では統合処理によるDebug/Release依存とアプリの構築、Release DLL収集を確認しました。KConfigの設定更新ツール用の絶対パスは[限定パッチ](../../patches/kconfig/README.md)で対処し、その後のGNU/KCrash/KIO対策と供給元情報の限定判定により統合39ファイルがパス検査を通過しました。legal一式の監査、実Release ZIPの生成・クリーン環境での起動確認、キャッシュなしの全取得検証は未完了です。[未完了事項](../../spec/inprogress/distribution.md)を参照してください。Debugランタイムや合成ZIPを配布物の代用にはしていません。
 
 DIST-04の設定調査では、通常のインストール先指定だけで現行DLLを再配置可能にする設定は見つかりませんでした。静的化は共有状態や再リンク条件への影響があるため採用せず、Windowsでは未使用の`checkUpdate()`だけを明示的に無効化しています。呼出しは警告のみで、設定変更や外部プロセス実行は行いません。ABIは維持しますが、上流との機能差がある変更済みLGPLライブラリとして通知・対応ソース提供を行う必要があります。
 
@@ -84,4 +86,4 @@ Qt/SASLの外部配布物・上流由来のパスは除去不要とする利用�
 
 残る検出はQt10ファイルとSASL1ファイルのみです。QtはSDK原本とのSHA256一致・署名Valid、SASLは上流固定値との一致を確認しました。全バイナリは指定した入力元とSHA256が一致しています。詳細は`agent/integrated-runtime-builder-info-audit.md`、検査対象は`build/integrated-privacy-runtime`です。
 
-自動配布検査はまだ供給元情報も拒否する従来規則のままであり、ZIP生成の検査通過を意味しません。許容する情報の由来判定、legal監査、実ZIP・クリーン環境検証は別途必要です。SDK・通常起動runtimeは変更していません。
+その後、[DIST-04の検査側対応](distribution-path-policy.md)を実装し、同じ39ファイルが自動パス検査を通過しました。legal監査、実ZIP・クリーン環境検証は別途必要です。SDK・通常起動runtimeは変更していません。
