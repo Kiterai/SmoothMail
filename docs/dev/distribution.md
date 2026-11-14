@@ -57,7 +57,7 @@ DIST-04の設定調査では、通常のインストール先指定だけで現�
 
 ### KConfig対応後に残る検査停止の原因
 
-当初は39ファイルの収集ランタイムで15 DLLが拒否されました。GNU2件はビルド設定で対処し、新しい収集ランタイムでは残り13 DLLが拒否されています。
+当初は39ファイルの収集ランタイムで15 DLLが拒否されました。GNU2件の対処後の収集ランタイムでは13 DLLが拒否されました。以下はその時点の調査結果です。
 
 | 対象 | 原因 |
 |---|---|
@@ -68,4 +68,12 @@ DIST-04の設定調査では、通常のインストール先指定だけで現�
 
 Qt10件は供給元SDKとSHA256が一致し、両方のAuthenticodeはValidでした。今回のビルドが挿入した情報ではありませんが、現行検査は供給元情報と作業者情報を区別しません。PDB非同梱だけでは参照文字列は消えず、DLLを事後書換えすれば供給元署名を維持できません。またKIOのpluginパスは権限昇格workerの信頼判定にも使われるため、単純な空文字化は安全ではありません。
 
-GNUは`native/gnu-runtime-v1`へ別構築し、旧prefixや既存Qtを上書きしていません。gettextホストツールは製品向けDLLと別rootで管理します。詳細は[依存構築](dependencies.md)を参照してください。固定既定値の過剰検出の精密化、KCrash/KIOの作業者パスの除去、署名SDK由来の情報の扱いは残る別課題です。検査規則・既存SDK・他DLLを事後変更する対処はしていません。
+GNUは`native/gnu-runtime-v1`へ別構築し、旧prefixや既存Qtを上書きしていません。gettextホストツールは製品向けDLLと別rootで管理します。詳細は[依存構築](dependencies.md)を参照してください。KCrash/KIOには下記の限定対応を実施しました。固定既定値の過剰検出の精密化と署名SDK由来の情報の扱いは残る課題です。検査規則・既存SDK・他DLLを事後変更する対処はしていません。
+
+### KCrash/KIOの限定対応
+
+独立分岐`fix/kcrash-kio-private-paths`では、[KCrash](../../patches/kcrash/README.md)と[KIO](../../patches/kio/README.md)へ限定パッチを追加しました。
+Windowsのビルド先フォールバックを除き、admin workerはプラグイン生成・外部worker起動へ進む前に明示拒否します。通常のKIO/TLS APIとfavicon除外は維持します。
+独立prefixでのRelease収集物では両DLLが検査を通過し、拒否は既存GNU/SASL/Qt由来の13件でした。これは他作業のnative再構築との統合結果ではなく、Qt SDKも検査規則も変更していません。配布ZIP・legal監査・クリーン環境検証は引き続き未完了です。
+
+2026-11-14、GNU対策済みの`master`へ統合しました。新nativeプロフィールとパッチハッシュ別KIOビルド先を維持し、KCrash/KIOのDebug/Release構築、Releaseアプリ構築、ホスト20 CTest対象が成功しました（`oauthclient`・`connectiontester`・`mailtransport`は除外）。統合後の新規収集物全体の監査は未実施であり、残る拒否件数は未確定です。

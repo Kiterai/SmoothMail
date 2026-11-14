@@ -16,7 +16,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWindows.cmake
 - vcpkg本体は固定URL/SHA512で内部取得します。用途はGNU gettext/libintl/libiconvのみで、Qtのport/toolchainは導入しません。
 - アーカイブはCMakeでHTTPS取得・TLS証明書検証・ハッシュ検証します。途中ファイルを再利用せず、既存キャッシュの不一致は上書きせず停止します。プロキシ・CA設定はCMakeが使える環境にしてください。TLS検証を無効にする回避策はありません。
 - プロジェクトのスクリプト・テストはCMake/C++です。PythonはKI18n上流のconfigure/翻訳データ生成からのみ間接利用します。
-- SolidとそのFlex/Bisonも標準入口で構築します。独自パッチ6件・原本分離・receipt照合を維持します。
+- SolidとそのFlex/Bisonも標準入口で構築します。変更対象7依存のパッチ・原本分離・receipt照合を維持します。
 - 既存presetだけ使う場合は、最初に`cmake -DQt6_ROOT=... -P cmake/PrepareBuildTools.cmake`を実行します。カスタム依存rootでは`CMAKE_MAKE_PROGRAM`もその内部Ninjaへ指定してください。
 
 以下は個別ステージの説明です。`CMAKE_MAKE_PROGRAM`の明示指定は既存環境向けの任意指定で、省略すると固定Ninjaを内部準備します。
@@ -142,7 +142,17 @@ KIMAPには`patches/kimap/26.08.3-fix-sasl-continuation.patch`を適用します
 
 KSMTPにも`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。STARTTLS後に以前のAUTH等の広告情報を残さないための修正です。未修正版ではTLS後にXOAUTH2が広告されなくてもAUTHを送ることを合成サーバーで再現し、修正後はAUTHと秘密情報を送らず拒否することを確認しています。差分・通知は`share/licenses/ksmtp`へ配置します。
 
-変更済みKIO/KIMAP/KSMTP/KMime/KCodecsとWindows向けKConfigの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`cmake -P tests/cmake/run_build_guards.cmake`で検証できます。
+変更済みKIO/KIMAP/KSMTP/KMime/KCodecsとWindows向けKConfig/KCrashの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`cmake -P tests/cmake/run_build_guards.cmake`で検証できます。
+
+### WindowsのKCrash/KIOの実行時パス
+
+KCrashは`BuildKcrashDependencies.cmake`を経由し、DrKonqi探索からビルド時prefixだけを除きます。
+KIOはfavicon除外を含む`6.31.0-smoothmail-portable-core.patch`を使い、Windowsの補助ツール探索を実行時配置に限定/変更し、admin workerは明示拒否します。元prefixにだけあるhelperの利用はできなくなります。
+経緯・機能制限・ライセンス・撤去条件は[KCrashパッチ説明](../../patches/kcrash/README.md)と[KIOパッチ説明](../../patches/kio/README.md)を参照してください。
+
+既存Windows prefixはKCrash→KIOの順で再構築してください。KCrash receiptがない場合や、KIO receiptが旧favicon単独差分の場合はアプリconfigureを拒否します。
+`SMOOTHMAIL_TEST_KIO=ON`では合成helper/プラグインを使う`portablekde`も登録します。DrKonqiや外部workerは起動せず、admin拒否・helper解決/未配置エラー・TLSエラー情報等を確認します。
+深いworktreeではWindowsの生成ヘッダincludeがパス長制限に当たることがあります。その場合は短い独立`DEPENDENCY_ROOT`を指定してください。
 
 ### Windows向けKConfigの限定パッチ
 

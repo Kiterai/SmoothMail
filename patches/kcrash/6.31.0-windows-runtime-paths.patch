@@ -1,0 +1,25 @@
+diff --git a/src/config-kcrash.h.cmake b/src/config-kcrash.h.cmake
+--- a/src/config-kcrash.h.cmake
++++ b/src/config-kcrash.h.cmake
+@@ -2,4 +2,7 @@
+ #cmakedefine01 KCRASH_CORE_PATTERN_RAISE
+ 
+ #define kde_socklen_t socklen_t
++// SmoothMail contributors, 2026-11-14: Windows uses runtime locations only.
++#ifndef _WIN32
+ #define KDE_INSTALL_FULL_LIBEXECDIR "${KDE_INSTALL_FULL_LIBEXECDIR}"
++#endif
+diff --git a/src/kcrash.cpp b/src/kcrash.cpp
+--- a/src/kcrash.cpp
++++ b/src/kcrash.cpp
+@@ -196,7 +196,10 @@ static QStringList libexecPaths()
+         + QStringList{
+             QCoreApplication::applicationDirPath(), // then look where our application binary is located
+             QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath), // look where libexec path is (can be set in qt.conf)
++            // SmoothMail contributors, 2026-11-14: never retain a Windows builder's prefix.
++#ifndef Q_OS_WIN
+             QFile::decodeName(KDE_INSTALL_FULL_LIBEXECDIR) // look at our installation location
++#endif
+         };
+     return list;
+ }

@@ -10,7 +10,7 @@ SmoothMail独自コードのMITライセンスは、Qt・KDEその他の第三�
 - 取得元: https://invent.kde.org/frameworks/kio
 - 固定コミット: `2dd4bdc916a6f46d297d8788f5b628181483315d`（v6.31.0）。
 - SmoothMailによる変更日: 2026-11-12。
-- 変更差分・説明: `patches/kio/6.31.0-disable-favicon-cache.patch`、`patches/kio/README.md`。
+- 変更差分・説明: Windowsの現行差分は`patches/kio/6.31.0-smoothmail-portable-core.patch`、説明は`patches/kio/README.md`。元の`6.31.0-disable-favicon-cache.patch`は履歴として保持します。
 
 上流の`src/core/faviconscache.cpp`と`faviconscache_p.h`は、`GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL`と表示されています。SmoothMail向けのKIOCoreビルドでは、その実装ファイルのコンパイルと対応privateヘッダの利用を除外します。
 
@@ -19,6 +19,25 @@ LGPL-2.0-onlyと表示された`src/core/global.cpp`を変更し、`KIO::favIcon
 KIOはファイルごとに許諾条件が異なります。対象2ファイルの除外だけで、残るコード・生成物・翻訳・推移依存がすべてMITで配布可能になったとは主張しません。LGPLの告知・対応ソース・ライブラリ差替え可能性等の義務も残ります。
 
 ビルド手順は、インストール先の`share/licenses/kio`へ上流の`LICENSES`ディレクトリ、変更パッチ、変更通知を配置します。配布時には、採用DLLに対応した原本ソース・パッチ・ビルド手順を提供できるよう整備する必要があります。開発用prefix全体を、そのまま製品の配布物として扱ってはいけません。
+
+2026-11-14、SmoothMail contributorsによる追加変更として、Windowsのhelper探索からビルドprefixを除き、
+EXE隣・Qt/KLibexecの実行時位置・既存のPATH検索を用途に応じて利用します。kioexec未配置はエラーとし、
+Windowsのadmin workerは信頼判定を緩める代わりに明示的に拒否します。元prefixにだけあるhelperの探索とadmin利用を失う非標準ビルドです。
+変更対象`desktopexecparser.cpp`のLGPL-2.0-or-later、`worker.cpp`のLGPL-2.0-onlyと著作権を保持します。
+詳細な制限・検証・撤去条件・対応ソース等の義務はパッチ説明に記載します。
+
+## KCrash 6.31.0：Windowsのビルド先フォールバックを除去
+
+- 上流: https://invent.kde.org/frameworks/kcrash
+- 固定commit: `9ee8786eeb2296199f91038f92e70af36f827e8e`（v6.31.0）。
+- 変更日・変更者: 2026-11-14、SmoothMail contributors。
+- 差分・経緯・制限・許諾条件: `patches/kcrash/6.31.0-windows-runtime-paths.patch`、`patches/kcrash/README.md`。
+
+WindowsのDrKonqi探索で、元のビルドprefixだけを除きます。環境変数・EXE隣・Qtの実行時配置の探索と公開APIは維持しますが、
+元prefixにしかないDrKonqiは見つからなくなります。上流の標準実装ではありません。
+変更対象`kcrash.cpp`のLGPL-2.0-or-laterと著作権を維持します。prefixの`share/licenses/kcrash`へLICENSES・差分・説明・receiptを配置します。
+製品配布には、対応する完全な変更済みライブラリソース・必要な構築スクリプトの提供、通知、
+適用される改変/再リンク等の条件への対応が引き続き必要です。
 
 ## KIMAP 26.08.3：SASL継続応答とエラー通知の修正
 

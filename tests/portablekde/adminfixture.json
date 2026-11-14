@@ -1,0 +1,12 @@
+{
+  "KPlugin": { "Id": "smoothmail-admin-fixture", "Name": "Synthetic admin fixture", "Version": "1" },
+  "KDE-KIO-Protocols": {
+    "admin": {
+      "Class": ":local",
+      "input": "filesystem",
+      "output": "filesystem",
+      "reading": true,
+      "listing": [ "Name", "Type", "Size" ]
+    }
+  }
+}
