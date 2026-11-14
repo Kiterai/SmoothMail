@@ -25,7 +25,7 @@ cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 
 `manifest.review.json`・`source-manifest.review.json` は完成品の証明ではありません。原文と実際の組込みコード、全依存と変更差分、再構築・DLL差替え・最終バイナリとの対応を確認します。`review_only` 資料は改名しても配布入力として拒否されます。
 
-提供済み依存アーカイブの直接利用経路を追加し、構築用Solid／WinFlexBisonも収集対象にしました。[アーカイブからの構築](build.md#再ビルド別環境)と固定Gitをネットワーク再取得する通常経路は区別します。全提供物からの再構築・差替え・最終バイナリ対応の結果は[未完了項目](../../spec/inprogress/distribution.md#dist-02-配布物の監査)で管理し、実装追加だけで提供物を承認済みとは扱いません。
+提供済み依存アーカイブの直接利用経路を追加し、構築用Solid／WinFlexBisonも収集対象にしました。[アーカイブからの構築](build.md#再ビルド別環境)と固定Gitをネットワーク再取得する通常経路は区別します。最新23アーカイブから標準再構築・同一EXEへの改変DLL差替えに成功し、隔離Windowsで通常／改変各247件が失敗・スキップなしで通過しました。[検証記録](../../agent/source-rebuild-regression-followup.md)。最終通知・legal付き製品ZIP・公開先の確定は[未完了項目](../../spec/inprogress/distribution.md#dist-02-配布物の監査)に残し、技術検証だけで配布承認済みとは扱いません。
 
 legalの形式例（全DLLを一意にコンポーネントへ割り当てます）：
 
