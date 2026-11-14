@@ -53,3 +53,7 @@
 - 実行から`oauthclient|connectiontester|mailtransport`を除外。実サービス認証や実メール操作は実施していない。
 - 統合後の新規収集物全体の監査は未実施。別々の対処時の13件から統合後の拒否件数を推測して確定しない。
 - 既存の通常起動runtime・Qt SDKは変更せず、未追跡`.agent-config/`はコミットしない。専用worktree・ブランチの削除やpushは行わない。
+
+後続の統合収集物39ファイルの再検査で、KCrash/KIOCoreを含む自前依存のパス検出なし。
+残る11ファイルは利用者が許容したQt/SASL由来のみ。今回の作業者情報の明示照合も0件。
+詳細: `agent/integrated-runtime-builder-info-audit.md`。

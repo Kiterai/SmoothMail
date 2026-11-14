@@ -76,4 +76,12 @@ GNUは`native/gnu-runtime-v1`へ別構築し、旧prefixや既存Qtを上書き�
 Windowsのビルド先フォールバックを除き、admin workerはプラグイン生成・外部worker起動へ進む前に明示拒否します。通常のKIO/TLS APIとfavicon除外は維持します。
 独立prefixでのRelease収集物では両DLLが検査を通過し、拒否は既存GNU/SASL/Qt由来の13件でした。これは他作業のnative再構築との統合結果ではなく、Qt SDKも検査規則も変更していません。配布ZIP・legal監査・クリーン環境検証は引き続き未完了です。
 
-2026-11-14、GNU対策済みの`master`へ統合しました。新nativeプロフィールとパッチハッシュ別KIOビルド先を維持し、KCrash/KIOのDebug/Release構築、Releaseアプリ構築、ホスト20 CTest対象が成功しました（`oauthclient`・`connectiontester`・`mailtransport`は除外）。統合後の新規収集物全体の監査は未実施であり、残る拒否件数は未確定です。
+2026-11-14、GNU対策済みの`master`へ統合しました。新nativeプロフィールとパッチハッシュ別KIOビルド先を維持し、KCrash/KIOのDebug/Release構築、Releaseアプリ構築、ホスト20 CTest対象が成功しました（`oauthclient`・`connectiontester`・`mailtransport`は除外）。
+
+### 統合後の作業者情報検査
+
+Qt/SASLの外部配布物・上流由来のパスは除去不要とする利用者方針に基づき、新規収集した39ファイルを再検査しました。今回のビルド作業者のパス・ユーザー名・PC名は検出されませんでした。アプリ本体、KCrash/KIOCore、GNUを含む自前依存にもパス検出はありません。
+
+残る検出はQt10ファイルとSASL1ファイルのみです。QtはSDK原本とのSHA256一致・署名Valid、SASLは上流固定値との一致を確認しました。全バイナリは指定した入力元とSHA256が一致しています。詳細は`agent/integrated-runtime-builder-info-audit.md`、検査対象は`build/integrated-privacy-runtime`です。
+
+自動配布検査はまだ供給元情報も拒否する従来規則のままであり、ZIP生成の検査通過を意味しません。許容する情報の由来判定、legal監査、実ZIP・クリーン環境検証は別途必要です。SDK・通常起動runtimeは変更していません。

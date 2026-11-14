@@ -40,4 +40,5 @@
 - **KCrash/KIOの追加対処（独立worktree）:** `fix/kcrash-kio-private-paths`分岐でビルド先フォールバックを除去し、Windowsのadmin workerを明示拒否。KIOのfavicon除外も維持した統合差分を使用。独立prefixで両構成を構築し、Releaseアプリ・ホスト18 CTest対象とDebug追加試験が成功。新しい収集物の個別監査では両DLLが通過し、拒否は旧来GNU/SASL/Qt由来の13件。元作業の未コミット変更や新しいnative構築との統合はしていない。詳細は`agent/kde-runtime-path-patches.md`。
 - **masterへの統合確認:** GNU対策`f69b83c`とKCrash/KIO対策`5d29d85`を統合。新nativeプロフィール・gettextホストツール分離・パッチハッシュ別KIOビルド先を維持。KCrash/KIOのDebug/Release構築、Releaseアプリと試験EXEの構築、ホスト20 CTest対象（`native_runtime_relocated`・`portablekde`を含む）が成功。`oauthclient`・`connectiontester`・`mailtransport`は除外。統合後の収集物全体の監査は未実施で、残る拒否件数は未確定。
 - **設定範囲の調査:** 上流の通常設定によるfull変数/マクロの上書きは効かず、相対libexec指定も絶対prefixが付加されることをconfigure実験で確認。静的KConfigと`/Gy`・`/OPT:REF`で未使用`checkUpdate()`を除去した最小EXEは検査通過したが、同処理を参照する対照EXEは拒否された。静的案は全依存の状態共有・リンク構成・再リンク/ライセンス条件の再検討が必要で、未採用。
+- **統合収集物の再検査:** `764a613`のReleaseから新規収集した39ファイルで、今回の作業者のパス・ユーザー名・PC名の検出0件。残る11ファイルはQt10（SDKとSHA256一致・署名Valid）とSASL1（上流固定値）。利用者はQt/SASLの外部由来パスの保持を許容。自動配布検査は未変更のため、由来判定の実装・legal・実ZIPの検証は引き続き未完了。詳細は`agent/integrated-runtime-builder-info-audit.md`。
 - **完了条件:** ビルド者のパスを埋め込まず、実行ファイル探索の安全性と必要機能を維持して構築し、実ランタイム全体の検査を通す。バイナリ文字列の書換えや検査除外で回避しない。
