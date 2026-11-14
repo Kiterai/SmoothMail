@@ -1,6 +1,6 @@
 # Windows配布物のライセンス・対応ソース監査
 
-確認日: 2026-11-14。対象は`764a613`から収集したRelease候補39ファイル。**事前監査資料であり、配布許諾・最終監査の完了宣言ではありません。**
+確認日: 2026-11-14。部品対応の対象は`764a613`から収集したRelease候補39ファイル。後続の情報ダイアログ実装は独立した開発/レビュー用ビルドで確認しており、この旧EXEと同一とは扱いません。**事前監査資料であり、配布許諾・最終監査の完了宣言ではありません。**
 
 ## 作成済みの資料
 
@@ -16,7 +16,7 @@ cmake -DSTAGE=build/integrated-privacy-runtime -DOUTPUT=build/legal-windows-revi
 - `notices/`: コンポーネント別の固定ソース情報、既存のSmoothMailパッチ・経緯・機能制限説明。
 - `THIRD_PARTY_NOTICES.md`と本資料。
 
-Qt/CRTの不足を空欄のライセンス配列として残し、配布用`manifest.json`は生成しません。ファイルを改名するだけで配布してはいけません。Qt/CRT原文の不足は既存`--check-legal`でも拒否されます。出力先の上書き、未分類・重複分類・想定外のruntime構成は拒否します。生成物はGitや利用者の設定・資格情報を含みません。
+配布用`manifest.json`は生成せず、レビュー用には`review_only: true`を付けます。ファイルを改名しても既存`--check-legal`は拒否します。Qtの固定ソースが取得できた場合はLICENSES・第三者通知の候補を追加収集しますが、実同梱コードへの対応レビューが終わるまで自動承認しません。出力先の上書き、未分類・重複分類・想定外のruntime構成は拒否します。生成物はGitや利用者の設定・資格情報を含みません。
 
 ## 構成と許諾条件の確認範囲
 
@@ -40,8 +40,8 @@ Qt/CRTの不足を空欄のライセンス配列として残し、配布用`mani
 | SASL XOAUTH2 | sasl2/saslXOAuth2.dll | 固定commit 36aabca…。MIT、Moriyoshi KoizumiのCOPYING。独自CMake統合で構築 |
 | GNU libiconv | iconv-2.dll | 1.19。ライブラリはLGPL-2.1-or-later系、copyright原文を収集。GNUツールのGPL表記と区別 |
 | GNU gettext libintl | intl-8.dll | 0.22.5。LGPL-2.1-or-later系、copyright原文を収集。gettextホストツールは同梱しない |
-| Qt Base | Qt6Core/Gui/Network/Sql/Widgets/Xml.dll、platforms/qwindows.dll、sqldrivers/qsqlite.dll、tls/qschannelbackend.dll | 6.12.0。SDKのSBOMはLGPL/GPL/商用の代替条件等を記録。採用条件・内蔵第三者コードの通知は未確定 |
-| Qt SVG | Qt6Svg.dll | 6.12.0。Qt SVGの原文・採用条件・対応ソースを要確認 |
+| Qt Base | Qt6Core/Gui/Network/Sql/Widgets/Xml.dll、platforms/qwindows.dll、sqldrivers/qsqlite.dll、tls/qschannelbackend.dll | 6.12.0。SDK SBOMが示す代替条件からモジュールはLGPL-3.0-onlyを採用。内蔵第三者コードは固有の条件・通知を維持 |
+| Qt SVG | Qt6Svg.dll | 6.12.0。モジュールはLGPL-3.0-onlyを採用。原文・対応ソースの実収集と照合が必要 |
 | MSVC CRT | concrt140.dll、msvcp140.dll、msvcp140_1.dll、msvcp140_2.dll、msvcp140_atomic_wait.dll、msvcp140_codecvt_ids.dll、vccorlib140.dll、vcruntime140.dll、vcruntime140_1.dll、vcruntime140_threads.dll | MSVC再配布CRT。vcruntime140のFileVersionは14.44.35211.0。配布者の適用契約・REDIST対象の確認が必要 |
 
 Cyrus SASLの必須謝辞:
@@ -61,7 +61,7 @@ Cyrus SASLの必須謝辞:
   - SDKにあるSBOMの識別情報であり、現時点で完全な対応ソース一式を入手・照合したという意味ではない。通常の6.12.0タグだけで同一と推定しない。
 - 構築説明は`docs/dev/dependencies.md`、`docs/dev/distribution.md`と`cmake/`以下。ライセンス原文・著作権・変更箇所/日付/機能差・必要な構築入力を対応ソースへ含める。
 
-**原本URLとパッチへのリンクだけで、対応ソースの提供義務を満たしたとは扱いません。** 配布DLLに一致する完全な原本・変更・必要な生成入力/スクリプトを準備し、受領者が取得できる形で提供・検証する必要があります。ビルド者の`.git`、CMakeCache、個人パス入りreceiptをそのまま配布しないでください。
+**原本URLとパッチへのリンクだけで、対応ソースの提供義務を満たしたとは扱いません。** 仕様により、対応ソースはバイナリと同じ配布ページで別途配布します。[ソース提供・情報ダイアログの手順](distribution-source-delivery.md)を参照してください。配布DLLに一致する完全な原本・変更・必要な生成入力/スクリプトを準備し、受領者が取得できる形で提供・検証する必要があります。ビルド者の`.git`、CMakeCache、個人パス入りreceiptをそのまま配布しないでください。
 
 ## 差替え・改変版利用
 
@@ -73,10 +73,10 @@ Cyrus SASLの必須謝辞:
 
 | 項目 | 必要な対応 | 現状 |
 |---|---|---|
-| Qtの適用条件 | LGPL等のオープンソース条件で配布するか、配布権限のある商用契約を使うかを配布責任者が確認 | 未確認。個人の契約書やライセンスキーをGit/チャットへ出す必要はない |
-| Qt原文・内蔵第三者通知 | SDKと一致する原本のLICENSES、著作権、qtbaseのSQLite/PCRE2/zlib/画像・フォント等、該当モジュールに実際に組み込まれたコードの条件を確認・収集 | SBOMは存在するが原文一式は未収集。SDK全体のSBOMには非同梱ツールもあるため全件を無条件に製品へ割り当てない |
-| MSVC CRT配布権限 | 配布者に適用されるVisual StudioライセンスとREDIST一覧で10ファイル・対象環境の再配布条件を確認 | `VCToolsRedistDir`からの収集だけでは権限確認にならない |
-| 対応ソース提供方法 | 同時配布アーカイブ、公開ダウンロード等、適用条項を満たす具体的な方法・提供先・保管責任者を決める | 提供場所未指定、完全ソースのアーカイブ/取得試験も未完了。未履行の書面オファーは作成しない |
+| Qtの適用条件 | 仕様に従いオープンソース条件を採用 | 方針確定。対象QtモジュールはLGPL-3.0-onlyの代替を採用し、内蔵第三者コードの条件も維持する。商用契約の選択待ちではない |
+| Qt原文・内蔵第三者通知 | SDKと一致する原本のLICENSES、著作権、qtbaseのSQLite/PCRE2/zlib/画像・フォント等、該当モジュールに実際に組み込まれたコードの条件を確認・収集 | 固定qtbase/qtsvgの完全なGit checkoutとLICENSES・第三者通知候補を取得・収集済み。実同梱コードへの対応レビューは未完了。SDK全体のSBOMには非同梱ツールもあるため全件を無条件に製品へ割り当てない |
+| MSVC CRT配布権限 | 配布者に適用されるVisual StudioライセンスとREDIST一覧で10ファイル・対象環境の再配布条件を確認 | 公式[VS 2022 REDIST一覧](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)は有効なライセンス保有者によるVC/redist内の未改変ファイルの配布を条件付きで認め、debug_nonredistは除外する。現候補はRelease再配布フォルダとSHA256一致。配布責任者の利用資格・契約遵守は未確認 |
+| 対応ソース提供方法 | バイナリと同じページで別配布 | 方法は仕様で確定。固定ソースの収集・アーカイブ/展開試験・実際の公開先での取得確認が残る。未履行の書面オファーは作成しない |
 | コード別条件と静的組込み | KDE/Qt/GNU等の実際のコンパイル/リンク対象とヘッダ/生成物/内蔵第三者コードを照合。特にKIOのGPL favicon除外だけで残り全部を認定しない | 構成・原文・変更説明は収集済み。最終判定は未完了 |
 | 最終配布検証 | legal原文・ソース案内を確定後、manifest.jsonをレビューし、全同梱物の検査、独立ZIP展開・SHA照合、差替え・クリーン環境確認 | DIST-01/02に残る |
 

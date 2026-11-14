@@ -1,0 +1,42 @@
+cmake_minimum_required(VERSION 3.30)
+# Source evidence only: never builds, installs, or replaces the supplied Qt SDK.
+find_package(Git REQUIRED)
+set(ENV{GIT_TERMINAL_PROMPT} 0)
+set(ENV{GCM_INTERACTIVE} never)
+if(NOT DEFINED OUTPUT)
+    get_filename_component(OUTPUT "${CMAKE_CURRENT_LIST_DIR}/../build/deps/qt-license-sources" ABSOLUTE)
+endif()
+file(MAKE_DIRECTORY "${OUTPUT}")
+file(LOCK "${OUTPUT}/qt-source-fetch.lock" GUARD PROCESS TIMEOUT 300)
+foreach(module IN ITEMS qtbase qtsvg)
+    if(module STREQUAL qtbase)
+        set(commit 025bdad181de241e81bf853c8a2d7bf3d19261a9)
+    else()
+        set(commit 883a58532078d003cefef0a549bfe9f885ce41f5)
+    endif()
+    set(source "${OUTPUT}/${module}")
+    if(NOT EXISTS "${source}")
+        execute_process(COMMAND "${GIT_EXECUTABLE}" init "${source}" COMMAND_ERROR_IS_FATAL ANY)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${source}" remote add origin
+            "https://code.qt.io/qt/${module}.git" COMMAND_ERROR_IS_FATAL ANY)
+    endif()
+    execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${source}" rev-parse --verify HEAD
+        OUTPUT_VARIABLE actual OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE has_head)
+    if(NOT has_head STREQUAL "0")
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -c credential.helper= -C "${source}" fetch --depth 1 origin "${commit}"
+            TIMEOUT 600
+            COMMAND_ERROR_IS_FATAL ANY)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${source}" checkout --detach FETCH_HEAD
+            COMMAND_ERROR_IS_FATAL ANY)
+        set(actual "${commit}")
+    endif()
+    if(NOT actual STREQUAL commit)
+        message(FATAL_ERROR "Qt source revision differs; use a new OUTPUT.")
+    endif()
+    execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${source}" status --porcelain
+        OUTPUT_VARIABLE dirty OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    if(NOT dirty STREQUAL "")
+        message(FATAL_ERROR "Qt source has local changes; refusing to use it.")
+    endif()
+    message(STATUS "Verified Qt source evidence: ${module} ${commit}")
+endforeach()
