@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.30)
+project(SmoothMailNativeRuntimeTest LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+set(CMAKE_AUTOMOC OFF)
+find_package(Qt6 REQUIRED COMPONENTS Core)
+add_executable(native_runtime_probe main.cpp)
+target_compile_options(native_runtime_probe PRIVATE /utf-8)
+target_link_libraries(native_runtime_probe PRIVATE Qt6::Core)
+if(NOT DEFINED NATIVE_BIN)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/NativeDependencySettings.cmake")
+    set(NATIVE_BIN "${SMOOTHMAIL_NATIVE_PREFIX}/bin")
+endif()
+enable_testing()
+add_test(NAME native_runtime_relocated COMMAND "${CMAKE_COMMAND}"
+    "-DPROBE=$<TARGET_FILE:native_runtime_probe>" "-DNATIVE_BIN=${NATIVE_BIN}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/run_native_runtime.cmake")
+set_tests_properties(native_runtime_relocated PROPERTIES TIMEOUT 30)

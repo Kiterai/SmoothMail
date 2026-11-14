@@ -8,16 +8,19 @@ if(NOT DEFINED BUILD_TESTING)
     set(BUILD_TESTING ON)
 endif()
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
-    set(native_bin "${DEPENDENCY_ROOT}/native/x64-windows/debug/bin")
+    set(native_bin "${SMOOTHMAIL_NATIVE_PREFIX}/debug/bin")
 else()
-    set(native_bin "${DEPENDENCY_ROOT}/native/x64-windows/bin")
+    set(native_bin "${SMOOTHMAIL_NATIVE_PREFIX}/bin")
 endif()
-set(gettext_tools "${DEPENDENCY_ROOT}/native/x64-windows/tools/gettext/bin")
+set(gettext_tools "${SMOOTHMAIL_GETTEXT_TOOLS_BIN}")
 set(ENV{PATH} "${native_bin};${gettext_tools};${prefix}/bin;${Qt6_ROOT}/bin;$ENV{PATH}")
 execute_process(COMMAND "${CMAKE_COMMAND}" -S "${repository}" -B "${APPLICATION_BUILD}" -G Ninja
     "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
     "-DQt6_ROOT=${Qt6_ROOT}" "-DCMAKE_PREFIX_PATH=${prefix}"
+    "-DDEPENDENCY_ROOT=${DEPENDENCY_ROOT}" "-DSMOOTHMAIL_NATIVE_ROOT=${SMOOTHMAIL_NATIVE_ROOT}"
+    "-DSMOOTHMAIL_GETTEXT_TOOLS_ROOT=${SMOOTHMAIL_GETTEXT_TOOLS_ROOT}"
     "-DBUILD_TESTING=${BUILD_TESTING}" "-DSMOOTHMAIL_DISTRIBUTION=${SMOOTHMAIL_DISTRIBUTION}"
+    "-DSMOOTHMAIL_TEST_NATIVE=${SMOOTHMAIL_TEST_NATIVE}"
     "-DSMOOTHMAIL_SASL_PLUGIN_DIR=${prefix}/bin/sasl2"
     "-DGETTEXT_MSGFMT_EXECUTABLE=${gettext_tools}/msgfmt.exe"
     "-DGETTEXT_MSGMERGE_EXECUTABLE=${gettext_tools}/msgmerge.exe"

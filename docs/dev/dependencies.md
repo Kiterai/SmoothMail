@@ -73,7 +73,13 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWinFlexBison.cmake
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildNativeDependencies.cmake
 ```
 
-WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定したvcpkgレシピとハッシュ固定のvcpkg実行ファイルを使い、GNU gettext/libiconvとgettextホストツールを`build/deps/native`へ構築する手順です。**gettext-libintlとlibiconvのDebug/Release、およびgettextホストツールの構築・インストール成功を確認済みです。** vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
+WinFlexBison 2.5.25と、それを使うSolid 6.31.0のMSVC構築は確認済みです。NativeDependenciesは固定vcpkgレシピとハッシュ固定のvcpkg実行ファイルを使います。製品向けGNU DLLは`build/deps/native/gnu-runtime-v1`へ別構築し、gettextホストツールは従来の`build/deps/native`で管理します。vcpkgでQtを導入したり、アプリへvcpkgのQt toolchainを指定したりはしません。
+
+`cmake/native-triplets/x64-windows.cmake`は同じx64・dynamic CRT/DLL構成を維持し、PDB参照名を固定、gettext-libintlの論理configure prefixをRelease `/`・Debug `/debug`へ設定します。lib/dataディレクトリも明示し、MSYSの該当-D引数の変換を抑止して、ビルド先の再混入と`//share`のUNC解釈を避けます。実ファイルはvcpkgのDESTDIRで専用prefixへ収集され、PCのルートへインストールされるわけではありません。GNUの新しいソースパッチやバイナリ書換え、検査除外は使いません。
+
+製品向けrootではレシピcommit・ツール・tripletの設定ハッシュを保存し、別設定のインストール済み資材を黙って再利用しません。設定を変更する場合は新しい`-DSMOOTHMAIL_NATIVE_ROOT=...`を選び、全ステージで同じ値を指定してください。ホストツールrootは`SMOOTHMAIL_GETTEXT_TOOLS_ROOT`で別管理し、両rootの混在を拒否します。Native構築後は製品向けRelease DLLを既存の個人パス検査にかけます。
+
+GNUの合成回帰は`SMOOTHMAIL_TEST_NATIVE=ON`で有効にできます。DLLと合成カタログを別場所（空白・日本語を含む）へコピーし、Shift-JIS変換、不正入力の拒否、UTF-8訳文・複数形を確認します。カタログはKI18nと同様に**移動先のパスを明示してbind**する方式です。論理prefixだけで任意の配布先を自動検索できるという保証ではありません。
 
 vcpkgの資材取得も常にCMakeのx-scriptを使い、外部curl/Pythonやorigin fallbackは使用しません。GNU/MSYS2のミラーURLを各公式配布元へ正規化します。オフラインガードは`cmake -P tests/cmake/run_build_guards.cmake`で実行できます。既存キャッシュだけで成功した場合は、新規ネットワーク取得の成功を意味しません。
 
@@ -87,12 +93,12 @@ gettext/Flex/Bison等のGPLビルドツールは、アプリへリンクするLG
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildI18nDependencies.cmake
 ```
 
-KI18n/KService 6.31.0のDebug DLL構築に成功しています。スクリプトはDebug/Releaseに合わせたlibintlを明示指定し、gettextホストツールとは分離します。別prefixを使う場合は`-DSMOOTHMAIL_NATIVE_PREFIX=/path/to/native/x64-windows`を指定してください。
+スクリプトはDebug/Releaseに合わせたlibintlを明示指定し、gettextホストツールとは分離します。別prefixを使う場合は`-DSMOOTHMAIL_NATIVE_ROOT=/path/to/new/native`を全体で指定してください。Intlだけに別の`SMOOTHMAIL_NATIVE_PREFIX`を指定して混在させることは拒否します。
 
 ロード・基本APIのテストは次で有効にできます（既存の開発用PATHに追加）。
 
 ```bat
-set PATH=%CD%\build\deps\native\x64-windows\debug\bin;%CD%\build\deps\native\x64-windows\tools\gettext\bin;%PATH%
+set PATH=%CD%\build\deps\native\gnu-runtime-v1\x64-windows\debug\bin;%CD%\build\deps\native\x64-windows\tools\gettext\bin;%PATH%
 cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DSMOOTHMAIL_TEST_KDE_BASE=ON
 cmake --build --preset dev
 ctest --preset dev

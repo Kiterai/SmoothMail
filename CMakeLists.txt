@@ -22,6 +22,13 @@ if(SMOOTHMAIL_BUILD_PACKAGE_TESTS)
 endif()
 
 # Qt is supplied by the developer. Do not fetch or install a second SDK.
+if(WIN32)
+    include(cmake/NativeDependencySettings.cmake)
+    find_program(GETTEXT_MSGFMT_EXECUTABLE NAMES msgfmt
+        HINTS "${SMOOTHMAIL_GETTEXT_TOOLS_BIN}")
+    find_program(GETTEXT_MSGMERGE_EXECUTABLE NAMES msgmerge
+        HINTS "${SMOOTHMAIL_GETTEXT_TOOLS_BIN}")
+endif()
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Sql Network)
 find_package(Qt6Keychain CONFIG REQUIRED)
 find_package(ECM 6.31 CONFIG REQUIRED)
@@ -135,6 +142,10 @@ if(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE)
 endif()
 
 include(CTest)
+option(SMOOTHMAIL_TEST_NATIVE "Test GNU conversion and explicitly bound catalogs after relocation" OFF)
+if(BUILD_TESTING AND WIN32 AND SMOOTHMAIL_TEST_NATIVE)
+    add_subdirectory(tests/native-runtime)
+endif()
 option(SMOOTHMAIL_BUILD_GUI_SMOKE "Build explicit native GUI workflow test for disposable Windows Sandbox only" OFF)
 if(SMOOTHMAIL_BUILD_GUI_SMOKE)
     find_package(Qt6 REQUIRED COMPONENTS Test)

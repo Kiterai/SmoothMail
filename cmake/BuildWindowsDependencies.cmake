@@ -18,6 +18,8 @@ foreach(stage IN ITEMS Native Framework WinFlexBison I18n Solid Kio Sasl XOAuth2
     smoothmail_dependency_command("${CMAKE_COMMAND}"
         "-DQt6_ROOT=${Qt6_ROOT}" "-DDEPENDENCY_ROOT=${DEPENDENCY_ROOT}"
         "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}" "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+        "-DSMOOTHMAIL_NATIVE_ROOT=${SMOOTHMAIL_NATIVE_ROOT}"
+        "-DSMOOTHMAIL_GETTEXT_TOOLS_ROOT=${SMOOTHMAIL_GETTEXT_TOOLS_ROOT}"
         -P "${CMAKE_CURRENT_LIST_DIR}/${script}.cmake")
 endforeach()
 message(STATUS "Windows dependency prefix ready (${CMAKE_BUILD_TYPE}).")

@@ -50,7 +50,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/BuildWindows.cmake")
 set(stage "${job}/runtime")
 smoothmail_dependency_command("${CMAKE_COMMAND}"
     "-DAPP=${APPLICATION_BUILD}/smoothmail.exe" "-DQT_BIN=${Qt6_ROOT}/bin"
-    "-DDEPENDENCY_BIN=${prefix}/bin" "-DNATIVE_BIN=${DEPENDENCY_ROOT}/native/x64-windows/bin"
+    "-DDEPENDENCY_BIN=${prefix}/bin" "-DNATIVE_BIN=${SMOOTHMAIL_NATIVE_PREFIX}/bin"
     "-DSASL_DIR=${prefix}/bin/sasl2" "-DCRT_BIN=${CRT_BIN}"
     "-DDESTINATION=${stage}" -DCONFIGURATION=Release
     -P "${CMAKE_CURRENT_LIST_DIR}/StageWindowsRelease.cmake")

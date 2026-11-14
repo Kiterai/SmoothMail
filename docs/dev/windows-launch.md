@@ -25,7 +25,7 @@ cmake ^
  -DAPP="%CD%/build/dev/smoothmail.exe" ^
  -DQT_BIN=C:/Qt/6.12.0/msvc2022_64/bin ^
  -DDEPENDENCY_BIN="%CD%/build/deps/install/Debug/bin" ^
- -DNATIVE_BIN="%CD%/build/deps/native/x64-windows/debug/bin" ^
+ -DNATIVE_BIN="%CD%/build/deps/native/gnu-runtime-v1/x64-windows/debug/bin" ^
  -DSASL_DIR="%CD%/build/deps/install/Debug/bin/sasl2" ^
  -DDESTINATION="%CD%/build/local-run-new" ^
  -DCONFIGURATION=Debug -P cmake/StageWindowsRuntime.cmake

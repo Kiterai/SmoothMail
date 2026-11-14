@@ -65,3 +65,11 @@ QtKeychain 0.15.0（`ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7`、https://github.
 Qt、KMime、KIMAP、KSMTP、KDE Frameworks、Cyrus SASL、XOAUTH2プラグイン、GNU libintl/libiconv等は、それぞれの許諾条件に従います。バージョン・取得元は`cmake/dependencies.json`と`docs/dev/dependencies.md`、個別のライセンスは取得元ソースおよび各prefixのライセンス情報を参照してください。
 
 gettext/Flex/Bison等のビルド専用ツールと、アプリへリンクするライブラリは区別します。これらのツールを製品へ同梱する場合は、別途その配布条件を確認する必要があります。
+
+### GNUライブラリのWindows構築設定
+
+固定vcpkgレシピによるlibiconv 1.19 / gettext-libintl 0.22.5は、`cmake/native-triplets/x64-windows.cmake`の設定で構築します。
+PDB参照名を固定し、gettext-libintlの論理インストールprefixと実際のDESTDIRを分離してビルド者のパスをDLLへ残さないための設定です。
+この対応でGNUソースへの新しいパッチやライセンス表記の変更は追加していません。元のvcpkgレシピ・既存パッチ・著作権・各許諾条件は維持します。
+製品配布ではこれらの設定ファイルも必要な構築スクリプトとして対応ソースとともに提供できるよう整備します。
+GNU DLLのライセンス・対応ソース等の義務は、設定だけの対応でもなくなりません。gettextホストツール自体は製品同梱対象ではありません。

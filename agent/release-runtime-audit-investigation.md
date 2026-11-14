@@ -102,3 +102,10 @@ QtのPDB参照・ソースパスは署名対象のDLL内容に含まれる。
   署名があることだけで個人パスが存在しないとは判断しない。
 
 この調査では配布規則を変更せず、39ファイルのランタイムからZIPを公開していない。legal監査・クリーンWindows検証も未完了。
+
+## 後続対応
+
+GNU2件は`cmake/native-triplets/x64-windows.cmake`のビルド設定で対処した。
+新rootのDebug/Release構築・合成再配置試験・アプリ回帰・実収集コピーの検査が成功し、拒否は13件へ減少。
+このページのGNUオフセットは対応前の保存runtimeの記録であり、新DLLの状態ではない。
+詳細: `agent/gnu-native-privacy-settings.md`。
