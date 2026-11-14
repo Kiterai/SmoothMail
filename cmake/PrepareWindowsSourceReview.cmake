@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 # Produce separately downloadable source REVIEW artifacts, never a binary release.
 find_package(Git REQUIRED)
+include("${CMAKE_CURRENT_LIST_DIR}/SourceArchives.cmake")
 get_filename_component(repository "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 if(NOT DEFINED DEPENDENCY_ROOT)
     set(DEPENDENCY_ROOT "${repository}/build/deps")
@@ -35,6 +36,12 @@ macro(source_archive id source commit)
         "--prefix=${id}/" "--output=${OUTPUT}/${archive}" "${commit}" ${archive_paths}
         COMMAND_ERROR_IS_FATAL ANY)
     file(SHA256 "${OUTPUT}/${archive}" digest)
+    if(NOT "${id}" STREQUAL "SmoothMail")
+        smoothmail_archive_pin("${id}" "${commit}" expected tree_hash)
+        if(NOT digest STREQUAL expected)
+            message(FATAL_ERROR "Generated source archive differs from its reviewed pin: ${id}.")
+        endif()
+    endif()
     string(JSON inventory SET "${inventory}" archives ${index}
         "{\"component\":\"${id}\",\"commit\":\"${commit}\",\"file\":\"${archive}\",\"sha256\":\"${digest}\"}")
     math(EXPR index "${index}+1")
@@ -48,7 +55,7 @@ set(archive_paths CMakeLists.txt CMakePresets.json LICENSE THIRD_PARTY_NOTICES.m
 source_archive(SmoothMail "${repository}" "${app_commit}")
 unset(archive_paths)
 
-foreach(id IN ITEMS kcodecs kconfig kcoreaddons kcrash ki18n kio kmime kservice kimap ksmtp qtkeychain cyrus-sasl-xoauth2 extra-cmake-modules ninja vcpkg-recipes)
+foreach(id IN ITEMS kcodecs kconfig kcoreaddons kcrash ki18n kio kmime kservice kimap ksmtp qtkeychain cyrus-sasl-xoauth2 extra-cmake-modules ninja vcpkg-recipes solid winflexbison)
     string(JSON commit GET "${dependencies}" "${id}" commit)
     source_archive("${id}" "${DEPENDENCY_ROOT}/src/${id}" "${commit}")
 endforeach()
@@ -98,5 +105,5 @@ foreach(id IN ITEMS cyrus-sasl libiconv gettext)
 endforeach()
 file(WRITE "${OUTPUT}/source-manifest.review.json" "${inventory}\n")
 file(WRITE "${OUTPUT}/README.txt"
-    "SOURCE REVIEW ONLY - NOT APPROVED AS COMPLETE CORRESPONDING SOURCE.\n\nPublish the final reviewed source artifacts on the SAME page as their matching binary download, not as an unfulfilled written offer.\nSmoothMail commit: ${app_commit}\nConfigure an exported tree with -DSMOOTHMAIL_SOURCE_COMMIT=${app_commit}.\n\nKDE archives are pinned upstream source. Apply the active patches using the SmoothMail cmake build scripts; patches, build settings and explanations are in the SmoothMail archive. vcpkg port patches and GNU configuration are included. No new GNU source patch is claimed.\n\nMissing source modules: ${missing_index}. Even zero missing modules does not replace compiled-code license review, Qt third-party notice collection, ABI replacement tests and source-to-binary matching.\nSee docs/dev/build.md and docs/dev/distribution.md in the SmoothMail archive.\n")
+    "SOURCE REVIEW ONLY - NOT APPROVED AS COMPLETE CORRESPONDING SOURCE.\n\nPublish the final reviewed source artifacts on the SAME page as their matching binary download, not as an unfulfilled written offer.\nSmoothMail commit: ${app_commit}\n\nExtract SmoothMail into a new source directory; do NOT unpack dependencies into build/deps/src or fabricate Git repositories. From that source directory in an MSVC x64 developer environment:\ncmake -DQt6_ROOT=<installed-Qt-SDK> -DCMAKE_BUILD_TYPE=Release -DDEPENDENCY_ROOT=<new-dependency-root> -DAPPLICATION_BUILD=<new-app-build> -DSMOOTHMAIL_SOURCE_ARCHIVES=<absolute-directory-containing-these-archives> -DSMOOTHMAIL_SOURCE_COMMIT=${app_commit} -P cmake/BuildWindows.cmake\nOptional: -DSMOOTHMAIL_ASSET_CACHE=<verified-download-tool-cache>. Compilers/SDK, Git, CMake, Python used indirectly by KI18n, and downloadable build tools remain external prerequisites. Archive mode imports the reviewed dependency bytes without Git/network source fallback, verifies archive/tree hashes, applies the active patches to separate copies, and keeps vcpkg work outside pristine sources. Tool downloads still require access unless cached.\n\nKDE archives are pinned upstream source. Patches, build settings and explanations are in the SmoothMail archive. Solid/WinFlexBison build prerequisites, vcpkg port patches and GNU configuration are included. No new GNU source patch is claimed. Qt Base/SVG sources match the pinned SDK source identities; rebuilding a second Qt is optional and must use a separate install prefix, never overwrite the supplied SDK.\n\nMissing source modules: ${missing_index}. Even zero missing modules does not replace compiled-code license review, Qt third-party notice collection, ABI replacement tests and source-to-binary matching.\nSee docs/dev/build.md and docs/dev/distribution.md in the SmoothMail archive.\n")
 message(STATUS "Created ${index} source review archives; missing Qt modules: ${missing_index}.")

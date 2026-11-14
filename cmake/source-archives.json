@@ -1,0 +1,97 @@
+{
+  "cyrus-sasl-xoauth2": {
+    "commit": "36aabca54fd65c8fa7a707cb4936751599967904",
+    "sha256": "9a6ccf8cb5a2673e2e75ca868969507fcc024fe4c3d8aada78d5a3566a9b35b7",
+    "tree_sha256": "7046b55fbe4a01b3313149e20dfe3ffe81a41f7461ec79b73c4f75db3f9c5d98"
+  },
+  "extra-cmake-modules": {
+    "commit": "2958379fb49c71129f119ec17f88df0b5ea21550",
+    "sha256": "f13b602554987d7b701e039c8a25b5a7dbe9bed305905b75ce2b0b3303aa4286",
+    "tree_sha256": "9d432e534045b2702b21e2705dec50e7ad0b514cd5a3465efc2c0c9344b599ef"
+  },
+  "kcodecs": {
+    "commit": "220095a518c36c1b7aa6b5f49996177617979031",
+    "sha256": "d1736e7e37a92a6392a959da4c179a627767ee4bc045155c40b53d6eb1d2ca21",
+    "tree_sha256": "9e83a5c185c5134f3495f49f0866a396c94b8c5482e0e148be9278387111673d"
+  },
+  "kconfig": {
+    "commit": "a25acdfb1f51c9d8af3426f03380a9de5c88817a",
+    "sha256": "12cd88332984859058c178baa0b35cdcb1c631e2019c9bcc97a528a84cab546a",
+    "tree_sha256": "1398c8db4c5e03542a32b190fa4fcf8cd624f7a7ac866f89d14459b0cfad94c9"
+  },
+  "kcoreaddons": {
+    "commit": "911a815687a14389895df3e658235de2450bc294",
+    "sha256": "a65ef725e4db4a867d4cbe58c71f6d73d42ef594dc2021c481b2d961ee9b1640",
+    "tree_sha256": "48a6455fbcafacff4bec3cca6178a8418f73643e1223733340633e19051583be"
+  },
+  "kcrash": {
+    "commit": "9ee8786eeb2296199f91038f92e70af36f827e8e",
+    "sha256": "2684d28814977bbaf038e5afb6caf2bcedf642d52066a8783ccae92895729806",
+    "tree_sha256": "315ee8fb3ddf9e4a48829bcc81641a537f9974c85fec1db85aafc26ff88d7e1f"
+  },
+  "ki18n": {
+    "commit": "df98b98f001721f83ebf3e36b73e346f6d29670a",
+    "sha256": "f9ed79c25fe19dd3cb74a6dccc5345b310bbde86d00786b59ac4f7392df34960",
+    "tree_sha256": "683a881c37c6c94d8f1ba4fde8d1e2f71ef67af224be0e930046e7ee22422ff7"
+  },
+  "kimap": {
+    "commit": "fe0df283d6745c5ad1e0478db0a74ea0a2205d5a",
+    "sha256": "cb4bddd2dd7048c2cb3db24c7f626bb8414682018d3391325d605a8c9b0a1bf3",
+    "tree_sha256": "cbfb7b7313e694222916e9afebcc94b0a19bf93e082b761b41314a58094585f9"
+  },
+  "kio": {
+    "commit": "2dd4bdc916a6f46d297d8788f5b628181483315d",
+    "sha256": "ed242d0c33d2feb35fc184ff2da671d4edf30334c1ee4badf738cf45feb4d346",
+    "tree_sha256": "b4e1596dead81a75492ae2eebb87cc2d0e86a10986e94d985bd4577c809afc3a"
+  },
+  "kmime": {
+    "commit": "d28bed05be65e7f1234bb852ad81a67b13df53ea",
+    "sha256": "9a31560159ac55d209ea1fe47bc52a6c428568dd92d8754155fd0daf038eb360",
+    "tree_sha256": "dc17da8920ba52b663ea685e4372dc27a8f3a0c565a5bfb679a1e5ec654669a2"
+  },
+  "kservice": {
+    "commit": "3dd29f7847e88d3f45d833ce1a772738e73915e9",
+    "sha256": "81ca212d6849daf738073991b07a775a64b12c6bf2885d270cb6cf421a9dffa2",
+    "tree_sha256": "6bc5f890f66dd7555aeded6ae4ade8661e538c54d346ccaa15b72a4fef737df8"
+  },
+  "ksmtp": {
+    "commit": "f78c9bbcf690f5f829ccaf31921caec650579f20",
+    "sha256": "cbddac21b6166fd4dabdd1fda505b006369cb5f99182fc3da3a568eea2fb1d99",
+    "tree_sha256": "52a980a8edacb982e63f2102769ed19c7657103718169cfdc10d36e6a91217ae"
+  },
+  "ninja": {
+    "commit": "79feac0f3e3bc9da9effc586cd5fea41e7550051",
+    "sha256": "c13e7211349c5cc1388f6867310b9fbd21bd8039d1591e8c7813f9f772ada5de",
+    "tree_sha256": "19c287ec9d009ef72001fca2fe14ea5bfecc4fe0e2521f5e9ba6abaf9839a54b"
+  },
+  "qtbase": {
+    "commit": "025bdad181de241e81bf853c8a2d7bf3d19261a9",
+    "sha256": "e3d8bfb8426fdc24b98bdfaa00abcd8aebc8d273d35e21aef49bacdfce3d2435",
+    "tree_sha256": "0bf3139a743a53aaeb742d330520362dcc4ec4c45b7c119c67ad555bbe9bec5c"
+  },
+  "qtkeychain": {
+    "commit": "ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7",
+    "sha256": "b305e1928dc9a842a1f30b4556e83c6ec3eb6db8f1dbbba363aee272c03eb194",
+    "tree_sha256": "f9ef8d59ec4e98c5471d95b9134c4bbfc8791b82fa9571e021800a2502431d0e"
+  },
+  "qtsvg": {
+    "commit": "883a58532078d003cefef0a549bfe9f885ce41f5",
+    "sha256": "f0eca9700afa9f7e7174d48624233167c14de40cef965d45bf686be3f684953a",
+    "tree_sha256": "8a0f6fe5fd42cbf6e68f4982d46502bbc9031848590c785678696404f77831e7"
+  },
+  "solid": {
+    "commit": "e0164c17b4d94c11aaf02e9b37ab9d23e660b51e",
+    "sha256": "1e183a1bc2030f91dd2405aaa87b82d30d5fc85129ad33eb82ee672ef2269bf4",
+    "tree_sha256": "9a10515adca25d00ea76db0de7ce3144eea1ac4d0e8fe5b4ffb0824d0f9dd581"
+  },
+  "vcpkg-recipes": {
+    "commit": "177e8175121536d414f405ed8b3099b325a42638",
+    "sha256": "7032e5ceb960fd560fba6716e7ad15361e21fc2a30e34f5e7211c066c1f15654",
+    "tree_sha256": "a80dd9ba49b0f40fbd716635e7b3d2223add78c1c96d83412e91d1451c951560"
+  },
+  "winflexbison": {
+    "commit": "1176da2adaf972b2216b1ac8dd611e128fe80bc5",
+    "sha256": "90972e3cd06bec895770c4814ec89f1ff7a0bacc733bcb2bd511821465b26608",
+    "tree_sha256": "6fbccf2649da9d79b09f47ffe96a2ad0ca6fb4a389c7ec695746d398fd408a19"
+  }
+}

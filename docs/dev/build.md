@@ -38,6 +38,10 @@ cmake --build build/windows/Release --parallel 4
 
 Qtやコンパイラを変更する場合は、新しい `-DDEPENDENCY_ROOT=C:/build/smoothmail-deps` と `-DAPPLICATION_BUILD=C:/build/smoothmail-app` を標準コマンドへ追加します。Windowsのパス長制限を避けるため短いパスを推奨します。既存ソース・取得物・パッチの不一致で停止した場合、強制上書きや検証の無効化はせず原因を確認してください。
 
+提供済みのソースアーカイブを使う場合は、SmoothMailだけを新しいソースフォルダへ展開し、Releaseコマンドへ `-DSMOOTHMAIL_SOURCE_ARCHIVES=C:/source-archives -DSMOOTHMAIL_SOURCE_COMMIT=<提供されたcommit>` と新しい依存／アプリ構築先を追加します。依存を手動で `build/deps/src` へ展開したり、Git管理情報を捏造したりしません。固定されたアーカイブSHA256と全ファイルのtree digestを検証し、パッチは別コピーへ適用します。
+
+外部ビルドツールの取得物を再利用するには `-DSMOOTHMAIL_ASSET_CACHE=C:/tool-downloads` を追加できます。工具・原本のハッシュ検証は維持します。Qt SDKの取得／変更は自動では行いません。Qt自体の対応ソース・ABI検証が必要な場合だけ、別の出力先で `cmake -DQt6_ROOT=... -DDEPENDENCY_ROOT=... -DSMOOTHMAIL_SOURCE_ARCHIVES=... -DQT_REBUILD_OUTPUT=... -P cmake/BuildQtSourceReview.cmake` を実行します。これは既存SDKの置換や配布承認ではありません。
+
 キャッシュなしの全Release依存取得を検証する場合は、まだ存在しない専用rootで実行します（アプリ・ZIPの検証は含みません）。
 
 ```bat

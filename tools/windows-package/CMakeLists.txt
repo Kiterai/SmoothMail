@@ -13,6 +13,8 @@ if(MSVC)
     target_compile_options(smoothmail_qt_sbom_audit PRIVATE /utf-8)
 endif()
 enable_testing()
+add_test(NAME source_archive_guards COMMAND "${CMAKE_COMMAND}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_source_archive_guards.cmake")
 add_test(NAME crt_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_guards.cmake")
 if(WIN32 AND DEFINED ENV{VCToolsRedistDir})

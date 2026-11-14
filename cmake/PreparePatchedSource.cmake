@@ -19,6 +19,12 @@ function(smoothmail_prepare_patched_source dependency pristine commit patch work
     set(source "${workspace}/${dependency}-${commit}-${patch_key}")
     set(receipt "${source}.receipt.cmake")
     file(MAKE_DIRECTORY "${workspace}")
+    if(SMOOTHMAIL_SOURCE_ARCHIVES)
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/SourceArchives.cmake")
+        smoothmail_prepare_archive_patch("${dependency}" "${pristine}" "${commit}" "${patch}" "${source}")
+        set("${output_variable}" "${source}" PARENT_SCOPE)
+        return()
+    endif()
     if(NOT EXISTS "${source}")
         execute_process(COMMAND "${GIT_EXECUTABLE}" clone --no-hardlinks --no-checkout
             "${pristine}" "${source}" RESULT_VARIABLE result)

@@ -8,6 +8,40 @@ file(READ "${CMAKE_CURRENT_LIST_DIR}/native-dependencies.json" native_manifest)
 string(JSON tool_url GET "${native_manifest}" vcpkgTool url)
 string(JSON tool_hash GET "${native_manifest}" vcpkgTool sha512)
 set(tool "${source}/vcpkg.exe")
+set(vcpkg_options)
+if(SMOOTHMAIL_SOURCE_ARCHIVES)
+    # Keep reviewed source immutable. vcpkg's downloaded tools, source builds
+    # and packages belong in independently mutable working/cache directories.
+    set(tool "${DEPENDENCY_ROOT}/tools/vcpkg/vcpkg.exe")
+    set(downloads "${DEPENDENCY_ROOT}/downloads/vcpkg")
+    set(vcpkg_options "--vcpkg-root=${source}" "--downloads-root=${downloads}"
+        "--x-buildtrees-root=${DEPENDENCY_ROOT}/build/vcpkg/buildtrees"
+        "--x-packages-root=${DEPENDENCY_ROOT}/build/vcpkg/packages")
+    file(MAKE_DIRECTORY "${downloads}")
+    foreach(cache IN ITEMS "${SMOOTHMAIL_SOURCE_ARCHIVES}" "${SMOOTHMAIL_ASSET_CACHE}")
+        if(cache STREQUAL "")
+            continue()
+        endif()
+        file(GLOB assets LIST_DIRECTORIES FALSE "${cache}/*")
+        foreach(asset IN LISTS assets)
+            if(IS_SYMLINK "${asset}")
+                message(FATAL_ERROR "Linked source/tool cache asset.")
+            endif()
+            get_filename_component(name "${asset}" NAME)
+            if(name MATCHES "\\.(tar\\.gz|zip|7z|exe|pkg\\.tar\\.zst)$")
+                if(NOT EXISTS "${downloads}/${name}")
+                    file(COPY_FILE "${asset}" "${downloads}/${name}")
+                else()
+                    file(SHA256 "${asset}" expected)
+                    file(SHA256 "${downloads}/${name}" actual)
+                    if(NOT expected STREQUAL actual)
+                        message(FATAL_ERROR "Existing native download differs; nothing was overwritten.")
+                    endif()
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+endif()
 smoothmail_download_asset("${tool_url}" SHA512 "${tool_hash}" "${tool}")
 file(SHA256 "${CMAKE_CURRENT_LIST_DIR}/native-triplets/x64-windows.cmake" triplet_hash)
 string(JSON recipe_commit GET "${manifest}" vcpkg-recipes commit)
@@ -28,9 +62,9 @@ set(ENV{X_VCPKG_ASSET_SOURCES}
 # No Qt port or toolchain file is involved. Native C dependencies and host
 # gettext tools live in a separate prefix from the developer's Qt SDK.
 smoothmail_dependency_command("${tool}" install "gettext[tools]:x64-windows"
-    --classic "--x-install-root=${SMOOTHMAIL_GETTEXT_TOOLS_ROOT}")
+    --classic ${vcpkg_options} "--x-install-root=${SMOOTHMAIL_GETTEXT_TOOLS_ROOT}")
 smoothmail_dependency_command("${tool}" install "gettext-libintl:x64-windows"
-    --classic "--overlay-triplets=${CMAKE_CURRENT_LIST_DIR}/native-triplets"
+    --classic ${vcpkg_options} "--overlay-triplets=${CMAKE_CURRENT_LIST_DIR}/native-triplets"
     "--x-install-root=${SMOOTHMAIL_NATIVE_ROOT}")
 
 # Audit native Release DLLs independently of the rest of the eventual runtime.
