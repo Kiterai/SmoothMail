@@ -16,7 +16,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWindows.cmake
 - vcpkg本体は固定URL/SHA512で内部取得します。用途はGNU gettext/libintl/libiconvのみで、Qtのport/toolchainは導入しません。
 - アーカイブはCMakeでHTTPS取得・TLS証明書検証・ハッシュ検証します。途中ファイルを再利用せず、既存キャッシュの不一致は上書きせず停止します。プロキシ・CA設定はCMakeが使える環境にしてください。TLS検証を無効にする回避策はありません。
 - プロジェクトのスクリプト・テストはCMake/C++です。PythonはKI18n上流のconfigure/翻訳データ生成からのみ間接利用します。
-- SolidとそのFlex/Bisonも標準入口で構築します。独自パッチ5件・原本分離・receipt照合は従来どおりです。
+- SolidとそのFlex/Bisonも標準入口で構築します。独自パッチ6件・原本分離・receipt照合を維持します。
 - 既存presetだけ使う場合は、最初に`cmake -DQt6_ROOT=... -P cmake/PrepareBuildTools.cmake`を実行します。カスタム依存rootでは`CMAKE_MAKE_PROGRAM`もその内部Ninjaへ指定してください。
 
 以下は個別ステージの説明です。`CMAKE_MAKE_PROGRAM`の明示指定は既存環境向けの任意指定で、省略すると固定Ninjaを内部準備します。
@@ -136,7 +136,13 @@ KIMAPには`patches/kimap/26.08.3-fix-sasl-continuation.patch`を適用します
 
 KSMTPにも`patches/ksmtp/26.08.3-reset-ehlo-capabilities.patch`を適用します。STARTTLS後に以前のAUTH等の広告情報を残さないための修正です。未修正版ではTLS後にXOAUTH2が広告されなくてもAUTHを送ることを合成サーバーで再現し、修正後はAUTHと秘密情報を送らず拒否することを確認しています。差分・通知は`share/licenses/ksmtp`へ配置します。
 
-変更済みKIO/KIMAP/KSMTP/KMime/KCodecsの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`cmake -P tests/cmake/run_build_guards.cmake`で検証できます。
+変更済みKIO/KIMAP/KSMTP/KMime/KCodecsとWindows向けKConfigの構築時に`share/licenses/<dependency>/smoothmail-build.json`を生成します。configure時に固定commit、patch SHA-256、実DLL SHA-256、Qt Core DLL SHA-256、ビルド構成を照合し、不足・不一致を拒否します。JSONはデータとしてのみ読み込み、実行しません。ローカルの取り違え防止であり、署名や信頼できない配布元の真正性保証ではありません。更新後は依存構築スクリプトを再実行してください。`cmake -P tests/cmake/run_build_guards.cmake`で検証できます。
+
+### Windows向けKConfigの限定パッチ
+
+`BuildFrameworkDependencies.cmake`は`BuildKconfigDependencies.cmake`を経由し、Windows Debug/Releaseの両方で`KCONFIG_USE_KCONF_UPDATE=OFF`として構築します。`checkUpdate()`の公開APIは維持しますが、設定移行は無効です。経緯・採用理由・ライセンス条件・撤去条件は[パッチ説明](../../patches/kconfig/README.md)、配布向けの要約は[第三者通知](../../THIRD_PARTY_NOTICES.md)を参照してください。
+
+既存prefixに新しいreceiptがなければ、アプリの再configure前にこの依存構築を実行してください。開発prefixに残る`kconf_update.exe`は配布対象にせず、prefix全体を製品へコピーしません。
 
 KCodecs 6.31.0にも`patches/kcodecs/6.31.0-safe-ctype.patch`を適用します。RFC 2047デコーダーの`isspace`引数をunsigned charへ変換します。`BuildMimeDependencies.cmake`がECM、修正KCodecs、修正KMimeの順に構築します。検証済みDebug構築先は`build/deps/build/Debug/kcodecs-safe-ctype-msvc-debug`。上流LICENSES・差分・変更通知・receiptを`share/licenses/kcodecs`へ配置し、Qt SDKは変更しません。
 

@@ -1,0 +1,74 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -33,6 +33,9 @@ if(KCONFIG_USE_GUI)
+     find_package(Qt6 ${REQUIRED_QT_VERSION} CONFIG REQUIRED Gui)
+ endif()
+ 
++# SmoothMail contributors, 2026-11-14: allow explicit opt-out of external migration.
++option(KCONFIG_USE_KCONF_UPDATE "Allow KConfig::checkUpdate to run external configuration migrations" ON)
++
+ option(KCONFIG_USE_QML "Build components using Qt6Qml" ON)
+ 
+ if(KCONFIG_USE_QML)
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -55,10 +55,13 @@ ecm_generate_export_header(KF6ConfigCore
+     EXCLUDE_DEPRECATED_BEFORE_AND_AT ${EXCLUDE_DEPRECATED_BEFORE_AND_AT}
+ )
+ 
+-target_compile_definitions(KF6ConfigCore
+-    PRIVATE
+-        KCONF_UPDATE_INSTALL_LOCATION="${KDE_INSTALL_FULL_LIBEXECDIR_KF}/$<TARGET_FILE_NAME:KF6::kconf_update>"
+-)
++# SmoothMail contributors, 2026-11-14: do not embed an unused absolute helper path.
++if(KCONFIG_USE_KCONF_UPDATE)
++    target_compile_definitions(KF6ConfigCore
++        PRIVATE
++            KCONF_UPDATE_INSTALL_LOCATION="${KDE_INSTALL_FULL_LIBEXECDIR_KF}/$<TARGET_FILE_NAME:KF6::kconf_update>"
++    )
++endif()
+ 
+ target_include_directories(KF6ConfigCore
+     INTERFACE "$<INSTALL_INTERFACE:${KDE_INSTALL_INCLUDEDIR_KF}/KConfig;${KDE_INSTALL_INCLUDEDIR_KF}/KConfigCore>"
+diff --git a/src/core/config-kconfig.h.cmake b/src/core/config-kconfig.h.cmake
+--- a/src/core/config-kconfig.h.cmake
++++ b/src/core/config-kconfig.h.cmake
+@@ -1 +1,3 @@
+ #cmakedefine01 KCONFIG_USE_DBUS
++// SmoothMail contributors, 2026-11-14: external migration build switch.
++#cmakedefine01 KCONFIG_USE_KCONF_UPDATE
+diff --git a/src/core/kconfig.cpp b/src/core/kconfig.cpp
+--- a/src/core/kconfig.cpp
++++ b/src/core/kconfig.cpp
+@@ -5,6 +5,9 @@
+     SPDX-FileCopyrightText: 1997-1999 Matthias Kalle Dalheimer <kalle@kde.org>
+ 
+     SPDX-License-Identifier: LGPL-2.0-or-later
++
++    Modified by SmoothMail contributors, 2026-11-14:
++    allow disabling external configuration migrations without removing the API.
+ */
+ 
+ #include "kconfig.h"
+@@ -556,6 +559,7 @@ bool KConfig::isDirty() const
+ 
+ void KConfig::checkUpdate(const QString &id, const QString &updateFile)
+ {
++#if KCONFIG_USE_KCONF_UPDATE
+     const KConfigGroup cg(this, QStringLiteral("$Version"));
+     const QString cfg_id = updateFile + QLatin1Char(':') + id;
+     const QStringList ids = cg.readEntry("update_info", QStringList());
+@@ -565,6 +569,11 @@ void KConfig::checkUpdate(const QString &id, const QString &updateFile)
+         reparseConfiguration();
+ #endif
+     }
++#else
++    Q_UNUSED(id)
++    Q_UNUSED(updateFile)
++    qCWarning(KCONFIG_CORE_LOG) << "KConfig::checkUpdate is disabled in this build.";
++#endif
+ }
+ 
+ KConfig *KConfig::copyTo(const QString &file, KConfig *config) const

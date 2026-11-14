@@ -21,3 +21,15 @@
 - MSVC開発環境からのRelease CRT探索とStageWindowsRelease完走。`build/release-runtime-check`は検証用で通常起動先とは別。
 - 実ランタイム監査は`KF6ConfigCore.dll`のUTF-16の絶対prefix（設定更新補助EXEへのパス）で停止。生のプライベートパスは検査診断に表示せず、ZIPも公開していない。原因は上流`src/core/CMakeLists.txt`の`KCONF_UPDATE_INSTALL_LOCATION`。パスマッピングだけでは消えないためDIST-04へ記録し、検査を回避しない。
 - legal一式の監査未完了。実製品ZIP・クリーンWindows起動は未検証。ホストの実メール・資格情報・登録JSONは参照せず、Googleライブプローブも実行していない。
+
+## KConfigの承認済みパッチ（2026-11-14）
+
+- `patches/kconfig/6.31.0-optional-check-update.patch`を作成。既定ONの機能選択を追加し、OFF時は絶対helper定義を生成せず、公開checkUpdateは固定警告だけを出す。設定変更・再読込・移行済み記録・外部プロセス起動をしない。原著作権/LGPL表記を保持し、変更者/日付/目的を各変更ファイルに明示。
+- 正式な経緯・理由・ライセンス/保守説明は`patches/kconfig/README.md`、配布向け要約は`THIRD_PARTY_NOTICES.md`。以前の調査メモの「未採用」は調査時点の記録として残す。
+- `BuildKconfigDependencies.cmake`を追加し、Framework bootstrapのWindows経路へ統合。独立patched-srcとpatchハッシュ別binaryを使い、Debug/ReleaseともOFF。生成ヘッダとcompile commandsを検証してからreceiptを発行する。
+- Debug/Releaseの構築・インストール、アプリの両構成の再構築成功。別binaryの既定ONビルドも成功し、設定ヘッダ1/絶対helper定義の維持を確認。ON版のcheckUpdateは実行していない。
+- OFF/ON DLLの`dumpbin /exports`で同じcheckUpdateシンボルを確認。OFF DLLを読む実行前ガード付きkdebase試験を追加し、Debug/Releaseで成功。テストは合成設定ファイルだけを使用し、未保存値・dirtyフラグ・ディスク内容・移行記録の非変更と固定警告を確認する。
+- ホスト18 CTest対象成功。Windows向け合成configure fixtureを追加し、KConfigのreceipt一致は受理、不足/置換は拒否する3ケースも成功。
+- 検証用runtimeは`build/kconfig-patch-release-runtime`。KConfigCore/Guiは検査通過。全体検査の次の拒否箇所はKF6Crash.dll。個別検査では15エントリが拒否（KIOCore、Qt、GNU/SASL等も含む）。未分類の固定パス/誤検出もあり、全てをビルド者情報と断定しない。検査は緩和せず、ZIPは公開していない。
+- テスト中に共有Ninjaを二重構築してobj生成が競合したため、bootstrapをfunction lockで直列化。修正後に同時起動した2回のPrepareBuildToolsがともに成功（6d58a8e）。
+- Qt SDKと通常起動先runtimeは変更せず、実サービス・実設定・資格情報へアクセスしていない。DIST-01/02/03および他DLLの検査は未完了のまま。

@@ -149,5 +149,18 @@ foreach(case IN ITEMS runtime-release existing missing release-debug release-exi
         message(FATAL_ERROR "Invalid staging created a destination.")
     endif()
 endforeach()
+if(WIN32)
+    foreach(mode IN ITEMS matching missing replaced)
+        if(mode STREQUAL matching)
+            set(expected pass)
+        else()
+            set(expected fail)
+        endif()
+        run(${expected} "${CMAKE_COMMAND}"
+            -S "${CMAKE_CURRENT_LIST_DIR}/kconfig_receipt_fixture"
+            -B "${root}/kconfig-receipt-${mode}" "-DMODE=${mode}")
+    endforeach()
+    message(STATUS "3 KConfig integration receipt guards passed.")
+endif()
 include("${CMAKE_CURRENT_LIST_DIR}/run_download_guards.cmake")
 message(STATUS "18 patch/receipt/staging cases and 4 download guards passed (offline).")

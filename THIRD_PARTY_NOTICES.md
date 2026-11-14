@@ -33,6 +33,21 @@ KIOはファイルごとに許諾条件が異なります。対象2ファイル�
 
 ## その他の依存
 
+### KConfig 6.31.0：外部設定移行を無効化したWindowsビルド
+
+上流 https://invent.kde.org/frameworks/kconfig の固定commit `a25acdfb1f51c9d8af3426f03380a9de5c88817a`へ、
+`patches/kconfig/6.31.0-optional-check-update.patch`を適用します。2026-11-14、SmoothMail contributorsによる変更です。
+経緯・設定変更や静的化との比較・機能制限・保守条件・ライセンス説明は`patches/kconfig/README.md`に記録しています。
+
+Windowsでは`KCONFIG_USE_KCONF_UPDATE=OFF`とし、公開APIは残しますが`KConfig::checkUpdate()`による設定移行は利用できません。
+呼出しは固定文言の警告だけを出し、外部プロセスの実行・設定変更・移行済み記録はしません。
+不要なhelperの絶対インストール先をDLLへ埋め込まないための限定措置であり、上流の標準動作ではありません。
+
+変更対象`kconfig.cpp`のLGPL-2.0-or-laterおよび元の著作権表示を保持します。KConfigや変更差分をMITとして扱いません。
+prefixの`share/licenses/kconfig`へ上流LICENSES・差分・説明・receiptを配置します。製品配布には、対応する変更済みライブラリの
+完全なソース・必要な構築スクリプトの提供と、適用される改変/再リンク等の条件への対応が引き続き必要です。
+この通知やパッチの公開だけで配布監査を完了したとは扱いません。helper自体は製品同梱対象にしません。
+
 ### KCodecs 6.31.0のRFC 2047文字判定修正
 
 上流 https://invent.kde.org/frameworks/kcodecs の固定コミット`220095a518c36c1b7aa6b5f49996177617979031`へ、`patches/kcodecs/6.31.0-safe-ctype.patch`を適用します。2026-11-13、SmoothMail contributorsによる`src/kcodecs.cpp`の局所変更です。`decodeRFC2047String`で`isspace`へ渡す入力バイトをunsigned charへ変換し、Debug CRTアサートと未定義動作を修正します。元の著作権・LGPL-2.0-or-laterを保持し、上流LICENSES・差分・変更通知・receiptをprefixの`share/licenses/kcodecs`へ配置します。上流リリースの標準実装ではなく、対応ソース提供・ライブラリ差替え等の義務は引き続き残ります。
