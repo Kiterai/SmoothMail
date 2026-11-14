@@ -33,6 +33,7 @@
 - **状態:** KConfigの絶対パスは承認済み限定パッチで対処し、Debug/Release構築・無効化回帰・export維持・KConfig DLLの検査通過を確認。実Releaseランタイム全体は他のDLLの検出により停止しており、ZIPは公開していない。
 - **原因:** 上流KConfig 6.31.0の`src/core/CMakeLists.txt`が`KCONF_UPDATE_INSTALL_LOCATION`へ絶対libexecパスを定義し、`KConfig::checkUpdate()`が利用する。これは`__FILE__`ではないためコンパイラのパスマッピングでは除去できない。
 - **済んでいること:** `patches/kconfig/6.31.0-optional-check-update.patch`を固定原本の独立コピーへ適用し、Windowsで外部設定移行を無効化。経緯・機能制限・ライセンス説明は`patches/kconfig/README.md`、要約は`THIRD_PARTY_NOTICES.md`へ保存。receiptを生成・検証し、不足と置換の拒否も合成試験済み。既定ONの別ビルドも成功。
-- **未完了の範囲:** 新しい収集ランタイムでは`KF6Crash.dll`で検査が停止。個別検査ではKIOCore・Qt DLL/プラグイン・GNU依存・SASL等を含む15ファイルが既存検査に拒否された。実際のビルドパスと必要な固定文字列・誤検出の区別、各原因への安全な対処、全体検査は未完了。検査を緩めたり全依存を変更したりはしていない。
+- **残る検出の調査:** 39ファイル中15 DLLが拒否。KCrash/KIOCoreは生成ヘッダのhelper/plugin絶対位置、GNU依存2件は実ビルド先のPDBとgettextのlocale/lib/元prefix、Qt10件はSDKに元々ある絶対PDB参照（Widgetsには.cppパスも）と判明。Qt10件はSDKと同じバイト列で双方のAuthenticodeがValid。SASLとQtCoreの固定既定値は個人パスとしての過剰検出も含む。
+- **未完了の範囲:** 各原因への安全な対処と全体検査。KIOのpluginパスはadmin workerの信頼判定にも使うため単純削除しない。固定既定値・供給元署名SDKのメタデータ・今回の作業者情報を区別する配布/検査方針の明確化が必要。検査は変更せず、Qtを事後書換えして署名を壊す対処も採用していない。詳細は`agent/release-runtime-audit-investigation.md`。
 - **設定範囲の調査:** 上流の通常設定によるfull変数/マクロの上書きは効かず、相対libexec指定も絶対prefixが付加されることをconfigure実験で確認。静的KConfigと`/Gy`・`/OPT:REF`で未使用`checkUpdate()`を除去した最小EXEは検査通過したが、同処理を参照する対照EXEは拒否された。静的案は全依存の状態共有・リンク構成・再リンク/ライセンス条件の再検討が必要で、未採用。
 - **完了条件:** ビルド者のパスを埋め込まず、実行ファイル探索の安全性と必要機能を維持して構築し、実ランタイム全体の検査を通す。バイナリ文字列の書換えや検査除外で回避しない。
