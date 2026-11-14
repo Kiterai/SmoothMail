@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStringDecoder>
@@ -184,7 +185,65 @@ void prepareLegal(const QString &stage, const QString &directory, const QString 
         write(stage + "/" + name, read(repository + "/" + name));
 }
 
-void audit(const QByteArray &data, const QString &name, const QStringList &roots)
+using PathPolicy = QMap<QString, QJsonObject>;
+
+bool sha256Text(const QJsonValue &value)
+{
+    return value.isString() && QRegularExpression("^[a-f0-9]{64}$").match(value.toString()).hasMatch();
+}
+
+PathPolicy pathPolicy(const QString &path)
+{
+    QJsonParseError error;
+    const auto document = QJsonDocument::fromJson(read(path), &error);
+    require(error.error == QJsonParseError::NoError && document.isObject(), "Invalid path policy JSON");
+    const auto object = document.object();
+    require(object.keys().size() == 2 && object["schema"].toInt() == 1
+                && object["files"].isArray(), "Invalid path policy schema");
+    PathPolicy policy;
+    QSet<QString> folded;
+    for (const auto &value : object["files"].toArray()) {
+        require(value.isObject(), "Invalid path policy entry");
+        const auto entry = value.toObject();
+        const auto name = relative(entry["file"]);
+        require(entry.keys().size() == 4 && sha256Text(entry["sha256"])
+                    && entry["origin"].isString() && !entry["origin"].toString().isEmpty()
+                    && entry["ranges"].isArray() && !entry["ranges"].toArray().isEmpty()
+                    && name.endsWith(".dll", Qt::CaseInsensitive)
+                    && !folded.contains(name.toCaseFolded()), "Invalid or duplicate path policy entry");
+        folded.insert(name.toCaseFolded());
+        qsizetype previousEnd = 0;
+        for (const auto &item : entry["ranges"].toArray()) {
+            require(item.isObject(), "Invalid path policy range");
+            const auto range = item.toObject();
+            const auto offset = range["offset"].toInteger(-1);
+            const auto length = range["length"].toInteger(-1);
+            const QSet<QString> reasons{"supplier-pdb", "supplier-source", "upstream-default"};
+            require(range.keys().size() == 4 && offset >= previousEnd && length > 0 && length <= 4096
+                        && offset <= 0x7fffffff - length && sha256Text(range["sha256"])
+                        && reasons.contains(range["reason"].toString()), "Invalid path policy range");
+            previousEnd = offset + length;
+        }
+        policy.insert(name, entry);
+    }
+    return policy;
+}
+
+QStringList decodedTexts(const QByteArray &data)
+{
+    QStringList texts{QString::fromLatin1(data), QString::fromUtf8(data)};
+    for (int alignment : {0, 1}) {
+        QString text;
+        text.reserve(data.size() / 2);
+        for (qsizetype i = alignment; i + 1 < data.size(); i += 2)
+            text.append(QChar(qFromLittleEndian<quint16>(data.constData() + i)));
+        texts.append(text);
+    }
+    return texts;
+}
+
+void audit(const QByteArray &data, const QString &name, const QStringList &roots,
+           const PathPolicy &policy = {})
 {
     const QFileInfo info(name);
     const auto suffix = info.suffix().toLower();
@@ -206,16 +265,9 @@ void audit(const QByteArray &data, const QString &name, const QStringList &roots
     static const QRegularExpression privatePath(
         R"((?:[a-z]:[\\/](?![\\/])(?:[a-z0-9_. ()~$@+\-]{2,100}[\\/])+[a-z0-9_. ()~$@+\-]{3,100}|[a-z]:[\\/][a-z0-9_. ()~$@+\-]{3,100}\.(?:pdb|cpp|h|obj|lib|dll|exe)|/(?:home|Users)/[^/\x00-\x20]+/|\\\\[a-z0-9_.-]{2,}\\[a-z0-9$_.-]{2,}))",
         QRegularExpression::CaseInsensitiveOption);
-    QStringList texts{QString::fromLatin1(data), QString::fromUtf8(data)};
-    for (int alignment : {0, 1}) {
-        QString text;
-        text.reserve(data.size() / 2);
-        for (qsizetype i = alignment; i + 1 < data.size(); i += 2)
-            text.append(QChar(qFromLittleEndian<quint16>(data.constData() + i)));
-        texts.append(text);
-    }
-    for (auto text : texts) {
-        require(!privatePath.match(text).hasMatch(), "Embedded machine/user path detected");
+    // Explicit builder roots/identifiers are NEVER exempted, including inside
+    // approved vendor metadata. The input bytes and shipped DLL remain untouched.
+    for (auto text : decodedTexts(data)) {
         text.replace('\\', '/');
         for (auto root : roots) {
             root.replace('\\', '/');
@@ -223,6 +275,26 @@ void audit(const QByteArray &data, const QString &name, const QStringList &roots
                     "Embedded input directory detected");
         }
     }
+    auto inspected = data;
+    const auto approval = policy.constFind(name);
+    if (approval != policy.cend()) {
+        require(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex()
+                    == approval->value("sha256").toString().toLatin1(),
+                "Reviewed supplier binary changed; review path policy");
+        for (const auto &item : approval->value("ranges").toArray()) {
+            const auto range = item.toObject();
+            const auto offset = range["offset"].toInteger();
+            const auto length = range["length"].toInteger();
+            require(offset >= 0 && length > 0 && offset <= data.size() && length <= data.size() - offset
+                        && QCryptographicHash::hash(data.mid(offset, length), QCryptographicHash::Sha256).toHex()
+                            == range["sha256"].toString().toLatin1(),
+                    "Reviewed supplier path range changed");
+            // Mask only the reviewed range in this temporary inspection copy.
+            inspected.replace(offset, length, QByteArray(length, '\0'));
+        }
+    }
+    for (const auto &text : decodedTexts(inspected))
+        require(!privatePath.match(text).hasMatch(), "Embedded machine/user path detected");
 }
 
 quint32 crc32(const QByteArray &data)
@@ -249,7 +321,8 @@ void u32(QByteArray &data, quint32 value)
 
 // Deterministic ZIP32: UTF-8 names, raw DEFLATE, 1980-01-01, Unix 0644.
 // Fail instead of truncating ZIP32 fields. No host path/name is recorded.
-void archive(const QString &stage, const QString &output, const QStringList &roots)
+void archive(const QString &stage, const QString &output, const QStringList &roots,
+             const PathPolicy &policy = {})
 {
     require(!QFileInfo::exists(output) && !QFileInfo(output).isSymLink(), "Output already exists");
     require(!QFileInfo::exists(stage + "/runtime-sha256.txt"), "Stage already has an inventory");
@@ -258,7 +331,7 @@ void archive(const QString &stage, const QString &output, const QStringList &roo
     QByteArray inventory;
     for (const auto &name : files) {
         const auto data = read(stage + "/" + name);
-        audit(data, name, roots);
+        audit(data, name, roots, policy);
         inventory += QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex()
             + "  " + name.toUtf8() + "\n";
     }
@@ -277,7 +350,7 @@ void archive(const QString &stage, const QString &output, const QStringList &roo
         const auto name = ("SmoothMail/" + file).toUtf8();
         const auto data = read(stage + "/" + file);
         // Recheck inputs read for archiving, not just the earlier inventory pass.
-        audit(data, file, roots);
+        audit(data, file, roots, policy);
         require(data.size() < 0xffffffffLL && name.size() < 65536, "ZIP32 size limit exceeded");
         if (file != "runtime-sha256.txt")
             require(inventory.contains(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex()
@@ -368,6 +441,51 @@ void selfTest(const QString &artifact = {})
     for (auto ch : unicodeRoot)
         u16(unicodeWide, ch.unicode());
     rejects([&] { audit(fixture() + "x" + unicodeWide, "app.exe", {unicodeRoot}); });
+    // Supplier metadata is allowed only for the reviewed bytes/ranges. A name,
+    // signature, or even a reviewed hash alone is not a blanket exemption.
+    const QByteArray vendorPath("C:/Users/vendor-builder/sdk/vendor.pdb");
+    const auto vendor = fixture() + vendorPath;
+    auto range = QJsonObject{{"offset", fixture().size()}, {"length", vendorPath.size()},
+        {"sha256", QString::fromLatin1(QCryptographicHash::hash(vendorPath, QCryptographicHash::Sha256).toHex())},
+        {"reason", "supplier-pdb"}};
+    auto approval = QJsonObject{{"file", "vendor.dll"}, {"origin", "Synthetic supplier fixture"},
+        {"sha256", QString::fromLatin1(QCryptographicHash::hash(vendor, QCryptographicHash::Sha256).toHex())},
+        {"ranges", QJsonArray{range}}};
+    const PathPolicy reviewed{{"vendor.dll", approval}};
+    audit(vendor, "vendor.dll", {}, reviewed);
+    rejects([&] { audit(vendor, "vendor.dll", {}); });
+    rejects([&] { audit(vendor, "renamed.dll", {}, reviewed); });
+    rejects([&] { audit(vendor + "x", "vendor.dll", {}, reviewed); });
+    rejects([&] { audit(vendor, "vendor.dll", {"vendor-builder"}, reviewed); });
+    auto contaminated = vendor + QByteArray("\0", 1) + "C:/Users/private-builder/source/file.cpp";
+    approval["sha256"] = QString::fromLatin1(QCryptographicHash::hash(contaminated, QCryptographicHash::Sha256).toHex());
+    rejects([&] { audit(contaminated, "vendor.dll", {}, {{"vendor.dll", approval}}); });
+    auto badRange = range;
+    badRange["sha256"] = QString(64, '0');
+    auto badApproval = reviewed.value("vendor.dll");
+    badApproval["ranges"] = QJsonArray{badRange};
+    rejects([&] { audit(vendor, "vendor.dll", {}, {{"vendor.dll", badApproval}}); });
+    QTemporaryDir policyFixture;
+    require(policyFixture.isValid(), "Cannot create policy fixture");
+    const auto policyPath = policyFixture.path() + "/policy.json";
+    write(policyPath, QJsonDocument(QJsonObject{{"schema", 1}, {"files", QJsonArray{reviewed.value("vendor.dll")}}}).toJson());
+    audit(vendor, "vendor.dll", {}, pathPolicy(policyPath));
+    const auto invalidPolicy = policyFixture.path() + "/invalid.json";
+    badRange["offset"] = -1;
+    badApproval["ranges"] = QJsonArray{badRange};
+    write(invalidPolicy, QJsonDocument(QJsonObject{{"schema", 1}, {"files", QJsonArray{badApproval}}}).toJson());
+    rejects([&] { pathPolicy(invalidPolicy); });
+    const auto duplicatePolicy = policyFixture.path() + "/duplicate.json";
+    write(duplicatePolicy, QJsonDocument(QJsonObject{{"schema", 1},
+        {"files", QJsonArray{reviewed.value("vendor.dll"), reviewed.value("vendor.dll")}}}).toJson());
+    rejects([&] { pathPolicy(duplicatePolicy); });
+    const auto vendorStage = policyFixture.path() + "/runtime";
+    write(vendorStage + "/vendor.dll", vendor);
+    archive(vendorStage, policyFixture.path() + "/vendor.zip", {}, reviewed);
+    const auto privateStage = policyFixture.path() + "/private";
+    write(privateStage + "/vendor.dll", vendor);
+    rejects([&] { archive(privateStage, policyFixture.path() + "/private.zip", {"vendor-builder"}, reviewed); });
+    require(!QFileInfo::exists(policyFixture.path() + "/private.zip"), "Rejected vendor ZIP was published");
     audit(fixture() + QByteArray("\x89x:/\x90\xff\0https://example.test/sources\0", 38), "app.exe", {});
     QTemporaryDir temporary;
     require(temporary.isValid(), "Cannot create package test directory");
@@ -431,19 +549,25 @@ int main(int argc, char **argv)
             selfTest(args.value(2));
         } else if (args.size() == 3 && args[1] == "--check-legal") {
             legalManifest(args[2]);
-        } else if (args.size() >= 3 && args[1] == "--audit-stage") {
+        } else if ((args.size() >= 3 && args[1] == "--audit-stage")
+                   || (args.size() >= 4 && args[1] == "--audit-stage-with-policy")) {
+            const bool reviewed = args[1] == "--audit-stage-with-policy";
+            const auto policy = reviewed ? pathPolicy(args[3]) : PathPolicy{};
             for (const auto &name : entries(args[2])) {
                 try {
-                    audit(read(args[2] + "/" + name), name, args.mid(3));
+                    audit(read(args[2] + "/" + name), name, args.mid(reviewed ? 4 : 3), policy);
                 } catch (const std::runtime_error &) {
                     std::cerr << "Failed package entry: " << name.toStdString() << '\n';
                     throw;
                 }
             }
-        } else if (args.size() >= 6 && args[1] == "--package") {
+        } else if ((args.size() >= 6 && args[1] == "--package")
+                   || (args.size() >= 7 && args[1] == "--package-with-policy")) {
             // stage, legal directory, repository, output, private roots...
+            const bool reviewed = args[1] == "--package-with-policy";
+            const auto policy = reviewed ? pathPolicy(args[6]) : PathPolicy{};
             prepareLegal(args[2], args[3], args[4]);
-            archive(args[2], args[5], args.mid(6));
+            archive(args[2], args[5], args.mid(reviewed ? 7 : 6), policy);
         } else {
             throw std::runtime_error("Invalid package helper arguments");
         }

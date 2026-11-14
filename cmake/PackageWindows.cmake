@@ -54,7 +54,8 @@ smoothmail_dependency_command("${CMAKE_COMMAND}"
     "-DSASL_DIR=${prefix}/bin/sasl2" "-DCRT_BIN=${CRT_BIN}"
     "-DDESTINATION=${stage}" -DCONFIGURATION=Release
     -P "${CMAKE_CURRENT_LIST_DIR}/StageWindowsRelease.cmake")
-smoothmail_dependency_command("${helper}" --package "${stage}" "${LEGAL_DIR}" "${repository}" "${OUTPUT}"
+smoothmail_dependency_command("${helper}" --package-with-policy "${stage}" "${LEGAL_DIR}" "${repository}" "${OUTPUT}"
+    "${CMAKE_CURRENT_LIST_DIR}/runtime-path-policy.json"
     "${repository}" "${DEPENDENCY_ROOT}" "${job}" "${Qt6_ROOT}" "${CRT_BIN}" "${LEGAL_DIR}"
-    "$ENV{USERPROFILE}" "$ENV{TEMP}")
+    "$ENV{USERPROFILE}" "$ENV{TEMP}" "$ENV{USERNAME}" "$ENV{COMPUTERNAME}")
 message(STATUS "Release ZIP published; privacy and coverage checks passed.")

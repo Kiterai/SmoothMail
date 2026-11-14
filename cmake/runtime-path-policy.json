@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "file": "Qt6Core.dll",
+      "sha256": "39175459c4837c8cc0f709a637fb6eadb25d696785109c8393559ec876f02703",
+      "origin": "Qt 6.12.0 MSVC2022_64 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges": [
+        {"offset":9038832,"length":17,"sha256":"975f9c2ffb9fd690cf3d029ea6ba8891d6fb334078faf8d331a8f2cf4660079a","reason":"upstream-default"},
+        {"offset":9038856,"length":15,"sha256":"39e141106c502719392dda01330b07c0e1728d113460aea266f7c1d2d685ab92","reason":"upstream-default"},
+        {"offset":9339332,"length":48,"sha256":"8458d4342fcad91c6ed438857800c93744644a6d6d427e8a7b7872f385c01147","reason":"supplier-pdb"}
+      ]
+    },
+    {
+      "file":"Qt6Gui.dll","sha256":"37c79b48b9cc2d9a03d21410c26fea683d236f9280f5c9aaab85d980759f2835",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":7914836,"length":47,"sha256":"f6ef5f044cbeea3ed5a58913c868ba5c3ed58d03518de51f1fbe67774e6532cf","reason":"supplier-pdb"}]
+    },
+    {
+      "file":"Qt6Network.dll","sha256":"9825558f184c64f639c4b8663650cee0ae8ffe01c18d98ff76f006a02389965f",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":1362960,"length":51,"sha256":"c3b0b26667c89ac431733e506ed4db1d428171837166cd361878d8f5715754df","reason":"supplier-pdb"}]
+    },
+    {
+      "file":"Qt6Sql.dll","sha256":"1d847a23da0f3dc568e3fb8a98fbb210ba122a3b7f3db51b5cc69a2edfae74a6",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":218712,"length":47,"sha256":"154a38ff436275a80e5d2b0b4707cff74119489719acaef4dfe08f6f3a77b59d","reason":"supplier-pdb"}]
+    },
+    {
+      "file":"Qt6Svg.dll","sha256":"cce84059f1857ff1859db7c4fe10334e603d9ca81eb4d5f0a22ca0ac515b340c",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":435068,"length":46,"sha256":"5f1a04f9f9828eda292b05558edb6d731d49acc39a219e6ba47305fac8326186","reason":"supplier-pdb"}]
+    },
+    {
+      "file":"Qt6Widgets.dll","sha256":"74138ca203c378a62367cc398e4dac07dec729b5a121486dbb26109854c17ae5",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[
+        {"offset":4734912,"length":64,"sha256":"9dbe2f90aa0a1ebecc3e5c0cd75068cae2fa2ca86ca68432f862c1377814b35f","reason":"supplier-source"},
+        {"offset":4794592,"length":67,"sha256":"9f27f348e1db144f6ec06bcb36adf9f3541779e88d71655700b108c4d5584655","reason":"supplier-source"},
+        {"offset":5140620,"length":51,"sha256":"aadda4ee969e6963964ed88b6470fda8ea3cbd92a24d45a52166cfa9cb7ea675","reason":"supplier-pdb"}
+      ]
+    },
+    {
+      "file":"Qt6Xml.dll","sha256":"92b936761e00f6bb643e8564b7bbe766be33cd9b39e12f913ada6f7842abc314",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":101280,"length":47,"sha256":"4e7a0d264592f2951b40c0bc6a8682b58e174eea49be654f14df8f5f8172ccac","reason":"supplier-pdb"}]
+    },
+    {
+      "file":"libsasl.dll","sha256":"ae8b47a6a9cf4e73ffcd05be69b88e72c686ea1ce3bef9201cbf439b27b0b091",
+      "origin":"Cyrus SASL 2.1.28 upstream win32/include/config.h PLUGINDIR/CONFIGDIR; reviewed 2026-11-14",
+      "ranges":[{"offset":86208,"length":16,"sha256":"c32b6272a726c789340c8e0de23bba02d008f4fabe291cd0330d2e854d3dba7f","reason":"upstream-default"}]
+    },
+    {
+      "file":"platforms/qwindows.dll","sha256":"12eef54bcdb6711b2722e9cef983d91a54546565a96b684d7bd9e2a7370fde92",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":772400,"length":63,"sha256":"40bac236100307c2347bf4315717e2ad730090d7b86b7c15e5626b17382c7fba","reason":"supplier-pdb"}]
+    },
+    {
+      "file":"sqldrivers/qsqlite.dll","sha256":"021b009884dac1e64ed6dc3a3a817ef36a1b93ca37607ef6722a1f16b15ba852",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":1784148,"length":63,"sha256":"aee87044a4ba43d45f04be8fb53a13af0a3e1c5f74560419ccb49a1416ff8403","reason":"supplier-pdb"}]
+    },
+    {
+      "file":"tls/qschannelbackend.dll","sha256":"f37162f9ff47bc552132314dbf1bf6d436edaee983ec67a9a175cb52e0c38045",
+      "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
+      "ranges":[{"offset":185700,"length":65,"sha256":"10a70895800ccf79dfe8b0d0983fcc44c15fcd9332b266c2cd6b2ca2075721df","reason":"supplier-pdb"}]
+    }
+  ]
+}
