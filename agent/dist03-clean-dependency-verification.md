@@ -12,6 +12,7 @@
 - 利用者承認の通常環境では同じ`DownloadAsset.cmake`の新規取得が成功し、固定SHA512も一致。
 - 証明書検証ON・最低TLS 1.2は変更していない。CAやTLS検証の問題と断定せず、サンドボックス実行主体のSchannel制約として切り分けた。
 - 検査用probeは`build/probe-clean-download.cmake`、`build/probe-tls.cmake`。
+- Safe Shell診断log ID: `c931b0179f044caa8fa97b7ca2267750`。通常環境の成功log ID: `9babda665a854f159e13ce253fdeadf8`。
 
 ## 再現用の検証入口
 
@@ -34,4 +35,36 @@
 
 ## 実取得・構築
 
-通常環境での全取得・構築の実行結果を確認してから、DIST-03の完了可否を確定する。
+**DIST-03は完了。** 利用者承認の通常環境で`build/run-dist03-clean.cmd`を1回実行し、
+2026-11-14 22:56:09〜23:42:09（JST、約46分）、終了コード0で全Release依存構築が完走した。
+作業rootはOS Temp配下の専用`opencode/dist03-clean-deps`。開始時に存在しないことを入口で確認して作成した。
+失敗したprobeの資材も含め、他rootからのダウンロード・ビルド資材コピーは行っていない。
+
+- Gitソース17件の実HEADとmanifestの固定commitが一致。構築後も全17件のtracked変更なし。
+- 取得物一覧52ファイルのSHA512を完了receiptと再照合してすべて一致。
+- vcpkg.exeはnative manifestの固定SHA512、Cyrus SASL原本は固定SHA256とも再照合して一致。
+- vcpkgのCMake x-scriptによる資材新規取得の成功は49件。
+  vcpkgの「Asset cache hit」はこのx-script成功を意味し、開始前の既存キャッシュ利用ではない。
+  同じ検証runの後半で同じ資材を再使用することとは区別する。
+- vcpkgのホストツールrootは約27分、製品GNU rootは約10分で完了。
+  libiconv/gettext-libintlは両構成を構築し、Release bin監査・GNU再配置の強制試験も成功。
+- Native、Framework、WinFlexBison、I18n、Solid、KIO、SASL、XOAuth2、QtKeychain、Mailの全標準ステージが成功。
+  KIMAP/KSMTPまでinstall済み。今回の検証はRelease依存の構築であり、アプリ両構成や実サービス試験を再実施したという意味ではない。
+- 途中で親ログが静かだった期間も、gettext-libintlの内部config.logが約15秒で261KB→518KBへ増加していることを確認。
+  ハングではなく、configureが詳細を内部ログへ書いていた。
+
+証跡:
+
+- `build/dist03-clean-build.log`
+- 専用root内`clean-verification-started.txt`
+- 専用root内`clean-verification-completed.json`
+  - SHA256: `d48f59a771c0e3cd2f8334400441e5d01d7b1b45e7635411793f8e68c1fb215a`
+  - ソースmanifest SHA256: `67b06d64bb92a93779ea2a66070655e0478e51d2e93a40703d27b1c097814ae3`
+  - native manifest SHA256: `94656fc1af81fc16b8259e3a08effba5b6dc722be8e544d9cf35eeae57614551`
+- Safe Shell実行ID: `106bbdb7bd9d45bd8f6816633c33c4d1`
+- 構築後の独立照合log ID: `fc87a7dc369d425fb80b3e93ccdcc681`、`727ac23acb204b2892584983c8339fed`
+
+Qt SDK・MSVC/Windows SDK・CMake/Git/Pythonは指定された既存環境を使用した。
+空のWindowsへのSDK/ツール導入、Qt対応ソースの配布監査、legal付き実ZIP・クリーン環境の起動確認はDIST-01/02側に残る。
+証明書検証を無効化せず、外部curl/Pythonダウンローダーや未検証キャッシュへ切り替えていない。
+通常起動runtimeや元worktree、他ブランチの未コミット変更には触れていない。自動merge/pushは行わない。

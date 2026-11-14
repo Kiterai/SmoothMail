@@ -33,6 +33,8 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DDEPENDENCY_ROOT=C:/build/smoothmail-
 
 成功時だけ`clean-verification-completed.json`を生成します。固定commit一覧・manifestのハッシュ・取得資材のSHA512を記録します。Qt SDK・MSVC/Windows SDK・CMake・Git・Pythonは作業者が準備する前提であり、それらの新規導入や、アプリ/ZIP・クリーンPCでの実行確認は別の検証です。
 
+2026-11-14、固定Gitソース17件の新規取得と全Release依存構築が成功し、構築後のcommit・取得物一覧52ファイルのハッシュ再照合も通過しました。[検証結果](clean-dependency-verification.md)を参照してください。
+
 TLS証明書検証は常に有効です。CMakeのstatus 35だけでCA不備とは断定せず、実行環境側のTLSエラーも確認してください。Safe Shell内のSchannel `SEC_E_NO_CREDENTIALS`では通常環境との比較が必要です。証明書検証の無効化や外部curlへの切替は行いません。
 
 ## MIME依存
