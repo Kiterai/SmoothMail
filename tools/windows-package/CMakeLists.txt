@@ -13,6 +13,13 @@ if(MSVC)
     target_compile_options(smoothmail_qt_sbom_audit PRIVATE /utf-8)
 endif()
 enable_testing()
+add_test(NAME crt_guards COMMAND "${CMAKE_COMMAND}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_guards.cmake")
+if(WIN32 AND DEFINED ENV{VCToolsRedistDir})
+    add_test(NAME crt_binary_guards COMMAND "${CMAKE_COMMAND}"
+        "-DCRT_BIN=$ENV{VCToolsRedistDir}/x64/Microsoft.VC143.CRT"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_binary_guards.cmake")
+endif()
 add_test(NAME qt_sbom_guards COMMAND "${CMAKE_COMMAND}"
     "-DHELPER=$<TARGET_FILE:smoothmail_qt_sbom_audit>"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_qt_sbom_guards.cmake")

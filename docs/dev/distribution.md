@@ -9,7 +9,7 @@
 [ビルド要件](build.md)に加え、次を準備します。
 
 - 配布するソースを確定した、追跡ファイルに変更のないGitコミット。
-- Qt SDKのRelease DLL・プラグインと、利用資格・再配布条件を確認したMSVC Release CRT。
+- Qt SDKのRelease DLL・プラグインと、MSVC 2022のx64 Release再配布用CRT。
 - 全同梱コンポーネントの原文・著作権・変更通知・対応ソース案内をまとめたlegalディレクトリと、レビュー済みの `manifest.json`。
 
 依存の構築後、以下で通知と対応ソースの**レビュー用資料**を収集できます。`STAGE` には [Release配置手順](run.md#リリースビルド実行)で作成した候補を指定し、各 `OUTPUT` は新しい保存先にします。
@@ -52,7 +52,9 @@ legalの形式例（全DLLを一意にコンポーネントへ割り当てます
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
 ```
 
-依存取得・Release構築、アプリの配布用Release構築、DLL／プラグイン／CRT・legalの収集、個人パス・Debug混入等の検査、ZIP化を行います。CRTの場所を一意に決定できない場合は `-DCRT_BIN=.../x64/Microsoft.VC143.CRT` を追加します。既存ZIPは上書きしません。
+依存取得・Release構築、アプリの配布用Release構築、DLL／プラグイン／CRT・legalの収集、個人パス・Debug混入等の検査、ZIP化を行います。CRTの場所を一意に決定できない場合は `-DCRT_BIN=.../VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` を追加します。既存ZIPは上書きしません。
+
+CRTはフォルダ全体を一括同梱せず、EXE・同梱DLL・指定プラグインの通常/遅延importと、そのCRTの推移依存から必要なDLLだけを選びます。VS 2022のRelease再配布用フォルダから取得し、Microsoft署名・x64・版の整合・コピー前後の同一性を検査します。署名確認はローカルの信頼情報を使うため、ネットワーク不要ですがオンライン失効確認を代替しません。未解決・未対応のCRT importや検査失敗時は停止します。実行時に独自に動的ロードするDLLや追加プラグインは、別途機能試験で確認してください。
 
 未解決・競合DLL、指定外のDLL、通知不足、未承認の埋込みパスで停止したら、入力を修正して再実行します。検査を無効化したりDLLを事後書換えしたりしません。供給元由来の情報は `cmake/runtime-path-policy.json` のハッシュ・範囲が一致するものに限り許容し、作業者情報はその範囲でも拒否します。
 
@@ -76,6 +78,8 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=
 - 原文・著作権・必須謝辞を削除しません。KDE等はファイル単位の条件やヘッダ・生成物・静的組込みも確認します。KIOのfavicon除外だけで残り全体の許諾を認定しません。
 - 変更済み依存は `patches/` と [第三者通知](../../THIRD_PARTY_NOTICES.md)に従い、原本・差分・変更内容／日付・機能制限・再構築に必要な入力を対応ソースへ含めます。
 - LGPL等の改変・差替え・必要なデバッグの権利を追加条件で妨げません。提供形態に応じて必要なInstallation Informationも確認します。
-- CRTは配布担当者の適用契約・REDIST対象を確認し、Debug CRTや不要なビルドツールを同梱しません。
+- **MSVC CRTは必要なRelease DLLを改変せずZIPへ同梱します。MSVC 2022の正当な利用と、適用されるMicrosoftの使用許諾条件・REDIST対象の確認/遵守は、配布作業担当者の責務です。** 有料版が一律に必要という意味ではありません。自動検査は担当者の利用資格を認定せず、追加の利用資格承認待ちとして作業を止める仕組みにもしません。
+- Microsoft CRTをSmoothMailのMITやQtのLGPLへ再ライセンスしません。Microsoftの通知・配布条件を保持し、適用される同意条件も確認します。CRTの条件を他のOSSの改変・差替え権まで制限するように一括適用しません。[公式REDIST一覧](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)、[VS 2022使用許諾条項](https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/)を参照してください。
+- Debug CRT・再配布対象外ファイル・不要なビルドツールを同梱しません。同梱CRTのセキュリティ更新はアプリ配布側が行い、中央配備されたCRTの更新だけには依存しません。
 
 自動検査は法的条件や配布権限を認定しません。監査の未確認事項は[未完了仕様](../../spec/inprogress/distribution.md)に記録します。

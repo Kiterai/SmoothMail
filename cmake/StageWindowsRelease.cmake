@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.30)
 
 # Separate from developer staging: Debug CRT and SDK mutation are never allowed.
 foreach(required IN ITEMS APP QT_BIN DEPENDENCY_BIN NATIVE_BIN SASL_DIR CRT_BIN)
@@ -18,6 +18,8 @@ file(GLOB existing "${DESTINATION}/*" "${DESTINATION}/.*")
 if(existing)
     message(FATAL_ERROR "Staging directory must be empty")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/WindowsCrt.cmake")
+smoothmail_validate_crt_directory("${CRT_BIN}")
 find_program(DUMPBIN dumpbin REQUIRED)
 set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM windows+pe)
 set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL dumpbin)
@@ -38,22 +40,19 @@ foreach(mechanism IN ITEMS PLAIN LOGIN XOAuth2)
     endif()
     list(APPEND sasl_plugins "${SASL_DIR}/sasl${mechanism}.dll")
 endforeach()
-file(GLOB crt_files "${CRT_BIN}/vcruntime*.dll" "${CRT_BIN}/msvcp*.dll" "${CRT_BIN}/concrt*.dll" "${CRT_BIN}/vccorlib*.dll")
-if(NOT crt_files)
-    message(FATAL_ERROR "Release redistributable CRT is missing")
-endif()
 # Never consider every DLL installed in the builder's System32 an OS dependency:
 # it may contain third-party runtimes absent from a clean Windows installation.
 set(system_libraries advapi32.dll authz.dll bcrypt.dll cfgmgr32.dll comctl32.dll
     comdlg32.dll crypt32.dll d2d1.dll d3d9.dll d3d11.dll d3d12.dll dbghelp.dll
     dnsapi.dll dwmapi.dll dwrite.dll dxgi.dll gdi32.dll icuuc.dll imm32.dll
-    iphlpapi.dll kernel32.dll ktmw32.dll mpr.dll mscms.dll msimg32.dll mswsock.dll msvcrt.dll
+    iphlpapi.dll kernel32.dll ktmw32.dll mpr.dll mscms.dll msimg32.dll mswsock.dll msvcrt.dll msvcp_win.dll
     ncrypt.dll netapi32.dll normaliz.dll ntdll.dll ole32.dll oleaut32.dll opengl32.dll
     powrprof.dll propsys.dll psapi.dll rpcrt4.dll runtimeobject.dll secur32.dll
     setupapi.dll shcore.dll shell32.dll shlwapi.dll ucrtbase.dll uiautomationcore.dll
     user32.dll userenv.dll uxtheme.dll version.dll windowscodecs.dll winhttp.dll
     wininet.dll winmm.dll winspool.drv ws2_32.dll wsock32.dll wtsapi32.dll wldap32.dll
-    # Always copied explicitly from CRT_BIN, even when installed on the host.
+    # Inspect these imports separately so the host System32/SDK copy never
+    # substitutes for the explicitly supplied redistributable CRT.
     msvcp140.dll msvcp140_1.dll msvcp140_2.dll msvcp140_atomic_wait.dll
     msvcp140_codecvt_ids.dll vcruntime140.dll vcruntime140_1.dll
     vcruntime140_threads.dll concrt140.dll vccorlib140.dll)
@@ -78,7 +77,7 @@ if(unresolved OR conflicts_FILENAMES)
 endif()
 set(allowed "${DEPENDENCY_BIN}" "${NATIVE_BIN}" "${QT_BIN}" "${CRT_BIN}")
 set(qt_libraries)
-foreach(library IN LISTS resolved crt_files)
+foreach(library IN LISTS resolved)
     get_filename_component(name "${library}" NAME)
     string(TOLOWER "${name}" lower)
     if(lower MATCHES "^(qt6.*d|ucrtbased|msvcp.*d(_.*)?|vcruntime.*d|concrt.*d)\\.dll$")
@@ -98,6 +97,18 @@ foreach(library IN LISTS resolved crt_files)
     endif()
     if(directory STREQUAL QT_BIN)
         list(APPEND qt_libraries "${library}")
+    endif()
+endforeach()
+smoothmail_collect_crt("${CRT_BIN}" "${APP};${resolved};${plugin_files};${sasl_plugins}" crt_files)
+smoothmail_prepare_crt_verifier(crt_verifier)
+# Fail before staging if a required CRT is unsigned, modified, wrong-architecture,
+# or from a different version set. The verifier never prompts or uses the network.
+foreach(library IN LISTS crt_files)
+    execute_process(COMMAND "${crt_verifier}" "${library}" "${library}" "${CRT_BIN}/vcruntime140.dll"
+        RESULT_VARIABLE result OUTPUT_QUIET)
+    if(NOT result STREQUAL "0")
+        get_filename_component(name "${library}" NAME)
+        message(FATAL_ERROR "Release redistributable CRT verification failed: ${name}")
     endif()
 endforeach()
 file(MAKE_DIRECTORY "${DESTINATION}" "${DESTINATION}/sasl2")
@@ -120,5 +131,15 @@ execute_process(COMMAND "${QT_BIN}/windeployqt.exe" --release --no-compiler-runt
 if(NOT deploy_result EQUAL 0)
     message(FATAL_ERROR "Release Qt deployment failed")
 endif()
+foreach(library IN LISTS crt_files)
+    get_filename_component(name "${library}" NAME)
+    execute_process(COMMAND "${crt_verifier}" "${library}" "${DESTINATION}/${name}" "${CRT_BIN}/vcruntime140.dll"
+        RESULT_VARIABLE result OUTPUT_VARIABLE evidence)
+    if(NOT result STREQUAL "0")
+        message(FATAL_ERROR "Staged CRT verification failed: ${name}")
+    endif()
+    string(STRIP "${evidence}" evidence)
+    message(STATUS "CRT verified: ${name} ${evidence}")
+endforeach()
 file(WRITE "${DESTINATION}/qt.conf" "[Paths]\nPrefix=.\nPlugins=.\n")
 # No launcher, developer cache, PDB, environment dump or build receipts in the ZIP.

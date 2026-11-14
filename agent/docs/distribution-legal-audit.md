@@ -79,7 +79,7 @@ Cyrus SASLの必須謝辞:
 |---|---|---|
 | Qtの適用条件 | 仕様に従いオープンソース条件を採用 | 方針確定。対象QtモジュールはLGPL-3.0-onlyの代替を採用し、内蔵第三者コードの条件も維持する。商用契約の選択待ちではない |
 | Qt原文・内蔵第三者通知 | SDKと一致する原本のLICENSES、著作権、qtbaseのSQLite/PCRE2/zlib/画像・フォント等、該当モジュールに実際に組み込まれたコードの条件を確認・収集 | 固定qtbase/qtsvgの完全なGit checkoutとLICENSES・第三者通知候補を取得・収集済み。実同梱コードへの対応レビューは未完了。SDK全体のSBOMには非同梱ツールもあるため全件を無条件に製品へ割り当てない |
-| MSVC CRT配布権限 | 配布者に適用されるVisual StudioライセンスとREDIST一覧で10ファイル・対象環境の再配布条件を確認 | 公式[VS 2022 REDIST一覧](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)は有効なライセンス保有者によるVC/redist内の未改変ファイルの配布を条件付きで認め、debug_nonredistは除外する。現候補はRelease再配布フォルダとSHA256一致。配布責任者の利用資格・契約遵守は未確認 |
+| MSVC CRT配布方針 | 必要なRelease DLLを未改変でZIPへ同梱 | 2026-11-15、MSVC 2022の正当な利用・条件遵守を配布作業担当者の責務とする方針を承認。追加の資格承認待ちではない。公式[VS 2022 REDIST一覧](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)に従い、Debugを除外し、署名・版・x64・原本一致を技術検査する。元の10 DLL一括収集から必要importの再帰的選択へ変更。Microsoftの最終通知・条件は引き続き整理する |
 | 対応ソース提供方法 | バイナリと同じページで別配布 | 方法は仕様で確定。固定ソースの収集・アーカイブ/展開試験・実際の公開先での取得確認が残る。未履行の書面オファーは作成しない |
 | コード別条件と静的組込み | KDE/Qt/GNU等の実際のコンパイル/リンク対象とヘッダ/生成物/内蔵第三者コードを照合。特にKIOのGPL favicon除外だけで残り全部を認定しない | 構成・原文・変更説明は収集済み。最終判定は未完了 |
 | 最終配布検証 | legal原文・ソース案内を確定後、manifest.jsonをレビューし、全同梱物の検査、独立ZIP展開・SHA照合、差替え・クリーン環境確認 | DIST-01/02に残る |

@@ -24,7 +24,7 @@ cmake -DAPP="%CD%/build/windows/Release/smoothmail.exe" -DQT_BIN=C:/Qt/6.12.0/ms
 build\run-release\smoothmail.exe
 ```
 
-こちらも新しい空の配置先を使います。配置だけでは配布用のライセンス・プライバシー検査は完了しません。実際に配布するZIPは[配布手順](distribution.md)で生成します。
+こちらも新しい空の配置先を使います。必要なCRTだけを再帰的に選択し、署名・x64・版・非改変を確認するビルド専用C++補助をMSVC/NMakeで内部構築します。配置だけでは配布用のライセンス・プライバシー検査は完了しません。実際に配布するZIPと、配布担当者の責務は[配布手順](distribution.md)を参照してください。
 
 ## 実行時の注意
 
