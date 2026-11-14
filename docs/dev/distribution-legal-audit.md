@@ -16,6 +16,8 @@ cmake -DSTAGE=build/integrated-privacy-runtime -DOUTPUT=build/legal-windows-revi
 - `notices/`: コンポーネント別の固定ソース情報、既存のSmoothMailパッチ・経緯・機能制限説明。
 - `THIRD_PARTY_NOTICES.md`と本資料。
 
+方針反映後の収集先は`build/legal-windows-complete-evidence-review`（309ファイル）。Qtの`qt_attribution.json`が指定するLicenseFileも解決・収集し、単なるファイル名パターンだけで原文を落とさないようにしています。Qt Base/Qt SVGのソース原文・通知候補はそれぞれ168件/7件です。FreeTypeの代替条件はFTLを選び、原文に加えて謝辞も通知へ含めました。
+
 配布用`manifest.json`は生成せず、レビュー用には`review_only: true`を付けます。ファイルを改名しても既存`--check-legal`は拒否します。Qtの固定ソースが取得できた場合はLICENSES・第三者通知の候補を追加収集しますが、実同梱コードへの対応レビューが終わるまで自動承認しません。出力先の上書き、未分類・重複分類・想定外のruntime構成は拒否します。生成物はGitや利用者の設定・資格情報を含みません。
 
 ## 構成と許諾条件の確認範囲
@@ -81,3 +83,11 @@ Cyrus SASLの必須謝辞:
 | 最終配布検証 | legal原文・ソース案内を確定後、manifest.jsonをレビューし、全同梱物の検査、独立ZIP展開・SHA照合、差替え・クリーン環境確認 | DIST-01/02に残る |
 
 採用ライセンスの最終判断や契約上の再配布権限を、ソフトウェアの自動検査だけで認定することはできません。上記確認が終わるまではレビュー用資料として扱い、製品ZIPの公開・配布は行いません。
+
+## Qt SDKの依存関係に基づく追加レビュー
+
+`tools/windows-package`の`smoothmail_qt_sbom_audit`は、同梱するQtの10モジュール/プラグインを起点に、SDKのSPDX `DEPENDS_ON`をたどります。無関係なビルド専用ツールを含めず、外部文書参照と循環を処理し、欠けた依存を見つけたら成功扱いにしません。
+
+現SDKでの結果は63パッケージ、未解決のグラフ参照0件。`build/qt-shipped-sbom-review.json`に入力SBOMのハッシュと、各パッケージの版・ライセンス・著作権を記録しました。FreeTypeの`FTL OR GPL-2.0-only`はFTLを選択します。MPL-2.0のPSLデータ、Unicode、PCRE2、PNG等の固有条件も維持します。
+
+これはSDKの依存関係を使った根拠であり、実コンパイル対象すべての条件を認定するものではありません。`WrapAtomic`のNOASSERTIONや、KDE等のヘッダ/生成物・静的組込みとの照合、最終通知の絞り込みは引き続き監査対象です。

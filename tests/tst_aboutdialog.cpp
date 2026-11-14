@@ -29,6 +29,13 @@ private slots:
             QVERIFY2(!text->toPlainText().isEmpty(), "Every license entry must have offline text");
             QVERIFY(!text->toPlainText().contains(QStringLiteral("読み込めません")));
             foundChanges |= text->toPlainText().contains(QStringLiteral("favicon"));
+            if (items->currentItem()->text().startsWith(QStringLiteral("qtbase "))) {
+                QVERIFY(text->toPlainText().contains(QStringLiteral("LGPL-3.0-only")));
+                // Review bundles with Qt source evidence preserve the FTL
+                // alternative and acknowledgement rather than choosing GPL.
+                if (text->toPlainText().contains(QStringLiteral("For the FreeType alternative")))
+                    QVERIFY(text->toPlainText().contains(QStringLiteral("The FreeType Project")));
+            }
         }
         QVERIFY(foundChanges);
         const auto identity = dialog.findChild<QLabel *>(QStringLiteral("buildIdentity"))->text();

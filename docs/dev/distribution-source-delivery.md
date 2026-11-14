@@ -17,6 +17,8 @@ Qt取得は既存SDKのSBOMに記録されたqtbase/qtsvgの固定commitを対�
 
 **これらは準備・レビュー用です。生成されたという理由だけで、完全な対応ソースの提供完了とは扱いません。**
 
+実行確認ではQtを含む21アーカイブを作成し、別フォルダへの独立展開・全SHA256照合、7件の有効なKDEパッチの適用確認に成功しました。Qtソースの未取得は0件です。検証スクリプトは`tests/cmake/verify_source_review.cmake`、初回の検証済み資料は`build/source-windows-policy-final-review`です。全依存の再構築・改変DLLの差替え・最終バイナリとの対応確認は別の残作業です。
+
 ## 公開前の照合
 
 1. 配布バイナリの情報ダイアログのcommitと、同時公開するSmoothMailソースのcommitを一致させる。dirty/不明な識別子は配布ビルドで拒否する。

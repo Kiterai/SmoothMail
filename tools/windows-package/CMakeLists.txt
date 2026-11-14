@@ -6,10 +6,16 @@ set(CMAKE_AUTOMOC OFF)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
 add_executable(smoothmail_package package.cpp)
 target_link_libraries(smoothmail_package PRIVATE Qt6::Core)
+add_executable(smoothmail_qt_sbom_audit qt-sbom-audit.cpp)
+target_link_libraries(smoothmail_qt_sbom_audit PRIVATE Qt6::Core)
 if(MSVC)
     target_compile_options(smoothmail_package PRIVATE /utf-8)
+    target_compile_options(smoothmail_qt_sbom_audit PRIVATE /utf-8)
 endif()
 enable_testing()
+add_test(NAME qt_sbom_guards COMMAND "${CMAKE_COMMAND}"
+    "-DHELPER=$<TARGET_FILE:smoothmail_qt_sbom_audit>"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_qt_sbom_guards.cmake")
 add_test(NAME package_guards COMMAND "${CMAKE_COMMAND}"
     "-DHELPER=$<TARGET_FILE:smoothmail_package>"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_package_guards.cmake")
