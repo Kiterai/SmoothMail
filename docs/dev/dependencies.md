@@ -21,6 +21,20 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWindows.cmake
 
 以下は個別ステージの説明です。`CMAKE_MAKE_PROGRAM`の明示指定は既存環境向けの任意指定で、省略すると固定Ninjaを内部準備します。
 
+### キャッシュなしの取得・構築検証
+
+通常のMSVC x64開発者コマンドプロンプトで、**まだ存在しない短いディレクトリ**を指定します。
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DDEPENDENCY_ROOT=C:/build/smoothmail-clean-deps -P cmake/VerifyWindowsCleanDependencies.cmake
+```
+
+固定Gitソースをすべて新規取得し、内部Ninja、vcpkg・GNU/MSYS2・SASLを含む標準のRelease依存構築を実行します。ダウンロード先・インストール先を新root内に隔離し、vcpkgのバイナリキャッシュと外部overlayは使いません。既存rootは空でも拒否し、失敗したrootを消去・上書きして再利用しません。再試験は別の新rootを指定してください。
+
+成功時だけ`clean-verification-completed.json`を生成します。固定commit一覧・manifestのハッシュ・取得資材のSHA512を記録します。Qt SDK・MSVC/Windows SDK・CMake・Git・Pythonは作業者が準備する前提であり、それらの新規導入や、アプリ/ZIP・クリーンPCでの実行確認は別の検証です。
+
+TLS証明書検証は常に有効です。CMakeのstatus 35だけでCA不備とは断定せず、実行環境側のTLSエラーも確認してください。Safe Shell内のSchannel `SEC_E_NO_CREDENTIALS`では通常環境との比較が必要です。証明書検証の無効化や外部curlへの切替は行いません。
+
 ## MIME依存
 
 CMake 3.30以降、Git、Qt 6.10以降が必要です。Windowsでは指定Qtと一致するMSVC x64開発環境で実行してください。
