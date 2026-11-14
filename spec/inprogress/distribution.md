@@ -35,5 +35,6 @@
 - **済んでいること:** `patches/kconfig/6.31.0-optional-check-update.patch`を固定原本の独立コピーへ適用し、Windowsで外部設定移行を無効化。経緯・機能制限・ライセンス説明は`patches/kconfig/README.md`、要約は`THIRD_PARTY_NOTICES.md`へ保存。receiptを生成・検証し、不足と置換の拒否も合成試験済み。既定ONの別ビルドも成功。
 - **残る検出の調査:** 39ファイル中15 DLLが拒否。KCrash/KIOCoreは生成ヘッダのhelper/plugin絶対位置、GNU依存2件は実ビルド先のPDBとgettextのlocale/lib/元prefix、Qt10件はSDKに元々ある絶対PDB参照（Widgetsには.cppパスも）と判明。Qt10件はSDKと同じバイト列で双方のAuthenticodeがValid。SASLとQtCoreの固定既定値は個人パスとしての過剰検出も含む。
 - **未完了の範囲:** 各原因への安全な対処と全体検査。KIOのpluginパスはadmin workerの信頼判定にも使うため単純削除しない。固定既定値・供給元署名SDKのメタデータ・今回の作業者情報を区別する配布/検査方針の明確化が必要。検査は変更せず、Qtを事後書換えして署名を壊す対処も採用していない。詳細は`agent/release-runtime-audit-investigation.md`。
+- **KCrash/KIOの追加対処（独立worktree）:** `fix/kcrash-kio-private-paths`分岐でビルド先フォールバックを除去し、Windowsのadmin workerを明示拒否。KIOのfavicon除外も維持した統合差分を使用。独立prefixで両構成を構築し、Releaseアプリ・ホスト18 CTest対象とDebug追加試験が成功。新しい収集物の個別監査では両DLLが通過し、拒否は旧来GNU/SASL/Qt由来の13件。元作業の未コミット変更や新しいnative構築との統合はしていない。詳細は`agent/kde-runtime-path-patches.md`。
 - **設定範囲の調査:** 上流の通常設定によるfull変数/マクロの上書きは効かず、相対libexec指定も絶対prefixが付加されることをconfigure実験で確認。静的KConfigと`/Gy`・`/OPT:REF`で未使用`checkUpdate()`を除去した最小EXEは検査通過したが、同処理を参照する対照EXEは拒否された。静的案は全依存の状態共有・リンク構成・再リンク/ライセンス条件の再検討が必要で、未採用。
 - **完了条件:** ビルド者のパスを埋め込まず、実行ファイル探索の安全性と必要機能を維持して構築し、実ランタイム全体の検査を通す。バイナリ文字列の書換えや検査除外で回避しない。

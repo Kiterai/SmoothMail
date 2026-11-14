@@ -6,6 +6,7 @@
 - GUI基盤はQt6。
 - メール処理はKIMAP（IMAP）、KSMTP（SMTP）、KMime（MIME解析・生成）を使用する。
 - KIO 6.31.0は、メールに不要なfaviconキャッシュのGPL系実装を除外する承認済み限定パッチで暫定対応する。変更差分をpatches/kio/で管理し、THIRD_PARTY_NOTICES.mdに変更内容・機能制限・残るライセンス義務を明記する。原本とQt SDKは変更しない。全依存の配布監査完了を意味するものではない。
+- WindowsのKCrash/KIOはビルド時prefixへのhelper探索フォールバックを限定パッチで除き、実行時の配置に従う。WindowsのKIO admin workerは信頼パス判定の単純削除ではなく明示拒否とする。KCrash/KIOの公開API、KIOのTLSエラー情報、favicon除外は維持するが、元prefixにしかないhelperとadmin利用は保証しない。差分・経緯・許諾条件は`patches/kcrash/`と`patches/kio/`に保存し、変更済み依存のreceiptを検証する。
 - Windows向けKConfig 6.31.0は、未使用の外部設定移行`checkUpdate()`を明示的に無効化する承認済み限定パッチを適用する。公開APIは維持するが、呼出しは警告のみで移行・外部プロセス実行を行わない。経緯・機能制限・ライセンス条件・撤去条件は`patches/kconfig/README.md`に保存し、変更済み依存のreceiptを検証する。原本・既存Qtは変更せず、改変LGPLライブラリの対応ソース等の配布義務は維持する。
 - OAuthの対応先はGoogleおよびMicrosoftとする。他プロバイダへの拡張は未定。
 - Windowsを優先し、将来のmacOS/Linux対応を視野に入れる。

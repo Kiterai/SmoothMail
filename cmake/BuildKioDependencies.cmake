@@ -7,9 +7,11 @@ if(NOT WIN32)
 endif()
 smoothmail_fetch_dependency(kio pristine)
 string(JSON commit GET "${manifest}" kio commit)
-get_filename_component(patch "${CMAKE_CURRENT_LIST_DIR}/../patches/kio/6.31.0-disable-favicon-cache.patch" ABSOLUTE)
+get_filename_component(patch "${CMAKE_CURRENT_LIST_DIR}/../patches/kio/6.31.0-smoothmail-portable-core.patch" ABSOLUTE)
 smoothmail_prepare_kio_source("${pristine}" "${commit}" "${patch}" "${DEPENDENCY_ROOT}/patched-src" source)
-set(binary "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/kio-no-favicon")
+file(SHA256 "${patch}" patch_hash)
+string(SUBSTRING "${patch_hash}" 0 16 patch_key)
+set(binary "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/kio-portable-${patch_key}")
 set(native "${DEPENDENCY_ROOT}/native/x64-windows")
 set(gettext_tools "${native}/tools/gettext/bin")
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
@@ -42,7 +44,8 @@ smoothmail_dependency_command("${CMAKE_COMMAND}" --build "${binary}" --parallel 
 smoothmail_dependency_command("${CMAKE_COMMAND}" --install "${binary}")
 set(notices "${prefix}/share/licenses/kio")
 file(MAKE_DIRECTORY "${notices}")
-file(COPY "${pristine}/LICENSES" "${patch}" "${CMAKE_CURRENT_LIST_DIR}/../THIRD_PARTY_NOTICES.md"
+file(COPY "${pristine}/LICENSES" "${patch}" "${CMAKE_CURRENT_LIST_DIR}/../patches/kio/README.md"
+    "${CMAKE_CURRENT_LIST_DIR}/../THIRD_PARTY_NOTICES.md"
     DESTINATION "${notices}")
 smoothmail_write_modified_receipt("${notices}" "${prefix}/bin/KF6KIOCore.dll" "${commit}" "${patch}")
 message(STATUS "Patched KIO installed. The development prefix is NOT a product distribution.")
