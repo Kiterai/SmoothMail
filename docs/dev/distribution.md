@@ -1,28 +1,31 @@
-# WindowsポータブルZIP
+# Windows版の配布
 
-## 前提
+配布形式はWindows x64向けポータブルZIPです。展開した `SmoothMail/smoothmail.exe` を直接起動します。
 
-- Windows x64、指定Qtと一致するMSVC/Windows SDKのx64開発者コマンドプロンプト、CMake 3.30以降・Git・Python（KI18nからのみ利用）。
-- 既存Qt SDKのRelease DLL／プラグイン。SDKの再インストールは不要です。
-- Ninja・vcpkg・Qt以外の依存は内部取得・構築します。Debug/Releaseは分離し、変更済み依存のreceiptも生成・検証します。既存Qtは変更しません。
-- MSVCの再配布可能なRelease CRTは`VCToolsRedistDir`から探索します。候補を一意に決定できなければ`-DCRT_BIN=.../x64/Microsoft.VC143.CRT`を指定します。Debug CRTは使用できません。
-- 配布用のライセンス原文、著作権表示、対応ソースの入手方法・変更差分・ビルド方法などの通知をまとめたlegalディレクトリ。
+**現時点ではライセンス最終監査・legal付き実ZIP・クリーンWindowsでの最終確認は未完了です。** 以下を満たすまで公開しないでください。残作業は[未完了仕様](../../spec/inprogress/distribution.md)で管理します。
 
-## 1コマンドで生成
+## 1. 入力を準備する
 
-リポジトリで次を実行します。パスは準備済みの入力へ変更してください。
+[ビルド要件](build.md)に加え、次を準備します。
+
+- 配布するソースを確定した、追跡ファイルに変更のないGitコミット。
+- Qt SDKのRelease DLL・プラグインと、利用資格・再配布条件を確認したMSVC Release CRT。
+- 全同梱コンポーネントの原文・著作権・変更通知・対応ソース案内をまとめたlegalディレクトリと、レビュー済みの `manifest.json`。
+
+依存の構築後、以下で通知と対応ソースの**レビュー用資料**を収集できます。`STAGE` には [Release配置手順](run.md#リリースビルド実行)で作成した候補を指定し、各 `OUTPUT` は新しい保存先にします。
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
+cmake -P cmake/FetchQtLegalSources.cmake
+cmake -DSTAGE=build/run-release -DOUTPUT=build/legal-review -P cmake/PrepareWindowsLegalReview.cmake
+cmake -DOUTPUT=build/source-review -P cmake/PrepareWindowsSourceReview.cmake
+cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 ```
 
-依存の取得・Release構築→アプリのReleaseビルド→必要DLL・プラグインとCRTの収集→ライセンス収集→個人パス・Debug混入の検査→ZIP化を行います。制御はCMake、PE/テキスト/ZIP検査と決定的圧縮は`tools/windows-package/`のC++補助ツールです。Python/curlを呼びません。`SmoothMail/`へ展開し、**smoothmail.exeを直接起動**します。開発用バッチ、PDB、DB、ログ、資格情報、CMakeキャッシュ、補助ツールは同梱しません。
+別の依存rootを使った場合は収集コマンドにも `-DDEPENDENCY_ROOT=...` を指定します。ソース収集はHEADの追跡ソースを使うため、配布対象の変更は事前にコミットしてください。
 
-新規の専用ビルドディレクトリを使い、既存ビルドやZIPは上書きしません。SDKは変更せず、Qtの再配置用処理はステージ先のコピーだけへ適用します。未解決／競合DLL、指定外ディレクトリからのDLL解決、Debug混入、ライセンス不足、未承認の埋め込みパスを検出すると公開せず停止します。
+`manifest.review.json`・`source-manifest.review.json` は完成品の証明ではありません。原文と実際の組込みコード、全依存と変更差分、再構築・DLL差替え・最終バイナリとの対応を確認します。`review_only` 資料は改名しても配布入力として拒否されます。
 
-## legal/manifest.json
-
-以下は構造の例です。実際のDLLすべてを対応するコンポーネントへ割り当てます。無関係なライセンスを一括指定するものではありません。
+legalの形式例（全DLLを一意にコンポーネントへ割り当てます）：
 
 ```json
 {
@@ -39,51 +42,40 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=
 }
 ```
 
-同様にKDE各ライブラリ、QtKeychain、SASLと機構、libintl/libiconv、MSVC CRT等を追加してください。ファイルはmanifestからの相対パスで、空でないUTF-8テキストを用意します。参照した原文をそのままコピーし、著作権者の表示を削除しません。開発用receipt・ビルド記録は製品通知ではなく、そのまま同梱しません。
+これはQt部分だけの例です。KDE各ライブラリ、QtKeychain、SASLと機構、GNU、CRT等も追加します。通知ファイルはmanifestからの相対パスに置く、空でないUTF-8テキストです。情報ダイアログとZIPには同じ承認済みlegalを使います。
 
-自動検査はDLLへの通知の対応付けを確認するもので、法的条件の充足を保証するものではありません。LGPLの対応ソース提供・改変通知・差替え可能性や、Microsoft CRT等の再配布権限は配布担当者が確認してください。
+## 2. 最終ZIPを生成する
 
-実候補39ファイルの[事前監査資料・確認事項](distribution-legal-audit.md)を作成しました。`cmake/PrepareWindowsLegalReview.cmake`は原文と19コンポーネントの対応表をレビュー用へ収集します。Qt/CRT等の不足を残す`manifest.review.json`は、配布承認済みの`manifest.json`ではありません。
+リポジトリルートのMSVC x64開発者コマンドプロンプトで実行します。
 
-## プライバシーと検証
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
+```
 
-ZIPは固定タイムスタンプ・権限・相対名で作り、ユーザー名やホスト名を記録しません。アプリと依存のRelease構築ではソースパスをマッピングし、最後にASCII／両alignmentのUTF-16の絶対パスと入力ディレクトリ情報を検査します。Qt/SASLの確認済み供給元情報だけは[ハッシュと範囲を固定したポリシー](distribution-path-policy.md)で許容します。入力root・ユーザー名・PC名は許容範囲でも検査します。バイナリを書き換えて検査を回避することはしません。
+依存取得・Release構築、アプリの配布用Release構築、DLL／プラグイン／CRT・legalの収集、個人パス・Debug混入等の検査、ZIP化を行います。CRTの場所を一意に決定できない場合は `-DCRT_BIN=.../x64/Microsoft.VC143.CRT` を追加します。既存ZIPは上書きしません。
 
-オフライン検証: `tools/windows-package`をReleaseでconfigure/buildし、QtのbinをPATHへ追加して`ctest --test-dir <補助ツールのbuild> --output-on-failure`を実行します。合成PE・パス・legal・非上書き・決定的ZIPを検査し、CMake/libarchiveで独立にZIP展開・SHA256照合も行います。実Release ZIPの検証とは区別します。
+未解決・競合DLL、指定外のDLL、通知不足、未承認の埋込みパスで停止したら、入力を修正して再実行します。検査を無効化したりDLLを事後書換えしたりしません。供給元由来の情報は `cmake/runtime-path-policy.json` のハッシュ・範囲が一致するものに限り許容し、作業者情報はその範囲でも拒否します。
 
-ハッシュ一覧はZIP内の`runtime-sha256.txt`です。自動検査だけで任意の個人情報を完全に検出できるとは限らないため、実配布前には成果物・通知をレビューし、開発ツールのないWindowsで展開・直接起動・通信も確認してください。
+## 3. 成果物を検証する
 
-この環境では統合処理によるDebug/Release依存とアプリの構築、Release DLL収集を確認しました。KConfigの設定更新ツール用の絶対パスは[限定パッチ](../../patches/kconfig/README.md)で対処し、その後のGNU/KCrash/KIO対策と供給元情報の限定判定により統合39ファイルがパス検査を通過しました。[キャッシュなしの全依存取得・Release構築](clean-dependency-verification.md)も完了しました。legal一式の監査、実Release ZIPの生成・クリーン環境での起動確認は未完了です。[未完了事項](../../spec/inprogress/distribution.md)を参照してください。Debugランタイムや合成ZIPを配布物の代用にはしていません。
+1. ZIPを別の空フォルダへ展開し、`runtime-sha256.txt` の全ファイルをSHA256で照合する。
+2. PDB、Debug CRT、DB、ログ、資格情報、登録JSON、ビルドキャッシュ・補助ツールがないことと、legalの対応を確認する。自動検査だけで任意の個人情報の不存在を保証しない。
+3. 開発ツール・Qt SDKのないWindowsで、空白を含むパスへ展開し、開発用PATHなしでEXEを直接起動する。
+4. テスト用アカウントで登録・再起動・更新・閲覧・送受信・下書き・添付・トレイ終了を確認する。実通信やメール作成は本人の許可を得る。
+5. 同梱ライブラリの改変版への差替え、必要な再構築と通知の閲覧を確認する。情報ダイアログの版・コミットと、公開する対応ソースを一致させる。
 
-DIST-04の設定調査では、通常のインストール先指定だけで現行DLLを再配置可能にする設定は見つかりませんでした。静的化は共有状態や再リンク条件への影響があるため採用せず、Windowsでは未使用の`checkUpdate()`だけを明示的に無効化しています。呼出しは警告のみで、設定変更や外部プロセス実行は行いません。ABIは維持しますが、上流との機能差がある変更済みLGPLライブラリとして通知・対応ソース提供を行う必要があります。
+合成テストは[テスト手順](test.md)を参照してください。Debug実行や合成ZIPの成功を、この最終検証の代わりにはできません。
 
-### KConfig対応後に残る検査停止の原因
+## 4. 公開する
 
-当初は39ファイルの収集ランタイムで15 DLLが拒否されました。GNU2件の対処後の収集ランタイムでは13 DLLが拒否されました。以下はその時点の調査結果です。
+同じ配布ページへ、同じ版のバイナリZIP、対応ソース一式、各SHA256、通知・再構築／差替え手順を掲載します。ソースを後日公開する前提や未履行の書面オファーで、先にバイナリだけを出しません。公開先は未設定です。公開後は受領者としてバイナリ・ソース・通知を取得できることを確認します。
 
-| 対象 | 原因 |
-|---|---|
-| KCrash・KIOCore | helper/plugin探索先として今回の絶対インストールprefixが残る |
-| libiconv・libintl（対応済み） | tripletのPDB参照名・論理prefix設定で解消。新prefixと収集コピーの検査を通過 |
-| Qtの10 DLL/プラグイン | 既存SDK由来の絶対PDB参照。Widgetsはソースパスも保持 |
-| SASL、QtCoreの一部文字列 | 上流の固定既定値も個人パスとして検出される |
+## ライセンス上の注意
 
-Qt10件は供給元SDKとSHA256が一致し、両方のAuthenticodeはValidでした。今回のビルドが挿入した情報ではありませんが、現行検査は供給元情報と作業者情報を区別しません。PDB非同梱だけでは参照文字列は消えず、DLLを事後書換えすれば供給元署名を維持できません。またKIOのpluginパスは権限昇格workerの信頼判定にも使われるため、単純な空文字化は安全ではありません。
+- SmoothMail本体のMITと、同梱依存の条件は別です。Qtはオープンソース条件を採用し、対象モジュールのLGPLと、内蔵第三者コード固有の条件を守ります。
+- 原文・著作権・必須謝辞を削除しません。KDE等はファイル単位の条件やヘッダ・生成物・静的組込みも確認します。KIOのfavicon除外だけで残り全体の許諾を認定しません。
+- 変更済み依存は `patches/` と [第三者通知](../../THIRD_PARTY_NOTICES.md)に従い、原本・差分・変更内容／日付・機能制限・再構築に必要な入力を対応ソースへ含めます。
+- LGPL等の改変・差替え・必要なデバッグの権利を追加条件で妨げません。提供形態に応じて必要なInstallation Informationも確認します。
+- CRTは配布担当者の適用契約・REDIST対象を確認し、Debug CRTや不要なビルドツールを同梱しません。
 
-GNUは`native/gnu-runtime-v1`へ別構築し、旧prefixや既存Qtを上書きしていません。gettextホストツールは製品向けDLLと別rootで管理します。詳細は[依存構築](dependencies.md)を参照してください。KCrash/KIOには下記の限定対応を実施しました。固定既定値の過剰検出の精密化と署名SDK由来の情報の扱いは残る課題です。検査規則・既存SDK・他DLLを事後変更する対処はしていません。
-
-### KCrash/KIOの限定対応
-
-独立分岐`fix/kcrash-kio-private-paths`では、[KCrash](../../patches/kcrash/README.md)と[KIO](../../patches/kio/README.md)へ限定パッチを追加しました。
-Windowsのビルド先フォールバックを除き、admin workerはプラグイン生成・外部worker起動へ進む前に明示拒否します。通常のKIO/TLS APIとfavicon除外は維持します。
-独立prefixでのRelease収集物では両DLLが検査を通過し、拒否は既存GNU/SASL/Qt由来の13件でした。これは他作業のnative再構築との統合結果ではなく、Qt SDKも検査規則も変更していません。配布ZIP・legal監査・クリーン環境検証は引き続き未完了です。
-
-2026-11-14、GNU対策済みの`master`へ統合しました。新nativeプロフィールとパッチハッシュ別KIOビルド先を維持し、KCrash/KIOのDebug/Release構築、Releaseアプリ構築、ホスト20 CTest対象が成功しました（`oauthclient`・`connectiontester`・`mailtransport`は除外）。
-
-### 統合後の作業者情報検査
-
-Qt/SASLの外部配布物・上流由来のパスは除去不要とする利用者方針に基づき、新規収集した39ファイルを再検査しました。今回のビルド作業者のパス・ユーザー名・PC名は検出されませんでした。アプリ本体、KCrash/KIOCore、GNUを含む自前依存にもパス検出はありません。
-
-残る検出はQt10ファイルとSASL1ファイルのみです。QtはSDK原本とのSHA256一致・署名Valid、SASLは上流固定値との一致を確認しました。全バイナリは指定した入力元とSHA256が一致しています。詳細は`agent/integrated-runtime-builder-info-audit.md`、検査対象は`build/integrated-privacy-runtime`です。
-
-その後、[DIST-04の検査側対応](distribution-path-policy.md)を実装し、同じ39ファイルが自動パス検査を通過しました。legal監査、実ZIP・クリーン環境検証は別途必要です。SDK・通常起動runtimeは変更していません。
+自動検査は法的条件や配布権限を認定しません。監査の未確認事項は[未完了仕様](../../spec/inprogress/distribution.md)に記録します。

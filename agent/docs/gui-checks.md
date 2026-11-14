@@ -1,5 +1,7 @@
 # Windows SandboxのGUIチェック
 
+各実装時点の検証記録です。「最新」は各節の対象実装時点を指します。現行の実行手順は[テスト手順](../../docs/dev/test.md)を参照してください。
+
 ## 取得中の操作481eb90対応（最新）
 
 最終記録は`build/inflight-check/output-final/`です。12 EXEで**149 passed / 0 failed / 0 skipped**（init/cleanup含む）：connectiontester 23、accountrepository 14、credentialstore 6、guismoke 6、mainwindow 12、mimeregression 12、diagnostics 7、mimeparser 15、accountdialog 7、messageviewer 24、mailtransport 15、oauthclient 8。ホストCTest15対象（ネットワーク系3対象除外）とPython9件も成功しました。

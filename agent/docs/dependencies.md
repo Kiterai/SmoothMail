@@ -1,5 +1,7 @@
 # メール処理の依存構築
 
+個別依存の構築・調査の引継ぎ資料です。過去の未完了記述や旧テスト手順を含みます。通常の構築は[ビルド手順](../../docs/dev/build.md)、現状の未完了項目は[未完了一覧](../../spec/inprogress/README.md)を優先してください。
+
 Qtは開発者がインストールしたSDKを使用します。以下の処理はQtを取得せず、第三者ソース・成果物をリポジトリ内の`build/deps/`に配置します。
 
 ## Windowsの標準入口
@@ -218,7 +220,7 @@ MSVC開発環境で実行し、Qtと依存prefixのbinをPATHへ追加してく�
 
 ## ライセンスと残る検証
 
-Windowsの開発用起動フォルダを作成する`StageWindowsRuntime.cmake`と`windeployqt`の手順は`windows-launch.md`を参照してください。現在の起動用cmdは`build/start-smoothmail.cmd`（`build/local-run`を起動）です。Debug CRTを含む開発テスト専用で、製品配布物ではありません。以前の`build/launch-debug`は別の過去検証用フォルダとして残しています。
+Windowsの開発用起動フォルダを作成する`StageWindowsRuntime.cmake`と`windeployqt`の手順は[実行手順](../../docs/dev/run.md)を参照してください。記録当時の起動用cmdは`build/start-smoothmail.cmd`（`build/local-run`を起動）です。Debug CRTを含む開発テスト専用で、製品配布物ではありません。以前の`build/launch-debug`は別の過去検証用フォルダです。
 
 秘密情報保存用のQtKeychainは、次の手順で指定Qt SDKに対して構築します（別Qtの取得なし）。
 

@@ -1,5 +1,7 @@
 # Google / Microsoft OAuth
 
+認証実装・外部設定・手動プローブの引継ぎ資料です。過去の試験経緯を含みます。通常の登録操作は[利用方法](../../docs/usage.md)、未検証範囲は[未完了仕様](../../spec/inprogress/live-authentication.md)を優先してください。
+
 Qt Network上にAuthorization Code + PKCE S256 + state検証を実装しています。ブラウザはシステムの外部ブラウザを使用し、callbackはIPv4 loopbackのランダムポートに限定します。暗号化・乱数・SHA-256はQtの機能を利用します。
 
 - Google: `https://accounts.google.com/o/oauth2/v2/auth`、`https://oauth2.googleapis.com/token`。スコープは`https://mail.google.com/`。callbackは`http://127.0.0.1:<port>/`。
@@ -11,7 +13,7 @@ Qt Network上にAuthorization Code + PKCE S256 + state検証を実装してい�
 
 GoogleではDesktop app、MicrosoftではMobile and desktop applicationsのpublic clientとしてアプリを登録してください。Microsoftのsystem browser redirect URIは`http://localhost`です。登録した対象アカウント種別と委任権限、組織側のIMAP/SMTP AUTH許可を確認してください。Googleのメールスコープは公開形態によって検証・審査が必要です。
 
-Googleのテスト用アカウントとDesktop OAuthクライアントIDは提供済みです。実サービス検証では利用者自身による外部ブラウザのログイン・同意が必要です。認可後のトークン取得・更新・IMAP/SMTP認証まで確認して初めて成功とします。秘密情報をチャットへ貼り付ける必要はありません。Windowsの起動手順と接続確認は`windows-launch.md`を参照してください。
+Googleのテスト用アカウントとDesktop OAuthクライアントIDは提供済みです。実サービス検証では利用者自身による外部ブラウザのログイン・同意が必要です。認可後のトークン取得・更新・IMAP/SMTP認証まで確認して初めて成功とします。秘密情報をチャットへ貼り付ける必要はありません。Windowsの起動手順は[実行手順](../../docs/dev/run.md)を参照してください。
 
 起動環境で以下を設定します。クライアントIDは公開アプリの識別子です。Googleのdesktop client secretが登録情報に含まれる場合だけ、任意で`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`も設定できます（desktop appでは機密保持できる秘密として扱いません）。Microsoftはpublic clientでありclient secretを使いません。
 

@@ -4,7 +4,7 @@
 
 ## 作成・確認済み
 
-- `docs/dev/distribution-legal-audit.md`: 39ファイル/19コンポーネントの構成、ライセンス根拠、固定ソース、変更提供、差替え、未確認事項。
+- `agent/docs/distribution-legal-audit.md`: 39ファイル/19コンポーネントの構成、ライセンス根拠、固定ソース、変更提供、差替え、未確認事項。
 - `cmake/PrepareWindowsLegalReview.cmake`: 実runtimeのSHA256と一意な部品対応、原文ライセンス・著作権・固定ソース案内・既存パッチ説明を新規出力先へ収集。
 - 実行結果: `build/legal-windows-review`に134ファイルを作成。原文はコピーし、再ライセンス・免責省略はしない。
 - KDEの原本LICENSES集合とソース著作権行は収集したが、全LICENSESが同梱DLLへ一括適用されるという判定ではない。

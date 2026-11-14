@@ -1,5 +1,7 @@
 # 2026-11-13: 読込途中のCRT例外の調査
 
+調査時点の記録です。利用者環境での解消確認は[手動確認記録](manual-validation-20261114.md)を参照してください。
+
 ## 再発ログ（UTC 02:01:59開始）の追加調査
 
 再発ログのEXE SHA-256は`456d31111bc4c74d3ad867c030ca85815fad5316c61e373c5a0336dd8a005172`で、前回の修正版EXEと一致しました。最後のイベントはUTC `02:05:12.799 sync-header-batch 5901`、例外分類は`crt-assert-ctype-domain`です。呼出し履歴には`KF6Codecs.dll+0x1ce3a`、`KF6Mime.dll+0x6d540`、KIMAPのヘッダ解析経路が記録されています。

@@ -1,49 +1,45 @@
-# ビルドとテスト
+# ビルド
 
-現在はメイン画面、本文ビュー、KMimeから表示モデルへの解析層を実装しています。本文ビューはHTMLをソース表示し、URL中の非ASCII文字を赤太字で表示します。解析層は単体テスト段階で、画面へのメール読込みにはまだ接続していません。メール通信・アカウント登録・送信・DB保存・添付ダウンロードは未実装です。未実装のメニューは無効表示です。
+## 準備・要件
 
-## 必要なもの
+- Windows x64、Visual Studio 2022のMSVC C++ x64ツールとWindows SDK。
+- CMake 3.30以降、Git、PythonをPATHへ登録。Pythonは依存ライブラリKI18nから間接利用します。
+- MSVCと一致する既存Qt 6 SDK（依存構築には6.10以降）。Core／Gui／Widgets／Sql／Network／Xml／Svg、テストにはTest、配置にはwindeployqtが必要です。確認済み環境はQt 6.12.0 `msvc2022_64`です。
+- 固定ソースの取得先へのHTTPS接続と、依存の構築・保存に十分なディスク空き容量。
 
-- CMake 3.25以降、Ninja、C++20対応コンパイラ。
-- 開発者がインストールしたQt6 SDK（現時点の最小要求は6.8）。Core/Gui/Widgets、テスト時にはTest。
-- WindowsではQt SDKと一致するMSVC x64開発環境。
-- 通常ビルドではKMime 6.31以降。[依存構築](dependencies.md)で先に構築してください。この手順にはCMake 3.30以降・Git・Qt 6.10以降が必要です。
+以下はリポジトリルートの **x64 Native Tools Command Prompt for VS 2022** で実行します。Qtのパスは環境に合わせて変更してください。他OSでの構築・動作は未検証です。
 
-アプリのconfigure時には依存を自動ダウンロードしません。KIMAP/KSMTP/QtKeychainは後続の実装で組み込みます。KMime以外の依存検証完了を意味しません。
+Ninja・vcpkgとQt以外の依存はスクリプトが取得・構築します。別のQtは取得せず、既存SDKも変更しません。取得元・版は `cmake/dependencies.json` で固定し、アーカイブのハッシュとTLS証明書を検証します。
 
-## Windows
-
-「x64 Native Tools Command Prompt for VS 2022」で実行します。QtとNinjaのパスは環境に合わせて変更してください。
+## デバッグビルド
 
 ```bat
-set PATH=C:\Qt\Tools\Ninja;C:\Qt\6.12.0\msvc2022_64\bin;%CD%\build\deps\install\Debug\bin;%PATH%
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildMimeDependencies.cmake
-cmake --preset dev -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64
-cmake --build --preset dev
-ctest --preset dev
-build\dev\smoothmail.exe
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_BUILD_TYPE=Debug -P cmake/BuildWindows.cmake
 ```
 
-Qtおよび依存prefixのbinをPATHに追加するのは開発時のDLL読込みのためです。配布物の依存収集・監査は別途必要です。
+依存を `build/deps/` に準備し、アプリを `build/windows/Debug/smoothmail.exe` へ構築します。テストも構築しますが、自動実行はしません。
 
-UIのみを開発する場合は`-DSMOOTHMAIL_BUILD_MIME=OFF`でKMimeを使わずビルドできます。これはメール解析の代替実装ではありません。
+## リリースビルド
 
-## macOS / Linux
-
-```sh
-cmake -DQt6_ROOT=/path/to/Qt/6.x/platform -P cmake/BuildMimeDependencies.cmake
-cmake --preset dev -DQt6_ROOT=/path/to/Qt/6.x/platform
-cmake --build --preset dev
-ctest --preset dev
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_BUILD_TYPE=Release -P cmake/BuildWindows.cmake
 ```
 
-他OSでの動作はまだ検証していません。個人用設定はGit対象外の`CMakeUserPresets.json`に保存できます。別のQt SDKへ変更するときは、新しいビルドディレクトリを使ってください。
+アプリは `build/windows/Release/smoothmail.exe` です。DebugとReleaseの依存・成果物は分離されます。このEXEだけでは配布物になりません。[実行](run.md)・[配布](distribution.md)を参照してください。
 
-## 現在の検証状況
+## 再ビルド・別環境
 
-- Qt 6.12.0 / MSVC 2022で、メイン画面・本文ビュー・KMime解析層のビルドとCTestを確認しています。
-- HTMLソース表示、URL装飾、危険なリンクの拒否、リソース読込み拒否、CRLF、ヘッダの開閉を自動テストしています。トレイの実操作やメールサーバ接続はまだ検証していません。
-- MIME解析ではUTF-8、ISO-2022-JP、Shift_JIS、CP932、RFC 2047件名、RFC 2231添付名、multipart、Base64/Quoted-Printableをテストしています。採用タグ全体の互換性を保証するものではありません。
-- 認証可否ポリシーでは、TLS確立・証明書検証前の認証拒否、設定外の認証方式への切替拒否、不明な設定値の拒否をテストしています。KIMAP/KSMTPの接続処理への組込みはまだです。
-- SASL単体テストは[依存構築](dependencies.md)後に`-DSMOOTHMAIL_TEST_SASL=ON`で有効にできます。機構のロード・応答生成のテストであり、実サービスでの認証試験ではありません。
-- KI18n/KServiceのロード・基本APIのテストは依存構築後に`-DSMOOTHMAIL_TEST_KDE_BASE=ON`で有効にできます。両オプション有効時のCTest全6ターゲット成功を確認済みです。KIO本体は組み込んでいません。
+アプリだけを再ビルドする場合：
+
+```bat
+cmake --build build/windows/Debug --parallel 4
+cmake --build build/windows/Release --parallel 4
+```
+
+Qtやコンパイラを変更する場合は、新しい `-DDEPENDENCY_ROOT=C:/build/smoothmail-deps` と `-DAPPLICATION_BUILD=C:/build/smoothmail-app` を標準コマンドへ追加します。Windowsのパス長制限を避けるため短いパスを推奨します。既存ソース・取得物・パッチの不一致で停止した場合、強制上書きや検証の無効化はせず原因を確認してください。
+
+キャッシュなしの全Release依存取得を検証する場合は、まだ存在しない専用rootで実行します（アプリ・ZIPの検証は含みません）。
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DDEPENDENCY_ROOT=C:/build/smoothmail-clean-deps -P cmake/VerifyWindowsCleanDependencies.cmake
+```

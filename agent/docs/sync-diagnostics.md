@@ -1,5 +1,7 @@
 # 同期時の異常終了診断
 
+診断実装・調査時の引継ぎ資料です。原因候補や上限の記述は各調査時点のものです。解消確認は[手動確認記録](manual-validation-20261114.md)、現行の制約は[未完了仕様](../../spec/inprogress/implementation-limits.md)を参照してください。
+
 ## 2026-11-14：同名LIST項目の統合後
 
 同名・同じ階層区切りのLIST項目は受信時に統合します。`sync-list-raw-total`は統合前、`sync-list-complete`は統合後の件数です。統合した場合は`sync-list-duplicates-merged`、`sync-list-first-duplicate-index`、`sync-list-duplicate-of-index`を記録します。番号はそのLIST全体の受信順（1始まり）です。詳細は`list-duplicates-20261114.md`を参照してください。
