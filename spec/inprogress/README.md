@@ -11,7 +11,7 @@
 | ID | 項目 | 現在の状態 | 詳細 |
 |---|---|---|---|
 | DIST-01 | Windows Release ZIPの生成・直接起動 | 生成手順・Release構築・収集は確認済み。実ZIP・クリーン環境検証は未完了 | [配布](distribution.md#dist-01-release配布物) |
-| DIST-02 | 同梱依存全体のライセンス・プライバシー監査 | Qt・ソース別配布方針と通知表示を実装。CRTは必要DLL未改変同梱、MSVCの正当利用は担当者責務と確定。コード別条件・通知・対応ソース/実ZIPの最終監査が残る | [配布](distribution.md#dist-02-配布物の監査) |
+| DIST-02 | 同梱依存全体のライセンス・プライバシー監査 | 条件・通知は利用者が概ね確認済み。独立再構築と改変DLL差替えを検証。提供済み依存アーカイブの直接利用経路・構築用入力、最終バイナリ/ソースと実ZIPの確定が残る | [配布](distribution.md#dist-02-配布物の監査) |
 | AUTH-02 | Microsoft実アカウント対応の検証 | 実装・合成試験済み。アプリ登録・本人認可等の準備待ち、実試験未実施 | [実認証](live-authentication.md#auth-02-microsoft実アカウント) |
 
 ## 実装上の制限・対応範囲の判断待ち
@@ -23,6 +23,7 @@
 | LIMIT-03 | アカウントをまたぐメール／フォルダ移動 | 未実装。対応範囲・安全な手順の判断待ち | [制約](implementation-limits.md#limit-03-アカウント間移動) |
 | LIMIT-04 | 極端に大きい・深いMIMEの処理 | 暫定上限で拒否。依存内部の資源使用・解析中断は未解決 | [制約](implementation-limits.md#limit-04-mimeの上限と解析耐性) |
 | LIMIT-05 | 大規模SQL実行中の要求切替・中断 | 古い結果の破棄は実装済み。SQLそのものの途中停止は未対応 | [制約](implementation-limits.md#limit-05-大規模sqlの中断) |
+| DIAG-01 | Release CRT assertion時の診断検証 | 意図的クラッシュ試験の子プロセス終了待ちが通常/差替え両構成で失敗。他の異常終了ケースは成功 | [診断](implementation-limits.md#diag-01-releaseのcrt-assertion診断検証) |
 
 制限のうち正式仕様に範囲が明記されていないものは、即座に「仕様違反」と断定せず、対応範囲の判断待ちとして扱う。
 
