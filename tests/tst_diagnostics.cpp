@@ -7,10 +7,11 @@
 #include <QtTest>
 #include <QScopeGuard>
 #include <QThread>
+#include <cstdlib>
+#include <csignal>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <crtdbg.h>
-#include <cstdlib>
 #endif
 class DiagnosticsTest final : public QObject
 {
@@ -24,6 +25,20 @@ class DiagnosticsTest final : public QObject
         return output;
     }
 private slots:
+#ifdef Q_OS_WIN
+    void restoresAbortHandler()
+    {
+        const auto previous = std::signal(SIGABRT, SIG_IGN);
+        QVERIFY(previous != SIG_ERR);
+        const auto restore = qScopeGuard([previous] { std::signal(SIGABRT, previous); });
+        for (int i = 0; i < 2; ++i) {
+            QTemporaryDir directory; QVERIFY(directory.isValid());
+            QVERIFY(smoothmail::diagnostics::start(directory.path()));
+            smoothmail::diagnostics::finish();
+            QVERIFY(std::signal(SIGABRT, SIG_IGN) == SIG_IGN);
+        }
+    }
+#endif
     void structuredFailuresAndWarningsContainOnlySafeMetadata()
     {
         using namespace smoothmail::diagnostics;
@@ -79,7 +94,10 @@ private slots:
         QTest::addColumn<QString>("mode");
         QTest::newRow("windows-seh") << QStringLiteral("seh");
         QTest::newRow("std-terminate") << QStringLiteral("terminate");
+#ifdef _DEBUG
         QTest::newRow("crt-assert") << QStringLiteral("crt");
+#endif
+        QTest::newRow("crt-abort") << QStringLiteral("abort");
         QTest::newRow("qt-fatal") << QStringLiteral("qt");
     }
     void fatalExceptions()
@@ -92,7 +110,7 @@ private slots:
         QVERIFY(child.waitForFinished(15000));
         QVERIFY(child.exitCode() != 0);
         const auto fatal = contents(dir, QStringLiteral("*.fatal.txt"));
-        const auto expected = mode == QStringLiteral("seh") ? "code=0xc0000005" : mode == QStringLiteral("terminate") ? "std-terminate" : mode == QStringLiteral("crt") ? "crt-assert" : "qt-fatal";
+        const auto expected = mode == QStringLiteral("seh") ? "code=0xc0000005" : mode == QStringLiteral("terminate") ? "std-terminate" : mode == QStringLiteral("crt") ? "crt-assert" : mode == QStringLiteral("abort") ? "crt-abort" : "qt-fatal";
         QVERIFY2(fatal.contains(expected), "Expected sanitized fatal marker was not recorded");
         QVERIFY(fatal.contains("offset=0x"));
         QVERIFY(!fatal.contains("dummy-secret"));
@@ -121,9 +139,10 @@ int main(int argc, char **argv)
         if (mode == QStringLiteral("seh")) RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, nullptr);
 #endif
         if (mode == QStringLiteral("terminate")) std::terminate();
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && defined(_DEBUG)
         if (mode == QStringLiteral("crt")) _ASSERTE(false && "dummy-secret");
 #endif
+        if (mode == QStringLiteral("abort")) std::abort();
         if (mode == QStringLiteral("qt")) qFatal("dummy-secret");
         fprintf(stdout, "ready\n"); fflush(stdout);
         return app.exec();

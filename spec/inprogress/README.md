@@ -23,11 +23,12 @@
 | LIMIT-03 | アカウントをまたぐメール／フォルダ移動 | 未実装。対応範囲・安全な手順の判断待ち | [制約](implementation-limits.md#limit-03-アカウント間移動) |
 | LIMIT-04 | 極端に大きい・深いMIMEの処理 | 暫定上限で拒否。依存内部の資源使用・解析中断は未解決 | [制約](implementation-limits.md#limit-04-mimeの上限と解析耐性) |
 | LIMIT-05 | 大規模SQL実行中の要求切替・中断 | 古い結果の破棄は実装済み。SQLそのものの途中停止は未対応 | [制約](implementation-limits.md#limit-05-大規模sqlの中断) |
-| DIAG-01 | Release CRT assertion時の診断検証 | 意図的クラッシュ試験の子プロセス終了待ちが通常/差替え両構成で失敗。他の異常終了ケースは成功 | [診断](implementation-limits.md#diag-01-releaseのcrt-assertion診断検証) |
 
 制限のうち正式仕様に範囲が明記されていないものは、即座に「仕様違反」と断定せず、対応範囲の判断待ちとして扱う。
 
 ## 完了した確認項目
+
+**DIAG-01（Release CRT診断検証）**は、Releaseで消える`_ASSERTE`を原因とする試験不備を修正し、実CRT abortの記録・非対話終了・handler復元を追加。新規SandboxでRelease 9件／Debug 10件、失敗・スキップ0を確認したため除外。[修正と検証](../../agent/diagnostics-abort-regression.md)
 
 **DIST-03（キャッシュのない環境での取得検証）**は、未存在rootからの固定Gitソース17件と全Release依存の取得・構築、取得物一覧52ファイルのハッシュ再照合に成功したため除外。TLS検証は有効のままで、以前のstatus 35はSafe Shell内のSchannel制約と切り分けた。[完了記録](../../agent/docs/clean-dependency-verification.md)
 

@@ -7,6 +7,7 @@
 #include <QUuid>
 #include <exception>
 #include <cstdlib>
+#include <csignal>
 #include <QCryptographicHash>
 #include <QLoggingCategory>
 #include <QScopedValueRollback>
@@ -54,6 +55,8 @@ const char *qtStage(QtMsgType type, const char *category)
 HANDLE fatalFile = INVALID_HANDLE_VALUE;
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
 LONG recording = 0;
+using AbortHandler = void (*)(int);
+AbortHandler previousAbort = SIG_DFL;
 void writeFixed(const char *text)
 {
     DWORD size = 0, written;
@@ -86,6 +89,13 @@ void recordStack(const char *reason)
         writeNumber(" offset=0x", address - reinterpret_cast<quintptr>(region.AllocationBase));
     }
     FlushFileBuffers(fatalFile); InterlockedExchange(&recording, 0);
+}
+void aborted(int)
+{
+    // Release CRT aborts do not use the Debug-only report hooks. Keep this
+    // path independent of Qt, allocation, report text and the CRT dialog.
+    recordStack("crt-abort");
+    TerminateProcess(GetCurrentProcess(), 0x40000015);
 }
 #if defined(_MSC_VER) && defined(_DEBUG)
 template<typename Character> bool containsFixed(const Character *text, const Character *needle)
@@ -237,6 +247,7 @@ bool start(const QString &directory)
                             nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
     if (fatalFile == INVALID_HANDLE_VALUE) return false;
     previousFilter = SetUnhandledExceptionFilter(fatal);
+    previousAbort = std::signal(SIGABRT, aborted);
 #if defined(_MSC_VER) && defined(_DEBUG)
     _CrtSetReportHook2(_CRT_RPTHOOK_INSTALL, crtReport);
     _CrtSetReportHookW2(_CRT_RPTHOOK_INSTALL, crtReportWide);
@@ -268,6 +279,8 @@ void finish()
     if (!marker.isEmpty()) QFile::remove(marker);
 #ifdef Q_OS_WIN
     SetUnhandledExceptionFilter(previousFilter);
+    if (previousAbort != SIG_ERR) std::signal(SIGABRT, previousAbort);
+    previousAbort = SIG_DFL;
 #if defined(_MSC_VER) && defined(_DEBUG)
     _CrtSetReportHook2(_CRT_RPTHOOK_REMOVE, crtReport);
     _CrtSetReportHookW2(_CRT_RPTHOOK_REMOVE, crtReportWide);
