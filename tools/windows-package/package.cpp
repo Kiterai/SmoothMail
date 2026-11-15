@@ -87,15 +87,17 @@ struct Legal {
     QStringList patterns;
 };
 
-Legal legalManifest(const QString &directory)
+Legal legalManifest(const QString &directory, bool review = false)
 {
-    safeFile(directory, "manifest.json");
+    const auto manifestName = review ? "/manifest.review.json" : "/manifest.json";
+    safeFile(directory, review ? "manifest.review.json" : "manifest.json");
     QJsonParseError error;
-    const auto document = QJsonDocument::fromJson(utf8(read(directory + "/manifest.json")).toUtf8(), &error);
+    const auto document = QJsonDocument::fromJson(utf8(read(directory + manifestName)).toUtf8(), &error);
     require(error.error == QJsonParseError::NoError && document.isObject(), "Invalid legal JSON");
     Legal legal{document.object(), {}, {}};
     const auto keys = legal.manifest.keys();
-    require(keys.size() == 2 && keys.contains("schema") && keys.contains("components")
+    require(keys.size() == (review ? 3 : 2) && keys.contains("schema") && keys.contains("components")
+                && (!review || (legal.manifest["review_only"].isBool() && legal.manifest["review_only"].toBool()))
                 && legal.manifest["schema"].isDouble() && legal.manifest["schema"].toDouble() == 1
                 && legal.manifest["components"].isArray()
                 && !legal.manifest["components"].toArray().isEmpty(),
@@ -499,6 +501,15 @@ void selfTest(const QString &artifact = {})
     write(legal + "/license.txt", "Fixture license\n");
     write(legal + "/sources.md", "Sources: https://example.test/sources\n");
     write(legal + "/manifest.json", R"({"schema":1,"components":[{"name":"fixture","binaries":["*.dll"],"license_files":["license.txt"],"source_notice":"sources.md"}]})");
+    auto reviewManifest = QJsonDocument::fromJson(read(legal + "/manifest.json")).object();
+    reviewManifest["review_only"] = true;
+    write(legal + "/manifest.review.json", QJsonDocument(reviewManifest).toJson());
+    legalManifest(legal, true);
+    const auto binaryReview = temporary.path() + "/binary-review";
+    write(binaryReview + "/manifest.review.json", QJsonDocument(reviewManifest).toJson());
+    write(binaryReview + "/sources.md", "Fixture source notice\n");
+    write(binaryReview + "/license.txt", QByteArray::fromHex("89504e470d0a1a0a"));
+    rejects([&] { legalManifest(binaryReview, true); });
     const auto repository = temporary.path() + "/repo";
     write(repository + "/LICENSE", "Fixture license\n");
     write(repository + "/THIRD_PARTY_NOTICES.md", "Fixture notices\n");
@@ -552,6 +563,8 @@ int main(int argc, char **argv)
             selfTest(args.value(2));
         } else if (args.size() == 3 && args[1] == "--check-legal") {
             legalManifest(args[2]);
+        } else if (args.size() == 3 && args[1] == "--check-legal-review") {
+            legalManifest(args[2], true);
         } else if ((args.size() >= 3 && args[1] == "--audit-stage")
                    || (args.size() >= 4 && args[1] == "--audit-stage-with-policy")) {
             const bool reviewed = args[1] == "--audit-stage-with-policy";

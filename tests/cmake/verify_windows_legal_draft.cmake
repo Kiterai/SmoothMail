@@ -119,6 +119,11 @@ foreach(text IN LISTS texts)
         endif()
     endforeach()
 endforeach()
+execute_process(COMMAND "${HELPER}" --check-legal-review "${DRAFT}"
+    RESULT_VARIABLE valid OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT valid STREQUAL "0")
+    message(FATAL_ERROR "Review manifest/text validation failed: ${out}\n${err}")
+endif()
 execute_process(COMMAND "${HELPER}" --check-legal "${DRAFT}"
     RESULT_VARIABLE rejected OUTPUT_QUIET ERROR_QUIET)
 if(NOT rejected STREQUAL "1")

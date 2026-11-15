@@ -183,6 +183,21 @@ macro(qt_source_evidence module commit)
             "${qt_source}/src/*LICENSE*" "${qt_source}/src/*COPYING*"
             "${qt_source}/src/*LICENCE*" "${qt_source}/src/*COPYRIGHT*"
             "${qt_source}/src/qt_attribution.json")
+        # GLOB on Windows also matched documentation assets such as
+        # licensewizard-flow.png. Only conventional license-text basenames
+        # belong here; explicit attribution LicenseFile references are added
+        # below regardless of basename.
+        set(text_candidates)
+        foreach(candidate IN LISTS qt_licenses)
+            get_filename_component(base "${candidate}" NAME)
+            string(TOUPPER "${base}" upper)
+            if(candidate MATCHES "/LICENSES/[^/]+\\.txt$"
+                    OR upper MATCHES "^(LICENSE|LICENCE|COPYING|COPYRIGHT)S?([._-].*)?$"
+                    OR base STREQUAL qt_attribution.json)
+                list(APPEND text_candidates "${candidate}")
+            endif()
+        endforeach()
+        set(qt_licenses "${text_candidates}")
         file(GLOB_RECURSE attributions "${qt_source}/src/qt_attribution.json")
         foreach(attribution IN LISTS attributions)
             file(READ "${attribution}" attribution_json)
