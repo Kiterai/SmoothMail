@@ -14,6 +14,18 @@ endif()
 if(EXISTS "${OUTPUT}" OR IS_SYMLINK "${OUTPUT}")
     message(FATAL_ERROR "Output already exists; it will not be overwritten.")
 endif()
+# Reject missing final inputs before bootstrapping Ninja or fetching/building
+# dependencies. The package helper still validates the full manifest below.
+if(NOT IS_DIRECTORY "${LEGAL_DIR}" OR IS_SYMLINK "${LEGAL_DIR}"
+        OR NOT EXISTS "${LEGAL_DIR}/manifest.json"
+        OR IS_DIRECTORY "${LEGAL_DIR}/manifest.json"
+        OR IS_SYMLINK "${LEGAL_DIR}/manifest.json")
+    message(FATAL_ERROR "LEGAL_DIR must contain an existing regular release manifest.json.")
+endif()
+file(SIZE "${LEGAL_DIR}/manifest.json" manifest_size)
+if(manifest_size EQUAL 0)
+    message(FATAL_ERROR "LEGAL_DIR must contain a nonempty release manifest.json.")
+endif()
 if(NOT DEFINED CRT_BIN)
     file(TO_CMAKE_PATH "$ENV{VCToolsRedistDir}" redist)
     file(GLOB crt_candidates LIST_DIRECTORIES TRUE "${redist}/x64/Microsoft.VC*.CRT")

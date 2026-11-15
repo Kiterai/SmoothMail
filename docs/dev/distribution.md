@@ -94,6 +94,8 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-licenses -DOUTP
 
 依存取得・Release構築、アプリの配布用Release構築、DLL／プラグイン／CRT・ライセンス資料の収集、個人パス・Debug混入等の検査、ZIP化を行います。ZIP内では`SmoothMail/licenses/`に配置し、未改変の原文はその`originals/`以下に置きます。`LEGAL_DIR`／`SMOOTHMAIL_LEGAL_DIR`という既存の引数名は互換性のため維持しますが、格納先を`legal/`にはしません。CRTの場所を一意に決定できない場合は `-DCRT_BIN=.../VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` を追加します。既存ZIPは上書きしません。
 
+`LEGAL_DIR`には監査済みの生成物を実際に配置してください。通常ディレクトリと、空ではない通常ファイルの`manifest.json`がない場合は、依存取得を始める前に停止します。テンプレートだけ、又は`manifest.review.json`の改名は代用になりません。manifestの内容と参照文書は引き続きpackage helperで検査します。過去の`build/`を削除した場合は、保存した対応ソースZIP等から生成済みの`licenses/`を復元します。
+
 CRTはフォルダ全体を一括同梱せず、EXE・同梱DLL・指定プラグインの通常/遅延importと、そのCRTの推移依存から必要なDLLだけを選びます。VS 2022のRelease再配布用フォルダから取得し、Microsoft署名・x64・版の整合・コピー前後の同一性を検査します。署名確認はローカルの信頼情報を使うため、ネットワーク不要ですがオンライン失効確認を代替しません。未解決・未対応のCRT importや検査失敗時は停止します。実行時に独自に動的ロードするDLLや追加プラグインは、別途機能試験で確認してください。
 
 未解決・競合DLL、指定外のDLL、通知不足、未承認の埋込みパスで停止したら、入力を修正して再実行します。検査を無効化したりDLLを事後書換えしたりしません。供給元由来の情報は `cmake/runtime-path-policy.json` のハッシュ・範囲が一致するものに限り許容し、作業者情報はその範囲でも拒否します。
