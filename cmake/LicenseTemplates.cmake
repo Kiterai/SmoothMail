@@ -1,5 +1,18 @@
 include_guard(GLOBAL)
 
+function(smoothmail_license_regular_file base relative)
+    if(relative STREQUAL "" OR relative MATCHES "(^/|\\\\|:|(^|/)\\.\\.(/|$)|[;\r\n])")
+        message(FATAL_ERROR "Unsafe evidence reference.")
+    endif()
+    file(REAL_PATH "${base}" real_base)
+    file(REAL_PATH "${base}/${relative}" real_file)
+    cmake_path(IS_PREFIX real_base "${real_file}" NORMALIZE contained)
+    if(NOT contained OR NOT EXISTS "${real_file}" OR IS_DIRECTORY "${real_file}"
+            OR IS_SYMLINK "${base}/${relative}")
+        message(FATAL_ERROR "Missing or linked evidence reference.")
+    endif()
+endfunction()
+
 # Deliberately a data parser, not a shell/dotenv evaluator. Never log values:
 # an accidentally supplied application .env could contain credentials.
 function(smoothmail_read_license_env path)
@@ -54,10 +67,21 @@ function(smoothmail_read_license_env path)
 endfunction()
 
 function(smoothmail_render_license_template template output)
+    set(NOTICE_STATUS_EN "Draft for review. ")
+    set(NOTICE_STATUS_JA "審査用草案。")
+    set(REVIEW_BANNER_EN "**Draft for review; not approved for distribution.**")
+    set(REVIEW_BANNER_JA "**審査用草案。配布未承認。**")
+    if(LICENSE_FINAL_REVIEW)
+        set(NOTICE_STATUS_EN "")
+        set(NOTICE_STATUS_JA "")
+        set(REVIEW_BANNER_EN "")
+        set(REVIEW_BANNER_JA "")
+    endif()
     file(READ "${template}" text)
     string(REGEX MATCHALL "@[A-Za-z_][A-Za-z0-9_]*@" placeholders "${text}")
     set(allowed SOFTWARE_NAME DISTRIBUTION_URL BUILD_VERSION EDITION
-        COMPONENT_ROWS SOURCE_ROWS COMPONENT_NAME COMPONENT_VERSION BINARY_LIST LICENSE_LIST SOURCE_DETAILS)
+        COMPONENT_ROWS SOURCE_ROWS COMPONENT_NAME COMPONENT_VERSION BINARY_LIST LICENSE_LIST SOURCE_DETAILS
+        NOTICE_STATUS_EN NOTICE_STATUS_JA REVIEW_BANNER_EN REVIEW_BANNER_JA)
     foreach(placeholder IN LISTS placeholders)
         string(REGEX REPLACE "^@|@$" "" key "${placeholder}")
         if(NOT key IN_LIST allowed OR NOT DEFINED ${key})

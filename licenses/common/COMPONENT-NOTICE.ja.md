@@ -1,6 +1,6 @@
 # @COMPONENT_NAME@ @COMPONENT_VERSION@
 
-審査用草案。[英語正本](@COMPONENT_NAME@.md)の日本語訳。相違がある場合は英語正本を優先する。第三者ライセンスは各原文に従う。
+@NOTICE_STATUS_JA@[英語正本](@COMPONENT_NAME@.md)の日本語訳。相違がある場合は英語正本を優先する。第三者ライセンスは各原文に従う。
 
 ## 配布対象ファイル
 

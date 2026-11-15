@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — notices of modifications
 
-**Draft for review. English authoritative version. [Japanese translation](CHANGES.ja.md).**
+**@NOTICE_STATUS_EN@English authoritative version. [Japanese translation](CHANGES.ja.md).**
 
 The following libraries have been modified by **SmoothMail contributors**. The original copyright notices and license terms are retained. The corresponding source includes the modifications.
 

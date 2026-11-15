@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ license notices
 
-**Draft for review; not approved for distribution.**
+@REVIEW_BANNER_EN@
 
 Edition: @EDITION@. Build: @BUILD_VERSION@.
 

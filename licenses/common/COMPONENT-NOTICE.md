@@ -1,6 +1,6 @@
 # @COMPONENT_NAME@ @COMPONENT_VERSION@
 
-Draft for review. English authoritative version. [Japanese translation](@COMPONENT_NAME@.ja.md).
+@NOTICE_STATUS_EN@English authoritative version. [Japanese translation](@COMPONENT_NAME@.ja.md).
 
 ## Distributed files
 

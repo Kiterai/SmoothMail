@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — third-party software
 
-**Draft for review. English authoritative version. [Japanese translation](THIRD-PARTY.ja.md).**
+**@NOTICE_STATUS_EN@English authoritative version. [Japanese translation](THIRD-PARTY.ja.md).**
 
 ## Third-party software
 

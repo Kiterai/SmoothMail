@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — 対応ソース及びライブラリ差替え
 
-**審査用草案。[英語正本](SOURCE-AND-REPLACEMENT.md)の日本語訳。相違がある場合は英語正本を優先する。第三者ライセンスは各原文に従う。**
+**@NOTICE_STATUS_JA@[英語正本](SOURCE-AND-REPLACEMENT.md)の日本語訳。相違がある場合は英語正本を優先する。第三者ライセンスは各原文に従う。**
 
 ## 対応ソース
 

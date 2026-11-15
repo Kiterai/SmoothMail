@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — Microsoftランタイム適用条件
 
-**審査用草案。[英語正本](MICROSOFT-RUNTIME.md)の日本語訳。相違がある場合は英語正本を優先する。Microsoftの条件は適用原文に従う。**
+**@NOTICE_STATUS_JA@[英語正本](MICROSOFT-RUNTIME.md)の日本語訳。相違がある場合は英語正本を優先する。Microsoftの条件は適用原文に従う。**
 
 © Microsoft Corporation. All rights reserved.
 

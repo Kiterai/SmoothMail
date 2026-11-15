@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — copyright and license notices
 
-**Draft for review. English authoritative version. [Japanese translation](NOTICE.ja.md).**
+**@NOTICE_STATUS_EN@English authoritative version. [Japanese translation](NOTICE.ja.md).**
 
 Copyright (c) 2026 SmoothMail contributors
 

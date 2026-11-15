@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — Microsoft runtime conditions
 
-**Draft for review. English authoritative version. [Japanese translation](MICROSOFT-RUNTIME.ja.md).**
+**@NOTICE_STATUS_EN@English authoritative version. [Japanese translation](MICROSOFT-RUNTIME.ja.md).**
 
 © Microsoft Corporation. All rights reserved.
 

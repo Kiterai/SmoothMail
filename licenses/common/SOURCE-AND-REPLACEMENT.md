@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — corresponding source and library replacement
 
-**Draft for review. English authoritative version. [Japanese translation](SOURCE-AND-REPLACEMENT.ja.md).**
+**@NOTICE_STATUS_EN@English authoritative version. [Japanese translation](SOURCE-AND-REPLACEMENT.ja.md).**
 
 ## Corresponding source
 

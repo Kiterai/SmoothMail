@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ — 著作権及びライセンス通知
 
-**審査用草案。[英語正本](NOTICE.md)の日本語訳。相違がある場合は英語正本を優先する。第三者ライセンスは各原文に従う。**
+**@NOTICE_STATUS_JA@[英語正本](NOTICE.md)の日本語訳。相違がある場合は英語正本を優先する。第三者ライセンスは各原文に従う。**
 
 Copyright (c) 2026 SmoothMail contributors
 

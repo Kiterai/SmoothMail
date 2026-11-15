@@ -1,6 +1,6 @@
 # @SOFTWARE_NAME@ ライセンス通知
 
-**審査用草案。配布未承認。**
+@REVIEW_BANNER_JA@
 
 配布版：@EDITION@。ビルド：@BUILD_VERSION@。
 

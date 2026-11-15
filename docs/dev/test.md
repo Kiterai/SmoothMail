@@ -72,8 +72,10 @@ CRTのimport選択ガードは `cmake -P tests/cmake/run_crt_guards.cmake` で�
 
 ソースアーカイブの検証・非改変・パッチ適用と再利用のガードは `cmake -P tests/cmake/run_source_archive_guards.cmake` です。Git管理情報を作らず、ネットワークを使わずに12ケースと、Qt再構築先のSDK保護6ケースを確認します。配布補助のCTestにも含まれます。
 
-ライセンス用`.env`とテンプレートの単体ガードは`cmake -P tests/cmake/run_license_template_guards.cmake`です。正常な引用符付き設定、必須値・重複・未知キー・展開記法・不正URL・未定義テンプレート変数等の14ケースを、シェル評価や値の診断出力なしで確認します。配布補助CTestにも含めます。
+ライセンス用`.env`とテンプレートの単体ガードは`cmake -P tests/cmake/run_license_template_guards.cmake`です。最終表記での草案表示除去を含む15ケースを、シェル評価や値の診断出力なしで確認します。`cmake -P tests/cmake/run_license_final_review_guards.cmake`では、実配置の改変・不足・余分なファイル・誤分類・重複・不正パスの6ケースを拒否することを確認します。いずれも配布補助CTestに含めます。
 
 ライセンス文面案を原文収集結果とまとめた後は、QtのRelease DLLをPATHで参照できる環境で `cmake -DDRAFT=build/windows-licenses-review -DEVIDENCE=build/d05-legal-baseline-review -DHELPER=build/licenses-policy-tools/smoothmail_package.exe -P tests/cmake/verify_windows_legal_draft.cmake` を実行します。34ファイル／19コンポーネントの対応保持、`originals/`の原文SHA256一致、文面内の相対リンク、英語正本／日本語訳の対・常体・manifestへの登録、未展開変数の不存在、未承認・改名入力の拒否を確認します。配布補助の合成ZIP試験では、`licenses/manifest.json`の配置と旧`legal/`の非混入も検証します。法的条件や翻訳の完全性、利用者の同意を認定する試験ではありません。
+
+最終表記の検査では`verify_windows_legal_draft.cmake`へ`-DFINAL_REVIEW=ON`を追加し、本文に草案・例示文言が残らないこと、アプリとCRTの版が適切に表示されることも確認します。source reviewの展開検査では、ライセンステンプレートと`.env.example`の収録、実`.env`の非混入も検査します。
 
 実Google認可・送受信などの手動プローブ（`tests/manual/`）は通常テストに含めません。実行には対象アカウントの本人認可と、通信・メール作成・資格情報保存それぞれの許可が必要です。

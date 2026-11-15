@@ -44,6 +44,15 @@ foreach(i RANGE 0 ${last})
         smoothmail_validate_archive_source("${component}" "${root}/${component}" "${commit}")
     endif()
 endforeach()
+foreach(required IN ITEMS .env.example licenses/common/README.md
+        licenses/editions/windows-x64/THIRD-PARTY.md cmake/LicenseTemplates.cmake)
+    if(NOT EXISTS "${root}/SmoothMail/${required}")
+        message(FATAL_ERROR "Corresponding source omitted license template/build inputs.")
+    endif()
+endforeach()
+if(EXISTS "${root}/SmoothMail/.env")
+    message(FATAL_ERROR "Private release environment must not be exported.")
+endif()
 foreach(patch IN ITEMS
         kcodecs/6.31.0-safe-ctype.patch kmime/6.31.0-safe-ctype.patch
         kconfig/6.31.0-optional-check-update.patch kcrash/6.31.0-windows-runtime-paths.patch
