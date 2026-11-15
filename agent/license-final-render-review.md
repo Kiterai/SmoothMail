@@ -20,3 +20,28 @@
 - 実公開先へのHEAD確認は実行環境のwebfetch権限で拒否され、実取得は未確認。別経路で迂回せず、公開／取得確認の残件として扱う。
 
 全体の生成・構築・成果物検査は、この修正をコミットしたソースから実施して後続記録へ追記する。テンプレート確認報告を最終ZIPの承認に読み替えず、公開・通常起動先の更新・実アカウント利用は行わない。
+
+## 最終生成・成果物検査
+
+対象ソースは`e109cfffad1ead543521240759e68d2a05f3af0b`。後続の記録専用コミットは製品ソース識別子を変更しない。実設定から本体版`0.1.0`、検証済みCRT版`14.44.35211.0`を生成した。実`.env`は変更・追跡・成果物へのコピーをしていない。
+
+- 既検証の`build/d05/deps`を利用し、現在ソースからReleaseアプリと`tst_aboutdialog`を新規構築。最終文面を埋め込んだaboutdialog対象が成功した。今回は全依存の再構築及び従来のSandbox各247ケースの再実行はしていない。
+- 最終配置は34 runtimeファイル／19コンポーネント。未改変原文267件、英日54文書、合計321参照テキストのUTF-8・相対リンク・版・未置換変数・manifest登録を検査。321件とmanifestのSHA256が実コンパイルに使用した入力と一致した。原文件数の変化はGNU固有表示の補完、不要画像・更新ツール等の分類訂正、Qt複数原文参照の補完による。
+- EXEと配置コピーのSHA256が一致し、EXE内のUTF-16ソース識別子と対応ソース一覧のコミットも一致。EXE SHA256は`f786561ae151cedb7ab5f6420a564d58e000684d79f988113a5548cdf3f4a055`。
+- 23対応ソースアーカイブを`build/license-review-source-final`へ生成。22依存は独立展開・19 tree pin・7有効パッチ確認済みセットとSHA256一致。現アプリは別途展開し、テンプレート及び`.env.example`の収録、実`.env`の非混入を確認した。
+- 配布補助CTest10対象が成功。テンプレート15・実配置6・Qt attribution5ケースを含む。英語引用14ブロックも原文へ再照合して成功。
+- アプリとライセンス全体の作業者情報検査が既存d05限定パスポリシーで成功。検査緩和やDLLの書換えはしていない。通常配布入口のreview-only／改名入力拒否は維持した。
+- ZIPは.NET ZIP readerで全ファイルのSHA256と件数を照合した。文面ZIPは351ファイル、アプリ同梱候補ZIPは387ファイル。
+
+| 成果物 | SHA256 |
+| --- | --- |
+| `build/SmoothMail-0.1.0-license-texts-review.zip` | `1715adf87a9e90c24cc6d9c104690f2445397b7fc8986b356f33db0ac25adabf` |
+| `build/SmoothMail-0.1.0-license-review.zip` | `e6e460dcd9c98c63740da088261dfedab9d27aaaff0624308582173a50b5319e` |
+
+レビュー入口は`build/SmoothMail-0.1.0-license-texts-review/README.ja.md`。受領者向け本文は`licenses/`、状態表示・技術検査・ダイアログ表示資料は外側の`review/`へ分離した。最終検査結果は`review/checks.review.json`に収録した。
+
+主なログは`build/license-review-generate-final.log`、`build/license-review-app-final.log`、`build/license-review-privacy.log`、`build/license-review-source-check.log`、`build/license-final-tools-complete.log`。作業中、一度MSVC開発者環境なしで呼び出して標準ヘッダ`utility`のC1083となったが、vcvars64適用で是正した。またUTF-8拒否自己試験が既存fixtureへの上書きを試みて失敗したため、独立したPNG fixtureへ訂正し再試験した。両失敗を最終成功と混同しない。
+
+## 残件・承認境界
+
+人による最終文面・成果物レビュー、CRT条件への同意方法、公開ページでの対応ソース取得確認は未完了。公開先へのHEADは権限拒否のため未確認であり、別ツールで迂回していない。公開用`manifest.json`は生成せず、公開・push・通常起動先更新・実アカウント試験は行っていない。今回Sandboxは起動していない。自動検査の成功を法的条件の完全充足や製品配布の承認とは扱わない。
