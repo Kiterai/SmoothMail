@@ -17,6 +17,8 @@ add_test(NAME license_template_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_license_template_guards.cmake")
 add_test(NAME license_final_review_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_license_final_review_guards.cmake")
+add_test(NAME qt_legal_attribution_guards COMMAND "${CMAKE_COMMAND}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_qt_legal_attribution_guards.cmake")
 add_test(NAME source_archive_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_source_archive_guards.cmake")
 add_test(NAME crt_guards COMMAND "${CMAKE_COMMAND}"
