@@ -92,5 +92,9 @@ function(smoothmail_render_license_template template output)
     if(rendered MATCHES "@[A-Za-z_][A-Za-z0-9_]*@")
         message(FATAL_ERROR "Unresolved license template variable.")
     endif()
+    # Only generated notices are normalized. Third-party originals are copied
+    # separately and must remain byte-for-byte unchanged.
+    string(REPLACE "\r\n" "\n" rendered "${rendered}")
+    string(REGEX REPLACE "\n([ \t]*\n)+" "\n\n" rendered "${rendered}")
     file(WRITE "${output}" "${rendered}")
 endfunction()

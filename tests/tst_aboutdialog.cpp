@@ -4,7 +4,9 @@
 #include <QAction>
 #include <QLabel>
 #include <QListWidget>
-#include <QPlainTextEdit>
+#include <QTextBrowser>
+#include <QTextBlock>
+#include <QTextDocument>
 #include <QRegularExpression>
 #include <QSplitter>
 #include <QTest>
@@ -17,7 +19,7 @@ private slots:
     {
         smoothmail::AboutDialog dialog;
         auto *items = dialog.findChild<QListWidget *>(QStringLiteral("licenseItems"));
-        auto *text = dialog.findChild<QPlainTextEdit *>(QStringLiteral("licenseText"));
+        auto *text = dialog.findChild<QTextBrowser *>(QStringLiteral("licenseText"));
         QVERIFY(items && text);
         QVERIFY(text->isReadOnly());
         QVERIFY(items->count() >= 3);
@@ -41,6 +43,41 @@ private slots:
         const auto identity = dialog.findChild<QLabel *>(QStringLiteral("buildIdentity"))->text();
         QVERIFY(QRegularExpression(QStringLiteral("ビルド日 \\d{4}-\\d{2}-\\d{2} / コミット ")).match(identity).hasMatch());
         QVERIFY(!identity.contains(QStringLiteral("C:\\")));
+    }
+    void markdownAndPlainTextNavigation()
+    {
+        smoothmail::AboutDialog dialog;
+        auto *items = dialog.findChild<QListWidget *>(QStringLiteral("licenseItems"));
+        auto *text = dialog.findChild<QTextBrowser *>(QStringLiteral("licenseText"));
+        QVERIFY(items && text);
+        QVERIFY(!text->openLinks());
+        QVERIFY(!text->openExternalLinks());
+        auto add = [items](const QString &path) {
+            auto *item = new QListWidgetItem(path, items);
+            item->setData(Qt::UserRole, path);
+            return item;
+        };
+        auto *index = add(QStringLiteral("test/index.md"));
+        auto *next = add(QStringLiteral("test/sub/next.md"));
+        auto *original = add(QStringLiteral("test/original.txt"));
+        items->setCurrentItem(index);
+        QCOMPARE(text->document()->firstBlock().blockFormat().headingLevel(), 1);
+        QVERIFY(!text->toPlainText().contains(QStringLiteral("**Formatted text**")));
+        QVERIFY(text->document()->toHtml().contains(QStringLiteral("href=\"sub/next.md\"")));
+        text->anchorClicked(QUrl(QStringLiteral("sub/next.md")));
+        QCOMPARE(items->currentItem(), next);
+        QVERIFY(text->toPlainText().contains(QStringLiteral("Next document")));
+        text->anchorClicked(QUrl(QStringLiteral("../index.md#review-fixture")));
+        QCOMPARE(items->currentItem(), index);
+        text->anchorClicked(QUrl(QStringLiteral("original.txt")));
+        QCOMPARE(items->currentItem(), original);
+        QVERIFY(text->toPlainText().contains(QStringLiteral("# Literal heading")));
+        QVERIFY(text->toPlainText().contains(QStringLiteral("**Not bold** and <b>not HTML</b>.")));
+        QCOMPARE(text->document()->firstBlock().blockFormat().headingLevel(), 0);
+        text->anchorClicked(QUrl(QStringLiteral("file:///C:/Windows/win.ini")));
+        QCOMPARE(items->currentItem(), original);
+        text->anchorClicked(QUrl(QStringLiteral("../../missing.md")));
+        QCOMPARE(items->currentItem(), original);
     }
     void menuWorksWithoutAccounts()
     {

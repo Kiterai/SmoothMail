@@ -1,0 +1,3 @@
+# Literal heading
+
+**Not bold** and <b>not HTML</b>.

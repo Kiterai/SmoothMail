@@ -168,6 +168,10 @@ endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     add_executable(tst_aboutdialog tests/tst_aboutdialog.cpp)
+    qt_add_resources(tst_aboutdialog aboutdialog_test_notices
+        PREFIX "/licenses/test" BASE "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/licenses"
+        FILES tests/fixtures/licenses/index.md tests/fixtures/licenses/sub/next.md
+              tests/fixtures/licenses/original.txt)
     target_link_libraries(tst_aboutdialog PRIVATE smoothmail_ui Qt6::Test)
     smoothmail_target_defaults(tst_aboutdialog)
     add_test(NAME aboutdialog COMMAND tst_aboutdialog)
