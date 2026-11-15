@@ -175,6 +175,11 @@ if(BUILD_TESTING)
     target_link_libraries(tst_aboutdialog PRIVATE smoothmail_ui Qt6::Test)
     smoothmail_target_defaults(tst_aboutdialog)
     add_test(NAME aboutdialog COMMAND tst_aboutdialog)
+    if(SMOOTHMAIL_LEGAL_DIR)
+        add_test(NAME license_resource_bytes COMMAND "${CMAKE_COMMAND}"
+            "-DLEGAL=${SMOOTHMAIL_LEGAL_DIR}" "-DRESOURCES=${license_output}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/verify_license_resource_bytes.cmake")
+    endif()
     set_tests_properties(aboutdialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     add_executable(tst_diagnostics tests/tst_diagnostics.cpp)
     target_link_libraries(tst_diagnostics PRIVATE smoothmail_diagnostics Qt6::Test)

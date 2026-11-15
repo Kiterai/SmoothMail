@@ -15,7 +15,13 @@ function(smoothmail_license_entry title text)
     endif()
     get_filename_component(parent "${license_output}/${name}" DIRECTORY)
     file(MAKE_DIRECTORY "${parent}")
-    file(WRITE "${license_output}/${name}" "${text}")
+    if(ARGC GREATER 3)
+        # Do not round-trip originals through CMake's text-mode I/O: doing so
+        # can change LF/CRLF bytes on Windows even without changing the text.
+        file(COPY_FILE "${ARGV3}" "${license_output}/${name}")
+    else()
+        file(WRITE "${license_output}/${name}" "${text}")
+    endif()
     string(REPLACE "\\" "\\\\" title "${title}")
     string(REPLACE "\"" "\\\"" title "${title}")
     string(JSON next SET "${catalog}" ${count} "{\"title\":\"${title}\",\"file\":\"${name}\"}")
@@ -91,7 +97,7 @@ if(SMOOTHMAIL_LEGAL_DIR)
                 endif()
                 # Preserve extensions and directory structure so Markdown
                 # links resolve to the same documents as in the ZIP.
-                smoothmail_license_entry("${title}" "${content}" "documents/${path}")
+                smoothmail_license_entry("${title}" "${content}" "documents/${path}" "${full}")
                 list(APPEND embedded_paths "${path}")
             endif()
         endforeach()
