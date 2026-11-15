@@ -1,46 +1,67 @@
-# Microsoft Visual C++ランタイムに限る追加条件（レビュー案）
+# Microsoft runtime conditions
 
-**本案は未承認です。公開前に配布担当者へ適用されるMicrosoft契約との整合と、利用者・再配布者の同意取得方法をレビューしてください。**
-
-## 1. 適用対象
-
-この追加条件は、SmoothMailとともに提供されるMicrosoft製ReleaseランタイムDLLだけに適用します。対象ファイルは`COMPONENTS.md`の`msvc-crt`欄で特定します。
+**Draft for review. English authoritative version. [Japanese translation](MICROSOFT-RUNTIME.ja.md).**
 
 © Microsoft Corporation. All rights reserved.
 
-SmoothMailのMITコード、Qt、KDE、GNUその他の第三者OSSコードには、このMicrosoftコード向けの制限を適用しません。MicrosoftランタイムをMIT・LGPL・GPLで再ライセンスするものでもありません。
+## Scope
 
-## 2. 使用
+This notice concerns only the Microsoft Visual C++ runtime files identified in the accompanying component notices. It does not apply to SmoothMail's MIT-licensed code or to Qt, KDE, GNU, or other open-source components. It does not relicense Microsoft code under an open-source license or grant redistribution rights beyond the applicable Microsoft agreement.
 
-適法に提供されたMicrosoftランタイムを、SmoothMailおよびそれを使用するアプリケーションの実行に必要な範囲でインストール・使用できます。Microsoftおよびその供給者は、この文面で明示的に許可された範囲を除く権利を保持します。
+## Distribution conditions
 
-法律上許容される場合、およびMicrosoftコードに含まれるオープンソース部分のライセンスが要求する場合を除き、Microsoftランタイムの技術的制限の回避、リバースエンジニアリング、逆コンパイル、逆アセンブル、ソースコード導出を行わないでください。Microsoftおよび供給者の通知を削除・隠蔽・改変しないでください。
+The Visual Studio 2022 Community license, section 4, “Distributable Code,” states:
 
-この制限は、OSSライブラリの改変・差替え・再リンクや、その改変のデバッグに必要なSmoothMail／OSS部分の解析を禁止しません。強行法規による権利も制限しません。
+> You may copy and distribute the object code form of code listed on the Distributable List located at https://aka.ms/vs/17/redistribution.
 
-## 3. 再配布
+Under “Distribution Requirements” it states:
 
-この案内はMicrosoftランタイム単体の無条件な再配布権を付与するものではありません。SmoothMailを再配布する場合、Microsoftコードは適法に許可されたアプリケーションの一部として、元の通知・本追加条件とともに未改変で提供してください。再配布者および外部のエンドユーザーには、Microsoftの適用契約で要求される保護条件への同意を求めてください。
+> For any Distributable Code you distribute, you must:
+>
+> add significant primary functionality to it in your applications; and
+>
+> require distributors and external end users to agree to terms that protect the Distributable Code at least as much as this agreement.
 
-独自にMicrosoftコードを取得・追加・変更して配布する場合は、自身に適用されるMicrosoft契約とREDIST対象を確認してください。Preview・Pre-release・Beta、Debugランタイム、再配布対象外の工具を製品に含めないでください。
+The applicable Microsoft agreement and Distributable List govern redistribution. Microsoft runtime files supplied with SmoothMail are unmodified. Redistribution of SmoothMail containing those files remains subject to the applicable Microsoft distribution requirements and restrictions.
 
-Microsoftの名称・商標を、Microsoftが当該アプリケーションを作成・推奨・保証したかのように使用しないでください。Microsoftコードを、ソース開示や改変権の付与を要求する条件の対象に変更して配布しないでください。この条件は別のOSS部分の元のライセンスに基づく権利を取り消すものではありません。
+## Protection of Microsoft code
 
-## 4. 法令・保証・責任
+The following conditions concern only Microsoft code, subject to rights that applicable law does not permit to be excluded. The wording is drawn from the Microsoft Visual C++ 2015–2022 Runtime license.
 
-Microsoftコードを違法な目的で使用せず、適用される国内・国際の輸出管理法令（仕向地、利用者、最終用途に関する規制を含む）を遵守してください。
+Under “Scope of License,” Microsoft reserves all rights not granted and states that you may not:
 
-Microsoftコードは現状有姿で提供されます。適用法で許される範囲で、Microsoftおよびその供給者は、明示の保証・保証条件を付与せず、商品性、特定目的適合性、権利非侵害についての黙示の保証を否認します。この配布によりMicrosoftがSmoothMailのサポートを約束するものではありません。
+> work around any technical limitations in the software;
+>
+> reverse engineer, decompile or disassemble the software, or otherwise attempt to derive the source code for the software except, and only to the extent required by third party licensing terms governing the use of certain open source components that may be included in the software;
+>
+> remove, minimize, block or modify any notices of Microsoft or its suppliers in the software;
+>
+> use the software in any way that is against the law;
 
-適用法で許される範囲で、Microsoftおよびその供給者に対して回復できる損害は直接損害の5米ドルを上限とし、結果的損害、逸失利益、特別損害、間接損害、付随的損害は対象外とします。損害発生の可能性を知らされていた場合も同様です。適用法がこれらの制限を認めない場合はその限りではなく、消費者の強行法上の権利、故意・重過失、人身損害等について法律上排除できない責任を排除しません。
+These restrictions do not extend to the separate open-source components or restrict modification and reverse engineering for debugging modifications permitted by their licenses.
 
-この案内は、利用者にすでに適用されるMicrosoftとの契約を置き換えたり、Microsoftを代理して新しい権利を付与したりするものではありません。
+The Microsoft Runtime license also states:
 
-## 5. 参照先
+> You must comply with all domestic and international export laws and regulations that apply to the software, which include restrictions on destinations, end users, and end use.
 
-- Visual Studio 2022 REDIST一覧: https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
-- Visual Studio 2022 Community使用許諾（他エディションはその適用契約）: https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/
-- Visual C++ 2015–2022 Runtimeの公式使用許諾: https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/
-- Microsoft輸出管理: https://www.microsoft.com/exporting
+## Warranty and liability
 
-単体ランタイムの使用許諾を、配布者の再配布権の根拠と混同しないでください。MSVC 2022の正当利用と再配布条件の遵守は配布作業担当者の責務です。
+The Microsoft Runtime license states:
+
+> THE SOFTWARE IS LICENSED “AS-IS.” YOU BEAR THE RISK OF USING IT. MICROSOFT GIVES NO EXPRESS WARRANTIES, GUARANTEES OR CONDITIONS. TO THE EXTENT PERMITTED UNDER YOUR LOCAL LAWS, MICROSOFT EXCLUDES THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+
+It further states:
+
+> YOU CAN RECOVER FROM MICROSOFT AND ITS SUPPLIERS ONLY DIRECT DAMAGES UP TO U.S. $5.00. YOU CANNOT RECOVER ANY OTHER DAMAGES, INCLUDING CONSEQUENTIAL, LOST PROFITS, SPECIAL, INDIRECT OR INCIDENTAL DAMAGES.
+
+Its consumer-rights provision states:
+
+> This agreement does not change those other rights if the laws of your state or country do not permit it to do so.
+
+These extracts are not the complete Microsoft agreement and do not supersede its applicable exceptions or regional provisions.
+
+## Original terms
+
+- [Visual Studio 2022 Community license](https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/), section 4. Other editions are subject to their applicable agreements.
+- [Visual Studio 2022 Distributable List](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution).
+- [Microsoft Visual C++ 2015–2022 Runtime license](https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/), “Scope of License,” “Export Restrictions,” “Consumer Rights; Regional Variations,” “Disclaimer of Warranty,” and “Limitation on and Exclusion of Damages.”

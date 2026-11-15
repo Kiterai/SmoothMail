@@ -25,13 +25,15 @@ cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 
 `manifest.review.json`・`source-manifest.review.json` は完成品の証明ではありません。原文と実際の組込みコード、全依存と変更差分、再構築・DLL差替え・最終バイナリとの対応を確認します。`review_only` 資料は改名しても配布入力として拒否されます。
 
-利用者レビュー用のlegal文面は[`legal/windows/README.md`](../../legal/windows/README.md)を起点にします。利用許諾・謝辞、対応ソース／差替え、変更通知、Microsoft CRTに限る追加条件案を分離しています。原文収集結果とまとめるには次を実行します（出力は未承認案のままであり、製品生成ではありません）。
+利用者レビュー用のlegal文面は[`legal/windows/README.ja.md`](../../legal/windows/README.ja.md)を起点にします。`filename.md`を英語正本、`filename.ja.md`を日本語訳とし、第三者ライセンス原文は未改変で保持します。本文は必須通知・謝辞・対応ソース／差替え・改変通知・Microsoft CRTの適用条件へ絞り、開発経緯や監査補助資料は分離します。原文収集結果とまとめるには次を実行します（出力は未承認案のままであり、製品生成ではありません）。
 
 ```bat
-cmake -DEVIDENCE=build/d05-legal-baseline-review -DSOURCE_REVIEW=build/d05-source-review -DQT_SBOM_REVIEW=build/qt-shipped-sbom-review.json -DOUTPUT=build/windows-legal-draft -P cmake/PrepareWindowsLegalDraft.cmake
+cmake -DEVIDENCE=build/d05-legal-baseline-review -DSOURCE_REVIEW=build/d05-source-review -DQT_SBOM_REVIEW=build/qt-shipped-sbom-review.json -DOUTPUT=build/windows-legal-draft-en-ja -P cmake/PrepareWindowsLegalDraft.cmake
 ```
 
 公開ページURL・版／コミット・最終構成との対応と、CRT条件に必要な利用者／再配布者の同意方法は、人のレビュー後に確定します。原文掲載やファイルの改名だけを承認・同意取得とは扱いません。
+
+共通文書・対応表・ソース一覧は両言語ともmanifestへ登録し、コンポーネント別通知も英語正本と日本語訳を登録します。Markdownのリンク先を自動収集する前提にはしません。任意のQt SBOM入力は`evidence/`のJSONとして保存し、配布文面には展開しません。以前の監査経緯を含む通知文面も配布用本文へ引き継ぎません。
 
 提供済み依存アーカイブの直接利用経路を追加し、構築用Solid／WinFlexBisonも収集対象にしました。[アーカイブからの構築](build.md#再ビルド別環境)と固定Gitをネットワーク再取得する通常経路は区別します。最新23アーカイブから標準再構築・同一EXEへの改変DLL差替えに成功し、隔離Windowsで通常／改変各247件が失敗・スキップなしで通過しました。[検証記録](../../agent/source-rebuild-regression-followup.md)。最終通知・legal付き製品ZIP・公開先の確定は[未完了項目](../../spec/inprogress/distribution.md#dist-02-配布物の監査)に残し、技術検証だけで配布承認済みとは扱いません。
 

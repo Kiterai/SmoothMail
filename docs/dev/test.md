@@ -72,6 +72,6 @@ CRTのimport選択ガードは `cmake -P tests/cmake/run_crt_guards.cmake` で�
 
 ソースアーカイブの検証・非改変・パッチ適用と再利用のガードは `cmake -P tests/cmake/run_source_archive_guards.cmake` です。Git管理情報を作らず、ネットワークを使わずに12ケースと、Qt再構築先のSDK保護6ケースを確認します。配布補助のCTestにも含まれます。
 
-legal文面案を原文収集結果とまとめた後は、QtのRelease DLLをPATHで参照できる環境で `cmake -DDRAFT=build/windows-legal-draft -DEVIDENCE=build/d05-legal-baseline-review -DHELPER=build/d05/app/tools/windows-package/smoothmail_package.exe -P tests/cmake/verify_windows_legal_draft.cmake` を実行します。34ファイル／19コンポーネントの対応保持、原文のSHA256一致、文面内の相対リンク、未承認・改名入力の拒否を確認します。法的条件や利用者の同意を認定する試験ではありません。
+legal文面案を原文収集結果とまとめた後は、QtのRelease DLLをPATHで参照できる環境で `cmake -DDRAFT=build/windows-legal-draft-en-ja -DEVIDENCE=build/d05-legal-baseline-review -DHELPER=build/d05/app/tools/windows-package/smoothmail_package.exe -P tests/cmake/verify_windows_legal_draft.cmake` を実行します。34ファイル／19コンポーネントの対応保持、原文のSHA256一致、文面内の相対リンク、英語正本／日本語訳の対・常体・manifestへの登録、未承認・改名入力の拒否を確認します。法的条件や翻訳の完全性、利用者の同意を認定する試験ではありません。
 
 実Google認可・送受信などの手動プローブ（`tests/manual/`）は通常テストに含めません。実行には対象アカウントの本人認可と、通信・メール作成・資格情報保存それぞれの許可が必要です。
