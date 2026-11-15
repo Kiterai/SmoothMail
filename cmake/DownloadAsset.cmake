@@ -1,7 +1,23 @@
 include_guard(GLOBAL)
 
 # Verified cache only; a failed transfer never becomes a reusable asset.
-# CMake/libcurl honours the process HTTPS proxy and certificate configuration.
+# Both transports honour the process proxy and certificate configuration.
+# OpenSSL curl is opt-in for restricted Windows tokens that cannot use Schannel.
+function(smoothmail_validate_download_curl)
+    if(NOT IS_ABSOLUTE "${SMOOTHMAIL_DOWNLOAD_CURL}" OR
+       NOT EXISTS "${SMOOTHMAIL_DOWNLOAD_CURL}" OR
+       IS_DIRECTORY "${SMOOTHMAIL_DOWNLOAD_CURL}" OR
+       SMOOTHMAIL_DOWNLOAD_CURL MATCHES "[\";\r\n]")
+        message(FATAL_ERROR "Specify an absolute OpenSSL curl executable path.")
+    endif()
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env CURL_SSL_BACKEND=openssl
+        "${SMOOTHMAIL_DOWNLOAD_CURL}" --disable --version
+        RESULT_VARIABLE result OUTPUT_VARIABLE version ERROR_QUIET TIMEOUT 10)
+    if(NOT result STREQUAL "0" OR NOT version MATCHES "^curl [^\r\n]+OpenSSL/")
+        message(FATAL_ERROR "Selected download curl must support the OpenSSL TLS backend.")
+    endif()
+endfunction()
+
 function(smoothmail_download_asset url algorithm expected destination)
     if(NOT url MATCHES "^https://[^ \r\n]+$")
         message(FATAL_ERROR "Asset downloads require HTTPS.")
@@ -54,13 +70,27 @@ function(smoothmail_download_asset url algorithm expected destination)
     string(REGEX REPLACE "^https://mirror\\.msys2\\.org/" "https://repo.msys2.org/" url "${url}")
     string(RANDOM LENGTH 16 ALPHABET 0123456789abcdef nonce)
     set(partial "${destination}.${nonce}.part")
-    file(DOWNLOAD "${url}" "${partial}" TLS_VERIFY ON TLS_VERSION 1.2
-        TIMEOUT 600 INACTIVITY_TIMEOUT 60 STATUS status)
-    list(GET status 0 code)
-    if(NOT code EQUAL 0)
+    if(SMOOTHMAIL_DOWNLOAD_CURL)
+        smoothmail_validate_download_curl()
+        # --disable must be first: never accept insecure options from .curlrc.
+        # Keep the sandbox's proxy; force OpenSSL even in a MultiSSL curl build.
+        execute_process(COMMAND "${CMAKE_COMMAND}" -E env CURL_SSL_BACKEND=openssl
+            "${SMOOTHMAIL_DOWNLOAD_CURL}" --disable --silent --fail --location
+            --globoff --proto =https --proto-redir =https --tlsv1.2
+            --max-redirs 10 --connect-timeout 60 --max-time 600
+            --speed-limit 1 --speed-time 60 --output "${partial}" --url "${url}"
+            RESULT_VARIABLE code OUTPUT_QUIET ERROR_QUIET TIMEOUT 610)
+        set(transport "OpenSSL curl")
+    else()
+        file(DOWNLOAD "${url}" "${partial}" TLS_VERIFY ON TLS_VERSION 1.2
+            TIMEOUT 600 INACTIVITY_TIMEOUT 60 STATUS status)
+        list(GET status 0 code)
+        set(transport CMake)
+    endif()
+    if(NOT code STREQUAL "0")
         file(REMOVE "${partial}")
         # Do not print URLs, proxy diagnostics or potentially private headers.
-        message(FATAL_ERROR "HTTPS asset download failed (CMake status ${code}).")
+        message(FATAL_ERROR "HTTPS asset download failed (${transport} status ${code}).")
     endif()
     file(${algorithm} "${partial}" actual)
     if(NOT actual STREQUAL expected)
