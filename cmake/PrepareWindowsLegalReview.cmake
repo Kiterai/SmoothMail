@@ -151,6 +151,14 @@ foreach(id IN ITEMS libiconv gettext-libintl)
     endif()
     component("${id}" "${version}" "${binary}" "${url}; fixed vcpkg commit 177e8175121536d414f405ed8b3099b325a42638, its port patches, and cmake/native-triplets/x64-windows.cmake are required build inputs. No new GNU source patch was added by SmoothMail.")
     original("${SMOOTHMAIL_NATIVE_PREFIX}/share/${id}/copyright" "licenses/${id}/copyright")
+    # The installed copyright file may contain only the license text itself.
+    # Preserve the library-specific copyright/permission notices as well.
+    if(id STREQUAL libiconv)
+        original("${SMOOTHMAIL_NATIVE_PREFIX}/include/iconv.h" "licenses/${id}/iconv.h")
+        original("${SMOOTHMAIL_NATIVE_PREFIX}/include/localcharset.h" "licenses/${id}/localcharset.h")
+    else()
+        original("${SMOOTHMAIL_NATIVE_PREFIX}/include/libintl.h" "licenses/${id}/libintl.h")
+    endif()
     finish_component()
 endforeach()
 
