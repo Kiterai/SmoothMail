@@ -175,14 +175,16 @@ void prepareLegal(const QString &stage, const QString &directory, const QString 
         }
         require(covered, "Missing license/source coverage for a DLL");
     }
-    require(!QFileInfo::exists(stage + "/legal"), "Stage already contains legal inputs");
+    require(!QFileInfo::exists(stage + "/licenses") && !QFileInfo::exists(stage + "/legal"),
+            "Stage already contains license inputs");
     auto names = legal.files.values();
     std::sort(names.begin(), names.end());
     for (const auto &name : names)
-        write(stage + "/legal/" + name, read(directory + "/" + name));
-    write(stage + "/legal/manifest.json", QJsonDocument(legal.manifest).toJson());
-    for (const auto &name : {"LICENSE", "THIRD_PARTY_NOTICES.md"})
-        write(stage + "/" + name, read(repository + "/" + name));
+        write(stage + "/licenses/" + name, read(directory + "/" + name));
+    write(stage + "/licenses/manifest.json", QJsonDocument(legal.manifest).toJson());
+    // Recipient notices come from the generated manifest, not the source-tree
+    // development history in THIRD_PARTY_NOTICES.md.
+    write(stage + "/LICENSE", read(repository + "/LICENSE"));
 }
 
 using PathPolicy = QMap<QString, QJsonObject>;
@@ -503,7 +505,8 @@ void selfTest(const QString &artifact = {})
     prepareLegal(stage, legal, repository);
     archive(stage, temporary.path() + "/fixture.zip", {});
     const auto zip = read(temporary.path() + "/fixture.zip");
-    require(zip.contains("SmoothMail/smoothmail.exe") && zip.contains("SmoothMail/legal/license.txt"),
+    require(zip.contains("SmoothMail/smoothmail.exe") && zip.contains("SmoothMail/licenses/license.txt")
+                && !zip.contains("SmoothMail/legal/") && !zip.contains("SmoothMail/THIRD_PARTY_NOTICES.md"),
             "Missing ZIP entries");
     // Verify the first local header's fixed date, UTF-8 flag, and raw deflate data
     // by reconstructing the zlib wrapper accepted by qUncompress.

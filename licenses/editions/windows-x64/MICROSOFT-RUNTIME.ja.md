@@ -1,4 +1,4 @@
-# Microsoftランタイム適用条件
+# @SOFTWARE_NAME@ — Microsoftランタイム適用条件
 
 **審査用草案。[英語正本](MICROSOFT-RUNTIME.md)の日本語訳。相違がある場合は英語正本を優先する。Microsoftの条件は適用原文に従う。**
 
@@ -6,7 +6,7 @@
 
 ## 適用範囲
 
-当通知は、付属のコンポーネント別通知に特定するMicrosoft Visual C++ランタイムファイルのみを対象とする。SmoothMailのMITコード、Qt、KDE、GNUその他のオープンソースコンポーネントには適用しない。Microsoftコードのオープンソースライセンスによる再許諾、又は適用されるMicrosoft契約を超える再配布権の付与を意味しない。
+当通知は、付属のコンポーネント別通知に特定するMicrosoft Visual C++ランタイムファイルのみを対象とする。@SOFTWARE_NAME@のMITコード、Qt、KDE、GNUその他のオープンソースコンポーネントには適用しない。Microsoftコードのオープンソースライセンスによる再許諾、又は適用されるMicrosoft契約を超える再配布権の付与を意味しない。
 
 ## 配布条件
 
@@ -22,7 +22,7 @@ Visual Studio 2022 Community使用許諾第4節「Distributable Code」は、次
 >
 > 再配布者及び外部エンドユーザーに、当契約と少なくとも同程度に再配布可能コードを保護する条件への同意を要求すること。
 
-再配布は、適用されるMicrosoft契約及び再配布可能一覧に従う。SmoothMailに付属するMicrosoftランタイムファイルは未改変である。当該ファイルを含むSmoothMailの再配布にも、適用されるMicrosoftの配布要件及び制限を適用する。
+再配布は、適用されるMicrosoft契約及び再配布可能一覧に従う。@SOFTWARE_NAME@に付属するMicrosoftランタイムファイルは未改変である。当該ファイルを含む@SOFTWARE_NAME@の再配布にも、適用されるMicrosoftの配布要件及び制限を適用する。
 
 ## Microsoftコードの保護
 

@@ -25,4 +25,9 @@ endforeach()
 if(NOT EXISTS "${root}/extracted/SmoothMail/empty.txt")
     message(FATAL_ERROR "ZIP lost empty file.")
 endif()
+if(NOT EXISTS "${root}/extracted/SmoothMail/licenses/manifest.json"
+        OR NOT EXISTS "${root}/extracted/SmoothMail/licenses/license.txt"
+        OR EXISTS "${root}/extracted/SmoothMail/legal")
+    message(FATAL_ERROR "Distribution ZIP must contain licenses/, not the former legal/ path.")
+endif()
 message(STATUS "Independent ZIP extraction and SHA256 inventory verification passed.")

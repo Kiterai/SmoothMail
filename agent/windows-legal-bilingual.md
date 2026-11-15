@@ -2,6 +2,8 @@
 
 2026-11-15。利用者指定により、配布文面を英語正本と日本語訳へ再構成した。前回の文面・レビューZIPは保存し、未承認状態を維持する。
 
+後続の仕様7a3514e対応により、現管理先は`licenses/common/`及び`licenses/editions/windows-x64/`となり、文面は`.env`から生成するテンプレートへ移行した。[現行方針・検証結果](license-template-policy.md)。以下は英日版初稿の履歴である。
+
 ## 整理方針
 
 - `legal/windows/{README,NOTICE,SOURCE-AND-REPLACEMENT,CHANGES,MICROSOFT-RUNTIME}.md`を英語正本、それぞれの`.ja.md`を日本語訳とする。日本語訳は常体・漢語基調。第三者ライセンスそのものの正文指定を変更しない。

@@ -20,8 +20,12 @@ endfunction()
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" text)
 smoothmail_license_entry("SmoothMail / MIT" "${text}")
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" text)
-smoothmail_license_entry("第三者コード・変更通知" "${text}")
+if(NOT SMOOTHMAIL_LEGAL_DIR)
+    # Developer fallback only. Supplied/generated notices are authoritative
+    # for the distribution and already contain the required modification notices.
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" text)
+    smoothmail_license_entry("第三者コード・変更通知" "${text}")
+endif()
 
 if(SMOOTHMAIL_LEGAL_DIR)
     get_filename_component(SMOOTHMAIL_LEGAL_DIR "${SMOOTHMAIL_LEGAL_DIR}" ABSOLUTE)

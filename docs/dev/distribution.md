@@ -2,7 +2,7 @@
 
 配布形式はWindows x64向けポータブルZIPです。展開した `SmoothMail/smoothmail.exe` を直接起動します。
 
-**現時点ではライセンス最終監査・legal付き実ZIP・クリーンWindowsでの最終確認は未完了です。** 以下を満たすまで公開しないでください。残作業は[未完了仕様](../../spec/inprogress/distribution.md)で管理します。
+**現時点ではライセンス最終監査・ライセンス資料付き実ZIP・クリーンWindowsでの最終確認は未完了です。** 以下を満たすまで公開しないでください。残作業は[未完了仕様](../../spec/inprogress/distribution.md)で管理します。
 
 ## 1. 入力を準備する
 
@@ -10,7 +10,7 @@
 
 - 配布するソースを確定した、追跡ファイルに変更のないGitコミット。
 - Qt SDKのRelease DLL・プラグインと、MSVC 2022のx64 Release再配布用CRT。
-- 全同梱コンポーネントの原文・著作権・変更通知・対応ソース案内をまとめたlegalディレクトリと、レビュー済みの `manifest.json`。
+- 全同梱コンポーネントの原文・著作権・変更通知・対応ソース案内をまとめた生成済みライセンス資料と、レビュー済みの `manifest.json`。
 
 依存の構築後、以下で通知と対応ソースの**レビュー用資料**を収集できます。`STAGE` には [Release配置手順](run.md#リリースビルド実行)で作成した候補を指定し、各 `OUTPUT` は新しい保存先にします。
 
@@ -25,19 +25,37 @@ cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 
 `manifest.review.json`・`source-manifest.review.json` は完成品の証明ではありません。原文と実際の組込みコード、全依存と変更差分、再構築・DLL差替え・最終バイナリとの対応を確認します。`review_only` 資料は改名しても配布入力として拒否されます。
 
-利用者レビュー用のlegal文面は[`legal/windows/README.ja.md`](../../legal/windows/README.ja.md)を起点にします。`filename.md`を英語正本、`filename.ja.md`を日本語訳とし、第三者ライセンス原文は未改変で保持します。本文は必須通知・謝辞・対応ソース／差替え・改変通知・Microsoft CRTの適用条件へ絞り、開発経緯や監査補助資料は分離します。原文収集結果とまとめるには次を実行します（出力は未承認案のままであり、製品生成ではありません）。
+### テンプレートと版別設定
+
+共通の文面は[`licenses/common/`](../../licenses/common/)、Windows x64固有の文面は[`licenses/editions/windows-x64/`](../../licenses/editions/windows-x64/)で管理します。`filename.md`を英語正本、`filename.ja.md`を常体・漢語基調の日本語訳とします。これらは完成文書ではなく`@変数名@`形式のテンプレートです。第三者ライセンス原文と著作権者名は改名・翻訳・変数置換せず保持します。
+
+リポジトリ直下の`.env.example`を参考に、Git管理外の`.env`へ次の3値を指定します。
+
+| 変数 | 内容 |
+|---|---|
+| `SOFTWARE_NAME` | ライセンス文面に表示するソフトウェア名称 |
+| `DISTRIBUTION_URL` | バイナリと対応ソースを提供するHTTPSページ |
+| `BUILD_VERSION` | 対象ビルドの版情報 |
+
+UTF-8の`KEY=value`形式です。値全体の単一／二重引用符を許容し、変数展開・シェル実行・行末コメントは行いません。空値・不足・重複・未知のキー、認証情報付きURL、Markdownを破壊する文字等は拒否します。診断には設定値を出力しません。既存のアプリ資格情報用`.env`を兼用せず、必要な場合は`-DENV_FILE=<専用ファイル>`で入力を分離してください。`.env`自体は成果物へ含めません。
+
+`.env.example`のURLは例示用であり、実公開先ではありません。例を明示的に使って文面を確認する場合だけ`-DENV_FILE=.env.example`を指定します。既存の`.env`や過去の成果物は上書きしません。
+
+原文収集結果とまとめるには次を実行します（出力は未承認案のままであり、製品生成ではありません）。
 
 ```bat
-cmake -DEVIDENCE=build/d05-legal-baseline-review -DSOURCE_REVIEW=build/d05-source-review -DQT_SBOM_REVIEW=build/qt-shipped-sbom-review.json -DOUTPUT=build/windows-legal-draft-en-ja -P cmake/PrepareWindowsLegalDraft.cmake
+cmake -DEDITION=windows-x64 -DEVIDENCE=build/d05-legal-baseline-review -DSOURCE_REVIEW=build/d05-source-review -DQT_SBOM_REVIEW=build/qt-shipped-sbom-review.json -DOUTPUT=build/windows-licenses-review -P cmake/PrepareWindowsLegalDraft.cmake
 ```
 
-公開ページURL・版／コミット・最終構成との対応と、CRT条件に必要な利用者／再配布者の同意方法は、人のレビュー後に確定します。原文掲載やファイルの改名だけを承認・同意取得とは扱いません。
+生成物の`README.ja.md`を起点に文面を確認します。公開ページURL・版／コミット・最終構成との対応と、CRT条件に必要な利用者／再配布者の同意方法は、人のレビュー後に確定します。変数置換・原文掲載・ファイルの改名だけを承認・同意取得とは扱いません。
+
+名称・URL・ビルド版又は版別テンプレートを変更した場合は、新しい出力先へ再生成し、その版・ビルドについて再レビューします。配布コマンドには、その生成物を確認・承認したディレクトリを渡します。配布処理が承認後に別の`.env`を読んで文面を無断再生成する方式にはしません。
 
 共通文書・対応表・ソース一覧は両言語ともmanifestへ登録し、コンポーネント別通知も英語正本と日本語訳を登録します。Markdownのリンク先を自動収集する前提にはしません。任意のQt SBOM入力は`evidence/`のJSONとして保存し、配布文面には展開しません。以前の監査経緯を含む通知文面も配布用本文へ引き継ぎません。
 
 提供済み依存アーカイブの直接利用経路を追加し、構築用Solid／WinFlexBisonも収集対象にしました。[アーカイブからの構築](build.md#再ビルド別環境)と固定Gitをネットワーク再取得する通常経路は区別します。最新23アーカイブから標準再構築・同一EXEへの改変DLL差替えに成功し、隔離Windowsで通常／改変各247件が失敗・スキップなしで通過しました。[検証記録](../../agent/source-rebuild-regression-followup.md)。最終通知・legal付き製品ZIP・公開先の確定は[未完了項目](../../spec/inprogress/distribution.md#dist-02-配布物の監査)に残し、技術検証だけで配布承認済みとは扱いません。
 
-legalの形式例（全DLLを一意にコンポーネントへ割り当てます）：
+ライセンスmanifestの形式例（全DLLを一意にコンポーネントへ割り当てます）：
 
 ```json
 {
@@ -54,17 +72,17 @@ legalの形式例（全DLLを一意にコンポーネントへ割り当てます
 }
 ```
 
-これはQt部分だけの例です。KDE各ライブラリ、QtKeychain、SASLと機構、GNU、CRT等も追加します。通知ファイルはmanifestからの相対パスに置く、空でないUTF-8テキストです。情報ダイアログとZIPには同じ承認済みlegalを使います。
+これはQt部分だけの例です。KDE各ライブラリ、QtKeychain、SASLと機構、GNU、CRT等も追加します。通知ファイルはmanifestからの相対パスに置く、空でないUTF-8テキストです。生成物の`originals/`には原文を未改変で保持します。情報ダイアログとZIPには同じ生成済み・承認済み資料を使います。ソース側の開発経緯`THIRD_PARTY_NOTICES.md`は、生成済み資料の代わりに製品へ同梱・埋込みしません。
 
 ## 2. 最終ZIPを生成する
 
 リポジトリルートのMSVC x64開発者コマンドプロンプトで実行します。
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-legal -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-licenses -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
 ```
 
-依存取得・Release構築、アプリの配布用Release構築、DLL／プラグイン／CRT・legalの収集、個人パス・Debug混入等の検査、ZIP化を行います。CRTの場所を一意に決定できない場合は `-DCRT_BIN=.../VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` を追加します。既存ZIPは上書きしません。
+依存取得・Release構築、アプリの配布用Release構築、DLL／プラグイン／CRT・ライセンス資料の収集、個人パス・Debug混入等の検査、ZIP化を行います。ZIP内では`SmoothMail/licenses/`に配置し、未改変の原文はその`originals/`以下に置きます。`LEGAL_DIR`／`SMOOTHMAIL_LEGAL_DIR`という既存の引数名は互換性のため維持しますが、格納先を`legal/`にはしません。CRTの場所を一意に決定できない場合は `-DCRT_BIN=.../VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` を追加します。既存ZIPは上書きしません。
 
 CRTはフォルダ全体を一括同梱せず、EXE・同梱DLL・指定プラグインの通常/遅延importと、そのCRTの推移依存から必要なDLLだけを選びます。VS 2022のRelease再配布用フォルダから取得し、Microsoft署名・x64・版の整合・コピー前後の同一性を検査します。署名確認はローカルの信頼情報を使うため、ネットワーク不要ですがオンライン失効確認を代替しません。未解決・未対応のCRT importや検査失敗時は停止します。実行時に独自に動的ロードするDLLや追加プラグインは、別途機能試験で確認してください。
 

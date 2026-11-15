@@ -2,7 +2,7 @@
 
 SmoothMail独自コードのMITライセンスは、Qt・KDEその他の第三者コードをMITへ再ライセンスするものではありません。各コードの元の著作権表示・ライセンスが引き続き適用されます。
 
-**このファイルだけでは全依存の配布監査完了を意味しません。配布ZIPでは、実際に同梱する全DLLに対応するライセンス原文・著作権・対応ソースの通知を別途`legal/manifest.json`へまとめます。準備手順は`docs/dev/distribution.md`を参照してください。**
+**当ファイルはソース側の変更経緯であり、全依存の配布監査完了を意味しません。配布用文面は`licenses/common/`及び`licenses/editions/`のテンプレートから生成し、配布ZIPの`licenses/manifest.json`へまとめます。準備手順は`docs/dev/distribution.md`を参照してください。**
 
 ## KIO 6.31.0：favicon機能を無効化した暫定ビルド
 

@@ -1,4 +1,4 @@
-# Notices of modifications
+# @SOFTWARE_NAME@ — notices of modifications
 
 **Draft for review. English authoritative version. [Japanese translation](CHANGES.ja.md).**
 

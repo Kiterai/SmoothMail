@@ -1,28 +1,10 @@
-# Copyright and license notices
+# @SOFTWARE_NAME@ — third-party software
 
-**Draft for review. English authoritative version. [Japanese translation](NOTICE.ja.md).**
-
-## SmoothMail
-
-Copyright (c) 2026 SmoothMail contributors
-
-SmoothMail's original code is licensed under the MIT License. The license states:
-
-> Permission is hereby granted, free of charge, to any person obtaining a copy
-> of this software and associated documentation files (the "Software"), to deal
-> in the Software without restriction, including without limitation the rights
-> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-> copies of the Software, and to permit persons to whom the Software is
-> furnished to do so, subject to the following conditions:
->
-> The above copyright notice and this permission notice shall be included in all
-> copies or substantial portions of the Software.
-
-The complete license, including its disclaimer of warranty and limitation of liability, is in `licenses/SmoothMail/LICENSE`.
+**Draft for review. English authoritative version. [Japanese translation](THIRD-PARTY.ja.md).**
 
 ## Third-party software
 
-Third-party software remains subject to its respective copyright notices and licenses. SmoothMail's MIT License does not relicense that software.
+Third-party software remains subject to its respective copyright notices and licenses. The application's MIT License does not relicense that software.
 
 | Component | Version | License notice |
 |---|---|---|
@@ -40,15 +22,15 @@ The component notices identify the distributed files and reproduce or reference 
 
 ## Qt and bundled third-party code
 
-Qt is used under the GNU Lesser General Public License, version 3. The LGPL v3 and the GNU GPL v3 to which it refers are included in `licenses/qtbase/LICENSES/` and `licenses/qtsvg/LICENSES/`.
+Qt is used under the GNU Lesser General Public License, version 3. The LGPL v3 and the GNU GPL v3 to which it refers are included in `originals/qtbase/LICENSES/` and `originals/qtsvg/LICENSES/`.
 
 The LGPL v3, section 4, permits a Combined Work under terms that, taken together:
 
 > effectively do not restrict modification of the portions of the Library contained in the Combined Work and reverse engineering for debugging such modifications
 
-SmoothMail imposes no additional restriction on those activities. Corresponding source and replacement information are described in [SOURCE-AND-REPLACEMENT.md](SOURCE-AND-REPLACEMENT.md).
+@SOFTWARE_NAME@ imposes no additional restriction on those activities. Corresponding source and replacement information are described in [SOURCE-AND-REPLACEMENT.md](SOURCE-AND-REPLACEMENT.md).
 
-Copyright notices and license texts for Qt's bundled third-party code are included in `licenses/qtbase/` and `licenses/qtsvg/`. For FreeType and its applicable rasterizer code, the FreeType License (FTL) alternative is selected. The required acknowledgment is:
+Copyright notices and license texts for Qt's bundled third-party code are included in `originals/qtbase/` and `originals/qtsvg/`. For FreeType and its applicable rasterizer code, the FreeType License (FTL) alternative is selected. The required acknowledgment is:
 
 > Portions of this software are copyright © 2026 The FreeType Project (www.freetype.org). All rights reserved.
 
@@ -58,8 +40,12 @@ Copyright (c) 1998-2003 Carnegie Mellon University. All rights reserved.
 
 > This product includes software developed by Computing Services at Carnegie Mellon University (http://www.cmu.edu/computing/).
 
-The complete conditions and disclaimer are included in `licenses/cyrus-sasl/COPYING`.
+The complete conditions and disclaimer are included in `originals/cyrus-sasl/COPYING`.
 
 ## Modified components
 
 The notices of modifications are in [CHANGES.md](CHANGES.md). Original copyright notices and license terms are retained.
+
+## Library replacement
+
+For this portable Windows distribution, replacement libraries are placed in the application's directory and applicable plugin subdirectories; no application-specific authorization key is required.

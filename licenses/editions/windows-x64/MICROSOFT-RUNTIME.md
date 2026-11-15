@@ -1,4 +1,4 @@
-# Microsoft runtime conditions
+# @SOFTWARE_NAME@ — Microsoft runtime conditions
 
 **Draft for review. English authoritative version. [Japanese translation](MICROSOFT-RUNTIME.ja.md).**
 
@@ -6,7 +6,7 @@
 
 ## Scope
 
-This notice concerns only the Microsoft Visual C++ runtime files identified in the accompanying component notices. It does not apply to SmoothMail's MIT-licensed code or to Qt, KDE, GNU, or other open-source components. It does not relicense Microsoft code under an open-source license or grant redistribution rights beyond the applicable Microsoft agreement.
+This notice concerns only the Microsoft Visual C++ runtime files identified in the accompanying component notices. It does not apply to @SOFTWARE_NAME@'s MIT-licensed code or to Qt, KDE, GNU, or other open-source components. It does not relicense Microsoft code under an open-source license or grant redistribution rights beyond the applicable Microsoft agreement.
 
 ## Distribution conditions
 
@@ -22,7 +22,7 @@ Under “Distribution Requirements” it states:
 >
 > require distributors and external end users to agree to terms that protect the Distributable Code at least as much as this agreement.
 
-The applicable Microsoft agreement and Distributable List govern redistribution. Microsoft runtime files supplied with SmoothMail are unmodified. Redistribution of SmoothMail containing those files remains subject to the applicable Microsoft distribution requirements and restrictions.
+The applicable Microsoft agreement and Distributable List govern redistribution. Microsoft runtime files supplied with @SOFTWARE_NAME@ are unmodified. Redistribution of @SOFTWARE_NAME@ containing those files remains subject to the applicable Microsoft distribution requirements and restrictions.
 
 ## Protection of Microsoft code
 
