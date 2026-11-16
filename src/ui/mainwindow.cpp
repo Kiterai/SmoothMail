@@ -419,11 +419,17 @@ void MainWindow::createPanes()
     });
     for (int c = 0; c < 3; ++c) {
         messages->setItemDelegateForColumn(c, badges);
-        messages->header()->setSectionResizeMode(c, QHeaderView::Fixed);
         const int width = messages->fontMetrics().horizontalAdvance(messageModel->headerData(c, Qt::Horizontal).toString()) + 12;
         messages->setColumnWidth(c, qMax(width, 24));
     }
-    messages->header()->setStretchLastSection(true);
+    messages->header()->setStretchLastSection(false);
+    messages->header()->setSectionResizeMode(QHeaderView::Interactive);
+    messages->header()->setSectionsMovable(true);
+    messages->header()->setFirstSectionMovable(true);
+    messages->setColumnWidth(3, 260);
+    messages->setColumnWidth(4, 140);
+    messages->setColumnWidth(5, 200);
+    messages->setColumnWidth(6, 160);
     messages->header()->setSectionsClickable(true);
     messages->header()->setSortIndicator(m_sortColumn, m_sortOrder);
     messages->header()->setSortIndicatorShown(true);
@@ -439,7 +445,10 @@ void MainWindow::createPanes()
             if (m_pagedStorage) requestPage(true); else messageModel->sort(m_sortColumn, m_sortOrder);
         }
         header->setSortIndicator(m_sortColumn, m_sortOrder);
+        emit messageColumnsChanged();
     });
+    connect(messages->header(), &QHeaderView::sectionMoved, this, [this] { emit messageColumnsChanged(); });
+    connect(messages->header(), &QHeaderView::sectionResized, this, [this] { emit messageColumnsChanged(); });
 
     auto *viewer = new MessageViewer(vertical);
     viewer->setObjectName(QStringLiteral("messageViewer"));
@@ -644,6 +653,23 @@ void MainWindow::applySettings(const SystemSettings &settings)
     if (!validSettings(settings)) return;
     const bool changed = m_pageSize != settings.pageSize; m_pageSize = settings.pageSize; m_poll->setInterval(settings.refreshSeconds * 1000);
     if (changed) requestPage(true);
+}
+QByteArray MainWindow::messageColumns() const
+{
+    return m_messageView->header()->saveState();
+}
+void MainWindow::restoreMessageColumns(const QByteArray &state)
+{
+    auto *header = m_messageView->header();
+    const QSignalBlocker block(header);
+    const auto previous = header->saveState();
+    if (!header->restoreState(state) || header->sortIndicatorSection() < 3 || header->sortIndicatorSection() > 6) {
+        header->restoreState(previous);
+        return;
+    }
+    m_sortColumn = header->sortIndicatorSection();
+    m_sortOrder = header->sortIndicatorOrder();
+    if (m_pagedStorage) requestPage(true); else m_messageModel->sort(m_sortColumn, m_sortOrder);
 }
 QChar MainWindow::folderSeparator(const QString &id, const QString &name) const
 {
@@ -857,7 +883,6 @@ void MainWindow::rebuildMessages()
         }
     }
     m_rebuilding = false;
-    for (int c = 3; c < 6; ++c) m_messageView->resizeColumnToContents(c);
     const auto current = m_messageView->currentIndex();
     findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(current.isValid() && (!m_pagedStorage || m_loadedMessage.has_value()));
     if (current.isValid()) {

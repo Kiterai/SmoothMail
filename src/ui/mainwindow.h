@@ -50,8 +50,11 @@ public:
     void showSyncProgress(const QString &id, const QString &folder, qint64 done, qint64 total);
     void followFolderRename(const QString &id, const QString &source, const QString &destination);
     void applySettings(const SystemSettings &settings);
+    QByteArray messageColumns() const;
+    void restoreMessageColumns(const QByteArray &state);
     QChar folderSeparator(const QString &id, const QString &name) const;
 signals:
+    void messageColumnsChanged();
     void messageMoveBatchStarted();
     void messageMoveBatchFinished();
     void editAccountRequested(const QString &id);

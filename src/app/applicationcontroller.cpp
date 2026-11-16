@@ -43,6 +43,13 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     m_operations = new QUndoStack(this); m_operations->setUndoLimit(1000);
     connect(m_operations, &QUndoStack::canUndoChanged, this, &ApplicationController::updateEditingState); connect(m_operations, &QUndoStack::canRedoChanged, this, &ApplicationController::updateEditingState);
     QSettings settings;
+    window->restoreMessageColumns(settings.value(QStringLiteral("display/messageColumns")).toByteArray());
+    connect(window, &MainWindow::messageColumnsChanged, this, [this] {
+        QSettings saved;
+        saved.setValue(QStringLiteral("display/messageColumns"), m_window->messageColumns());
+        saved.sync();
+        if (saved.status() != QSettings::NoError) m_window->statusBar()->showMessage(QStringLiteral("カラム設定を保存できませんでした。"));
+    });
     m_systemSettings = {settings.value(QStringLiteral("display/pageSize"), 100).toInt(), settings.value(QStringLiteral("refresh/seconds"), 30).toInt(), settings.value(QStringLiteral("google/clientId"), qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_ID")).toString()};
     m_systemSettings.parallelUpdates = settings.value(QStringLiteral("refresh/parallelUpdates"), 4).toInt();
     if (!validSettings(m_systemSettings)) { m_systemSettings.pageSize = 100; m_systemSettings.refreshSeconds = 30; m_systemSettings.parallelUpdates = 4; }

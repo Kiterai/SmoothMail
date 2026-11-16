@@ -29,6 +29,25 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void messageColumnStateRoundTrip()
+    {
+        smoothmail::MainWindow first(false);
+        auto *header = first.findChild<QTreeView *>(QStringLiteral("messageList"))->header();
+        QVERIFY(header->sectionsMovable()); QVERIFY(header->isFirstSectionMovable());
+        QCOMPARE(header->sectionResizeMode(0), QHeaderView::Interactive);
+        header->resizeSection(3, 321); header->moveSection(header->visualIndex(3), 0);
+        QVERIFY(QMetaObject::invokeMethod(header, "sectionClicked", Q_ARG(int, 4)));
+        const auto state = first.messageColumns();
+        smoothmail::MainWindow second(false); second.restoreMessageColumns(state);
+        auto *restored = second.findChild<QTreeView *>(QStringLiteral("messageList"))->header();
+        QCOMPARE(restored->sectionSize(3), 321); QCOMPARE(restored->visualIndex(3), 0);
+        QCOMPARE(restored->sortIndicatorSection(), 4); QCOMPARE(restored->sortIndicatorOrder(), Qt::AscendingOrder);
+        second.restoreMessageColumns(QByteArray("invalid"));
+        QCOMPARE(second.messageColumns(), state);
+        smoothmail::Account account; account.id = QStringLiteral("columns"); second.setAccounts({account});
+        second.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {});
+        QCOMPARE(restored->sectionSize(3), 321);
+    }
     void alternatePageNavigationKeepsPosition()
     {
         using namespace smoothmail;
