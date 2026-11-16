@@ -580,6 +580,13 @@ void MainWindow::requestPage(bool reset)
     query.importantOnly = m_importantOnly->isChecked(); query.unreadOnly = m_unreadOnly->isChecked(); query.generation = ++m_queryGeneration;
     query.revealUid = m_revealUid; query.revealValidity = m_revealValidity;
     query.revealStorageFolder = m_revealStorageFolder;
+    if (reset && query.revealUid == 0) {
+        const auto selected = selectedMessage();
+        if (selected && selected->accountId == m_accountId && selected->folder == m_folder) {
+            query.revealUid = selected->uid; query.revealValidity = selected->uidValidity;
+            query.revealStorageFolder = selected->storageFolder;
+        }
+    }
     query.pageSize = m_pageSize;
     m_filterProgress->show(); emit pageRequested(query);
 }
@@ -884,6 +891,10 @@ void MainWindow::rebuildMessages()
     }
     m_rebuilding = false;
     const auto current = m_messageView->currentIndex();
+    if (current.isValid()) {
+        for (auto parent = current.parent(); parent.isValid(); parent = parent.parent()) m_messageView->expand(parent);
+        m_messageView->scrollTo(current);
+    }
     findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(current.isValid() && (!m_pagedStorage || m_loadedMessage.has_value()));
     if (current.isValid()) {
         const int row = current.data(Qt::UserRole).toInt();

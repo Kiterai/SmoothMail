@@ -29,6 +29,33 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void filterAndSortPreserveSelectedIdentity()
+    {
+        using namespace smoothmail;
+        MainWindow window(false); window.setPagedStorage(true);
+        Account account; account.id = QStringLiteral("selection"); window.setAccounts({account});
+        QSignalSpy requests(&window, &MainWindow::pageRequested);
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {});
+        MailRecord selected{account.id, QStringLiteral("INBOX"), 7, 123};
+        selected.storageFolder = QStringLiteral("INBOX");
+        MailPage result; result.query = qvariant_cast<MailQuery>(requests.last().first()); result.total = 250; result.messages = {selected};
+        window.applyPage(result);
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+        view->setCurrentIndex(view->model()->index(0, 3));
+        QVERIFY(QMetaObject::invokeMethod(view->header(), "sectionClicked", Q_ARG(int, 3)));
+        auto query = qvariant_cast<MailQuery>(requests.last().first());
+        QCOMPARE(query.revealUid, selected.uid); QCOMPARE(query.revealValidity, selected.uidValidity);
+        QCOMPARE(query.revealStorageFolder, selected.storageFolder);
+        result.query = query; result.query.page = 3; window.applyPage(result);
+        QCOMPARE(window.findChild<QSpinBox *>(QStringLiteral("mailPage"))->value(), 3);
+        QVERIFY(window.selectedMessage()); QCOMPARE(window.selectedMessage()->uid, selected.uid);
+        window.findChild<QCheckBox *>(QStringLiteral("unreadOnly"))->setChecked(true);
+        query = qvariant_cast<MailQuery>(requests.last().first());
+        QCOMPARE(query.revealUid, selected.uid);
+        result.query = query; result.total = 1; result.messages = {{account.id, QStringLiteral("INBOX"), 7, 456}};
+        window.applyPage(result);
+        QVERIFY(!window.selectedMessage()); QVERIFY(!view->currentIndex().isValid());
+    }
     void messageColumnStateRoundTrip()
     {
         smoothmail::MainWindow first(false);
