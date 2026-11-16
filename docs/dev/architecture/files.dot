@@ -93,6 +93,7 @@ digraph dependencies {
 		"src/ui/visiblesplitter.h"	[fillcolor="#dbeafe",
 			label="src/ui/visiblesplitter.h"];
 	}
+	"src/main.cpp" -> "src/app/applicationcontroller"	[minlen=1];
 	"src/app/applicationcontroller" -> "src/mail/authenticationbroker"	[minlen=1];
 	"src/app/applicationcontroller" -> "src/mail/mailservice";
 	"src/app/applicationcontroller" -> "src/ui/accountdialog"	[minlen=2];
@@ -111,7 +112,6 @@ digraph dependencies {
 	"src/mail/messagecomposer" -> "src/core/threading";
 	"src/mail/messagecomposer" -> "src/mail/mimeparser";
 	"src/mail/mimeparser" -> "src/core/messagedocument.h";
-	"src/main.cpp" -> "src/app/applicationcontroller"	[minlen=1];
 	"src/storage/accountregistrar" -> "src/mail/oauthclient"	[minlen=1];
 	"src/storage/accountregistrar" -> "src/storage/accountrepository";
 	"src/storage/accountregistrar" -> "src/storage/credentialstore"	[minlen=2];

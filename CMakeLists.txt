@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 
+option(SMOOTHMAIL_DOCUMENTATION_ONLY "Inspect application declarations without compilers or an SDK" OFF)
+if(SMOOTHMAIL_DOCUMENTATION_ONLY)
+    project(SmoothMail VERSION 0.1.0 LANGUAGES NONE)
+    include(cmake/DocumentationTargets.cmake)
+    return()
+endif()
+
 project(SmoothMail VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -66,76 +73,8 @@ function(smoothmail_target_defaults target)
     endif()
 endfunction()
 
-add_library(smoothmail_diagnostics STATIC src/core/diagnostics.cpp src/core/diagnostics.h)
-target_include_directories(smoothmail_diagnostics PUBLIC src)
-target_link_libraries(smoothmail_diagnostics PUBLIC Qt6::Core)
-smoothmail_target_defaults(smoothmail_diagnostics)
-add_library(smoothmail_connection_policy STATIC src/mail/connectionpolicy.cpp src/mail/connectionpolicy.h)
-target_include_directories(smoothmail_connection_policy PUBLIC src)
-target_link_libraries(smoothmail_connection_policy PUBLIC Qt6::Core)
-smoothmail_target_defaults(smoothmail_connection_policy)
-add_library(smoothmail_oauth STATIC src/mail/oauthclient.cpp src/mail/oauthclient.h)
-target_include_directories(smoothmail_oauth PUBLIC src)
-target_link_libraries(smoothmail_oauth PUBLIC Qt6::Core Qt6::Network)
-smoothmail_target_defaults(smoothmail_oauth)
-
-add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
-    src/storage/accountrepository.cpp src/storage/accountrepository.h
-    src/storage/accountregistrar.cpp src/storage/accountregistrar.h
-    src/storage/credentialstore.cpp src/storage/credentialstore.h)
-target_sources(smoothmail_storage PRIVATE src/storage/downloadfile.cpp src/storage/downloadfile.h)
-target_include_directories(smoothmail_storage PUBLIC src)
-target_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy smoothmail_diagnostics Qt6::Core
-    PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain smoothmail_mime smoothmail_oauth)
-smoothmail_target_defaults(smoothmail_storage)
-add_library(smoothmail_auth STATIC src/mail/authenticationbroker.cpp src/mail/authenticationbroker.h)
-target_include_directories(smoothmail_auth PUBLIC src)
-target_link_libraries(smoothmail_auth PUBLIC smoothmail_storage smoothmail_oauth)
-smoothmail_target_defaults(smoothmail_auth)
-add_library(smoothmail_threading STATIC src/core/threading.cpp src/core/threading.h)
-target_include_directories(smoothmail_threading PUBLIC src)
-target_link_libraries(smoothmail_threading PUBLIC Qt6::Core)
-smoothmail_target_defaults(smoothmail_threading)
-
-add_library(smoothmail_transport STATIC src/mail/mailservice.cpp src/mail/mailservice.h)
-target_include_directories(smoothmail_transport PUBLIC src)
-target_link_libraries(smoothmail_transport PUBLIC smoothmail_storage
-    PRIVATE KPim6::IMAP KPim6::SMTP KF6::I18n Sasl2::Sasl2 smoothmail_mime)
-smoothmail_target_defaults(smoothmail_transport)
-
-if(SMOOTHMAIL_BUILD_MIME)
-    find_package(KF6Mime 6.31 CONFIG REQUIRED)
-    add_library(smoothmail_mime STATIC src/mail/mimeparser.cpp src/mail/mimeparser.h
-        src/mail/messagecomposer.cpp src/mail/messagecomposer.h)
-    target_include_directories(smoothmail_mime PUBLIC src)
-    target_link_libraries(smoothmail_mime PUBLIC Qt6::Core PRIVATE KF6::Mime smoothmail_threading)
-    smoothmail_target_defaults(smoothmail_mime)
-endif()
-
-add_library(smoothmail_ui STATIC
-    src/ui/aboutdialog.cpp src/ui/aboutdialog.h
-    src/ui/visiblesplitter.h
-    src/ui/systemsettingsdialog.cpp src/ui/systemsettingsdialog.h
-    src/ui/downloadhistorydialog.cpp src/ui/downloadhistorydialog.h
-    src/ui/foldermodel.cpp src/ui/foldermodel.h
-    src/ui/composedialog.cpp src/ui/composedialog.h
-    src/ui/accountdialog.cpp src/ui/accountdialog.h
-    src/core/messagedocument.h
-    src/ui/mainwindow.cpp
-    src/ui/mainwindow.h
-    src/ui/messageviewer.cpp
-    src/ui/messageviewer.h
-    src/ui/safebodyview.cpp
-    src/ui/safebodyview.h
-)
-target_include_directories(smoothmail_ui PUBLIC src)
-target_link_libraries(smoothmail_ui PUBLIC Qt6::Widgets smoothmail_storage smoothmail_threading)
-smoothmail_target_defaults(smoothmail_ui)
+include(cmake/ApplicationTargets.cmake)
 include(cmake/LicenseResources.cmake)
-
-qt_add_executable(smoothmail WIN32 src/main.cpp src/app/applicationcontroller.cpp src/app/applicationcontroller.h)
-target_link_libraries(smoothmail PRIVATE smoothmail_ui smoothmail_transport smoothmail_oauth smoothmail_auth)
-smoothmail_target_defaults(smoothmail)
 
 option(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE "Build opt-in live Google OAuth/authentication probe (never a CTest test)" OFF)
 if(SMOOTHMAIL_BUILD_LIVE_GOOGLE_PROBE)

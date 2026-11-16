@@ -4,110 +4,53 @@ node [
 ];
 
     "node0" [ label = "smoothmail", shape = egg , style=filled, fillcolor="#dbeafe" ];
-    "node1" [ label = "Qt6::Core\n(Qt::Core)", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node2" [ label = "Qt6::Platform\n(Qt::Platform)", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
-    "node3" [ label = "Threads::Threads", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
-    "node2" -> "node3" [ style = dashed ] // Qt6::Platform -> Threads::Threads
-    "node1" -> "node2" [ style = dashed ] // Qt6::Core -> Qt6::Platform
-    "node4" [ label = "WrapAtomic::WrapAtomic", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
-    "node1" -> "node4" [ style = dashed ] // Qt6::Core -> WrapAtomic::WrapAtomic
-    "node5" [ label = "mpr", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node1" -> "node5" [ style = dashed ] // Qt6::Core -> mpr
-    "node6" [ label = "userenv", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node1" -> "node6" [ style = dashed ] // Qt6::Core -> userenv
-    "node0" -> "node1" [ style = dotted ] // smoothmail -> Qt6::Core
-    "node7" [ label = "Qt6::moc", shape = egg , style=filled, fillcolor="#ffedd5" ];
-    "node0" -> "node7"  // smoothmail -> Qt6::moc
-    "node8" [ label = "smoothmail_auth", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node8" -> "node7"  // smoothmail_auth -> Qt6::moc
-    "node9" [ label = "smoothmail_oauth", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node9" -> "node1"  // smoothmail_oauth -> Qt6::Core
-    "node10" [ label = "Qt6::Network\n(Qt::Network)", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node10" -> "node1" [ style = dashed ] // Qt6::Network -> Qt6::Core
-    "node11" [ label = "ws2_32", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node10" -> "node11" [ style = dashed ] // Qt6::Network -> ws2_32
-    "node9" -> "node10"  // smoothmail_oauth -> Qt6::Network
-    "node9" -> "node7"  // smoothmail_oauth -> Qt6::moc
-    "node12" [ label = "smoothmail_storage", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node12" -> "node1"  // smoothmail_storage -> Qt6::Core
-    "node13" [ label = "Qt6::Sql\n(Qt::Sql)", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node13" -> "node1" [ style = dashed ] // Qt6::Sql -> Qt6::Core
-    "node12" -> "node13" [ style = dotted ] // smoothmail_storage -> Qt6::Sql
-    "node12" -> "node7"  // smoothmail_storage -> Qt6::moc
-    "node14" [ label = "qt6keychain\n(Qt6Keychain::Qt6Keychain)", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node14" -> "node1" [ style = dashed ] // qt6keychain -> Qt6::Core
-    "node15" [ label = "crypt32", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node14" -> "node15" [ style = dashed ] // qt6keychain -> crypt32
-    "node12" -> "node14" [ style = dotted ] // smoothmail_storage -> qt6keychain
-    "node16" [ label = "smoothmail_connection_policy", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node16" -> "node1"  // smoothmail_connection_policy -> Qt6::Core
-    "node16" -> "node7"  // smoothmail_connection_policy -> Qt6::moc
-    "node12" -> "node16"  // smoothmail_storage -> smoothmail_connection_policy
-    "node17" [ label = "smoothmail_diagnostics", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node17" -> "node1"  // smoothmail_diagnostics -> Qt6::Core
-    "node17" -> "node7"  // smoothmail_diagnostics -> Qt6::moc
-    "node12" -> "node17"  // smoothmail_storage -> smoothmail_diagnostics
-    "node18" [ label = "smoothmail_mime", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node19" [ label = "KF6::Mime", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node19" -> "node1" [ style = dashed ] // KF6::Mime -> Qt6::Core
-    "node18" -> "node19" [ style = dotted ] // smoothmail_mime -> KF6::Mime
-    "node18" -> "node1"  // smoothmail_mime -> Qt6::Core
-    "node18" -> "node7"  // smoothmail_mime -> Qt6::moc
-    "node20" [ label = "smoothmail_threading", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node20" -> "node1"  // smoothmail_threading -> Qt6::Core
-    "node20" -> "node7"  // smoothmail_threading -> Qt6::moc
-    "node18" -> "node20" [ style = dotted ] // smoothmail_mime -> smoothmail_threading
-    "node12" -> "node18" [ style = dotted ] // smoothmail_storage -> smoothmail_mime
-    "node12" -> "node9" [ style = dotted ] // smoothmail_storage -> smoothmail_oauth
-    "node8" -> "node9"  // smoothmail_auth -> smoothmail_oauth
-    "node8" -> "node12"  // smoothmail_auth -> smoothmail_storage
-    "node0" -> "node8" [ style = dotted ] // smoothmail -> smoothmail_auth
-    "node21" [ label = "smoothmail_transport", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node22" [ label = "KF6::I18n", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node22" -> "node1" [ style = dashed ] // KF6::I18n -> Qt6::Core
-    "node21" -> "node22" [ style = dotted ] // smoothmail_transport -> KF6::I18n
-    "node23" [ label = "KPim6::IMAP", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node24" [ label = "KF6::CoreAddons", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node24" -> "node1" [ style = dashed ] // KF6::CoreAddons -> Qt6::Core
-    "node23" -> "node24" [ style = dashed ] // KPim6::IMAP -> KF6::CoreAddons
-    "node23" -> "node19" [ style = dashed ] // KPim6::IMAP -> KF6::Mime
-    "node23" -> "node10" [ style = dashed ] // KPim6::IMAP -> Qt6::Network
-    "node21" -> "node23" [ style = dotted ] // smoothmail_transport -> KPim6::IMAP
-    "node25" [ label = "KPim6::SMTP", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node25" -> "node24" [ style = dashed ] // KPim6::SMTP -> KF6::CoreAddons
-    "node21" -> "node25" [ style = dotted ] // smoothmail_transport -> KPim6::SMTP
-    "node21" -> "node7"  // smoothmail_transport -> Qt6::moc
-    "node26" [ label = "Sasl2::Sasl2", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node21" -> "node26" [ style = dotted ] // smoothmail_transport -> Sasl2::Sasl2
-    "node21" -> "node18" [ style = dotted ] // smoothmail_transport -> smoothmail_mime
-    "node21" -> "node12"  // smoothmail_transport -> smoothmail_storage
-    "node27" [ label = "smoothmail_ui", shape = octagon , style=filled, fillcolor="#dbeafe" ];
-    "node28" [ label = "Qt6::Widgets\n(Qt::Widgets)", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node28" -> "node1" [ style = dashed ] // Qt6::Widgets -> Qt6::Core
-    "node29" [ label = "Qt6::Gui\n(Qt::Gui)", shape = doubleoctagon , style=filled, fillcolor="#ffedd5" ];
-    "node29" -> "node1" [ style = dashed ] // Qt6::Gui -> Qt6::Core
-    "node30" [ label = "WrapVulkanHeaders::WrapVulkanHeaders", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
-    "node29" -> "node30" [ style = dashed ] // Qt6::Gui -> WrapVulkanHeaders::WrapVulkanHeaders
-    "node31" [ label = "d3d11", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node29" -> "node31" [ style = dashed ] // Qt6::Gui -> d3d11
-    "node32" [ label = "d3d12", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node29" -> "node32" [ style = dashed ] // Qt6::Gui -> d3d12
-    "node33" [ label = "dxgi", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node29" -> "node33" [ style = dashed ] // Qt6::Gui -> dxgi
-    "node34" [ label = "dxguid", shape = septagon , style=filled, fillcolor="#ffedd5" ];
-    "node29" -> "node34" [ style = dashed ] // Qt6::Gui -> dxguid
-    "node28" -> "node29" [ style = dashed ] // Qt6::Widgets -> Qt6::Gui
-    "node27" -> "node28"  // smoothmail_ui -> Qt6::Widgets
-    "node27" -> "node7"  // smoothmail_ui -> Qt6::moc
-    "node35" [ label = "Qt6::rcc", shape = egg , style=filled, fillcolor="#ffedd5" ];
-    "node27" -> "node35"  // smoothmail_ui -> Qt6::rcc
-    "node27" -> "node12"  // smoothmail_ui -> smoothmail_storage
-    "node27" -> "node20"  // smoothmail_ui -> smoothmail_threading
-    "node36" [ label = "smoothmail_ui_resources_1", shape = hexagon , style=filled, fillcolor="#ffedd5" ];
-    "node36" -> "node1" [ style = dashed ] // smoothmail_ui_resources_1 -> Qt6::Core
-    "node36" -> "node2" [ style = dotted ] // smoothmail_ui_resources_1 -> Qt6::Platform
-    "node27" -> "node36" [ style = dashed ] // smoothmail_ui -> smoothmail_ui_resources_1
-    "node0" -> "node9" [ style = dotted ] // smoothmail -> smoothmail_oauth
-    "node0" -> "node21" [ style = dotted ] // smoothmail -> smoothmail_transport
-    "node0" -> "node27" [ style = dotted ] // smoothmail -> smoothmail_ui
+    "node1" [ label = "smoothmail_auth", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node2" [ label = "smoothmail_oauth", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node3" [ label = "Qt6::Core", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node2" -> "node3" [ style = dashed ] // smoothmail_oauth -> Qt6::Core
+    "node4" [ label = "Qt6::Network", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node2" -> "node4" [ style = dashed ] // smoothmail_oauth -> Qt6::Network
+    "node1" -> "node2" [ style = dashed ] // smoothmail_auth -> smoothmail_oauth
+    "node5" [ label = "smoothmail_storage", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node5" -> "node3" [ style = dashed ] // smoothmail_storage -> Qt6::Core
+    "node6" [ label = "Qt6::Sql", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node5" -> "node6" [ style = dashed ] // smoothmail_storage -> Qt6::Sql
+    "node7" [ label = "Qt6Keychain::Qt6Keychain", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node5" -> "node7" [ style = dashed ] // smoothmail_storage -> Qt6Keychain::Qt6Keychain
+    "node8" [ label = "smoothmail_connection_policy", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node8" -> "node3" [ style = dashed ] // smoothmail_connection_policy -> Qt6::Core
+    "node5" -> "node8" [ style = dashed ] // smoothmail_storage -> smoothmail_connection_policy
+    "node9" [ label = "smoothmail_diagnostics", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node9" -> "node3" [ style = dashed ] // smoothmail_diagnostics -> Qt6::Core
+    "node5" -> "node9" [ style = dashed ] // smoothmail_storage -> smoothmail_diagnostics
+    "node10" [ label = "smoothmail_mime", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node11" [ label = "KF6::Mime", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node10" -> "node11" [ style = dashed ] // smoothmail_mime -> KF6::Mime
+    "node10" -> "node3" [ style = dashed ] // smoothmail_mime -> Qt6::Core
+    "node12" [ label = "smoothmail_threading", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node12" -> "node3" [ style = dashed ] // smoothmail_threading -> Qt6::Core
+    "node10" -> "node12" [ style = dashed ] // smoothmail_mime -> smoothmail_threading
+    "node5" -> "node10" [ style = dashed ] // smoothmail_storage -> smoothmail_mime
+    "node5" -> "node2" [ style = dashed ] // smoothmail_storage -> smoothmail_oauth
+    "node1" -> "node5" [ style = dashed ] // smoothmail_auth -> smoothmail_storage
+    "node0" -> "node1" [ style = dashed ] // smoothmail -> smoothmail_auth
+    "node0" -> "node2" [ style = dashed ] // smoothmail -> smoothmail_oauth
+    "node13" [ label = "smoothmail_transport", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node14" [ label = "KF6::I18n", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node13" -> "node14" [ style = dashed ] // smoothmail_transport -> KF6::I18n
+    "node15" [ label = "KPim6::IMAP", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node13" -> "node15" [ style = dashed ] // smoothmail_transport -> KPim6::IMAP
+    "node16" [ label = "KPim6::SMTP", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node13" -> "node16" [ style = dashed ] // smoothmail_transport -> KPim6::SMTP
+    "node17" [ label = "Sasl2::Sasl2", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node13" -> "node17" [ style = dashed ] // smoothmail_transport -> Sasl2::Sasl2
+    "node13" -> "node10" [ style = dashed ] // smoothmail_transport -> smoothmail_mime
+    "node13" -> "node5" [ style = dashed ] // smoothmail_transport -> smoothmail_storage
+    "node0" -> "node13" [ style = dashed ] // smoothmail -> smoothmail_transport
+    "node18" [ label = "smoothmail_ui", shape = octagon , style=filled, fillcolor="#dbeafe" ];
+    "node19" [ label = "Qt6::Widgets", shape = pentagon , style=filled, fillcolor="#ffedd5" ];
+    "node18" -> "node19" [ style = dashed ] // smoothmail_ui -> Qt6::Widgets
+    "node18" -> "node5" [ style = dashed ] // smoothmail_ui -> smoothmail_storage
+    "node18" -> "node12" [ style = dashed ] // smoothmail_ui -> smoothmail_threading
+    "node0" -> "node18" [ style = dashed ] // smoothmail -> smoothmail_ui
 }

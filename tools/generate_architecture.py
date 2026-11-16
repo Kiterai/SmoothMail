@@ -13,8 +13,11 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import html
+import sys
+import uuid
 
 from architecture_analysis import Analysis
+from setup_architecture import DEFAULT_TOOLS, sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +124,11 @@ def write_graph(path, nodes, edges, groups=None, labels=None):
 
 
 def target_sources(build):
+    declaration_file = build / "documentation-targets.json"
+    if declaration_file.exists():
+        declarations = json.loads(declaration_file.read_text(encoding="utf-8"))
+        return {name: {source for source in item["sources"] if internal(source)}
+                for name, item in declarations.items()}
     replies = build / ".cmake/api/v1/reply"
     index = json.loads(max(replies.glob("index-*.json"), key=lambda path: path.stat().st_mtime_ns).read_text(encoding="utf-8"))
     model_file = next(item["jsonFile"] for item in index["objects"] if item["kind"] == "codemodel")
@@ -153,11 +161,11 @@ def source_tables(targets, analysis):
                       "|---|---|---|---|"])
         for source in sorted(sources):
             entries = analysis.files.get(source, {"classes": [], "functions": [], "includes": []})
-            columns = [sorted(entries[key]) for key in ("classes", "functions", "includes")]
-            for row in range(max(1, *(len(column) for column in columns))):
-                values = [cell(source) if row == 0 else ""]
-                values.extend(cell(column[row]) if row < len(column) else "" for column in columns)
-                lines.append("| " + " | ".join(values) + " |")
+            classes = [name.rsplit("::", 1)[-1] for name in sorted(entries["classes"])]
+            functions = [name.split("(", 1)[0].rsplit("::", 1)[-1] for name in sorted(entries["functions"])]
+            columns = (classes, functions, sorted(entries["includes"]))
+            values = [cell(source), *("<br>".join(cell(item) for item in column) for column in columns)]
+            lines.append("| " + " | ".join(values) + " |")
         lines.append("")
     lines.append("<!-- END GENERATED SOURCE TABLES -->")
     return "\n".join(lines) + "\n"
@@ -171,29 +179,35 @@ def update_document(path, tables):
     path.write_bytes(re.sub(pattern, lambda match: tables.strip(), content, flags=re.S).encode("utf-8"))
 
 
-def color_targets(text):
+def color_targets(text, kinds=None):
     # CMake's legend uses legendNode*, whereas real targets use node[0-9]+.
     text = re.sub(r"subgraph clusterLegend\s*\{.*?\n\s*\}", "", text, flags=re.S)
     def color(match):
         label = match.group(2).split("\\n", 1)[0]
         fill = INTERNAL if re.fullmatch(r"smoothmail(?:_[a-z_]+)?", label) else EXTERNAL
-        return f'{match.group(1)}, style=filled, fillcolor="{fill}" ];'
+        attributes = match.group(1)
+        if kinds and label in kinds:
+            shape = "egg" if kinds[label] == "EXECUTABLE" else "octagon"
+            attributes = re.sub(r"shape\s*=\s*\w+", "shape = " + shape, attributes)
+        return f'{attributes}, style=filled, fillcolor="{fill}" ];'
     return re.sub(r'("node\d+"\s*\[\s*label\s*=\s*"([^"]+)"[^]]*)\]\s*;', color, text)
 
 
 def generate(args):
-    build = args.build.resolve()
-    if not (build / "CMakeCache.txt").is_file():
+    build = args.build.resolve() if args.build else None
+    if build is not None and not (build / "CMakeCache.txt").is_file():
         raise ValueError("--build must be an already configured application build")
     if args.output.exists() or args.output.is_symlink():
         raise ValueError("--output must be a new directory; existing figures are never overwritten")
-    dot = shutil.which(args.dot)
+    dot = shutil.which(args.dot) if args.dot else None
     doxygen = shutil.which(args.doxygen)
     tred = shutil.which(args.tred) if args.tred else shutil.which(str(Path(dot).with_name("tred" + Path(dot).suffix))) if dot else None
     unflatten = shutil.which(args.unflatten) if args.unflatten else shutil.which(
         str(Path(dot).with_name("unflatten" + Path(dot).suffix))) if dot else None
-    if not all((dot, doxygen, tred, unflatten)):
+    if not doxygen or (args.dot and not all((dot, tred, unflatten))):
         raise ValueError("Install Graphviz (dot, tred, unflatten) and Doxygen, or specify their executable paths")
+    if not args.dot:
+        import pygraphviz
     if args.document:
         # Validate markers before invoking generators, without writing anything.
         content = args.document.read_text(encoding="utf-8")
@@ -204,6 +218,10 @@ def generate(args):
     analysis = Analysis(sources)
     with tempfile.TemporaryDirectory(prefix="smoothmail-architecture-") as temporary:
         work = Path(temporary)
+        metadata_only = build is None
+        if metadata_only:
+            build = work / "cmake"
+            build.mkdir()
         # Configure in the supplied build without changing its test options.
         # Graphviz filters remove all test/probe/helper targets, not their build.
         options = build / "CMakeGraphVizOptions.cmake"
@@ -223,14 +241,24 @@ def generate(args):
         try:
             if query_created:
                 query.touch(exist_ok=False)
-            run("cmake", f"--graphviz={work / 'targets.raw.dot'}", build)
+            if metadata_only:
+                import ninja
+                ninja_exe = Path(ninja.BIN_DIR) / ("ninja.exe" if sys.platform == "win32" else "ninja")
+                run("cmake", "-S", ROOT, "-B", build, "-G", "Ninja",
+                    f"-DCMAKE_MAKE_PROGRAM={ninja_exe}", "-DSMOOTHMAIL_DOCUMENTATION_ONLY=ON",
+                    f"--graphviz={work / 'targets.raw.dot'}")
+            else:
+                run("cmake", f"--graphviz={work / 'targets.raw.dot'}", build)
         finally:
             options.unlink()
             if query_created and query.exists():
                 query.unlink()
         targets = target_sources(build)
+        declarations = build / "documentation-targets.json"
+        kinds = ({name: value["kind"] for name, value in
+                  json.loads(declarations.read_text(encoding="utf-8")).items()} if metadata_only else None)
         (work / "targets.dot").write_text(
-            color_targets((work / "targets.raw.dot").read_text(encoding="utf-8")),
+            color_targets((work / "targets.raw.dot").read_text(encoding="utf-8"), kinds),
             encoding="utf-8")
         config = work / "Doxyfile"
         config.write_text(
@@ -256,12 +284,20 @@ def generate(args):
                     {node: Path(analysis.classes[node]).parent.as_posix() for node in classes},
                     {node: node.rsplit("::", 1)[-1] for node in classes})
         for name in ("files", "classes"):
-            with (work / f"{name}.reduced.dot").open("wb") as output:
-                subprocess.run([tred, str(work / f"{name}.raw.dot")], stdout=output, check=True)
-            run(unflatten, "-l", "3", "-f", "-o", work / f"{name}.dot", work / f"{name}.reduced.dot")
+            if dot:
+                with (work / f"{name}.reduced.dot").open("wb") as output:
+                    subprocess.run([tred, str(work / f"{name}.raw.dot")], stdout=output, check=True)
+                run(unflatten, "-l", "3", "-f", "-o", work / f"{name}.dot", work / f"{name}.reduced.dot")
+            else:
+                graph = pygraphviz.AGraph(filename=str(work / f"{name}.raw.dot"))
+                graph.tred().unflatten("-l 3 -f").write(str(work / f"{name}.dot"))
         tables = source_tables(targets, analysis)
         for name in ("targets", "files", "directories", "classes"):
-            run(dot, "-Tsvg", work / f"{name}.dot", "-o", work / f"{name}.svg")
+            if dot:
+                run(dot, "-Tsvg", work / f"{name}.dot", "-o", work / f"{name}.svg")
+            else:
+                pygraphviz.AGraph(filename=str(work / f"{name}.dot")).draw(
+                    str(work / f"{name}.svg"), format="svg", prog="dot")
         args.output.mkdir(parents=True)
         for name in ("targets", "files", "directories", "classes"):
             for extension in ("dot", "svg"):
@@ -269,6 +305,12 @@ def generate(args):
         (args.output / "tables.md").write_bytes(tables.encode("utf-8"))
         if args.document:
             update_document(args.document, tables)
+        if args.publish:
+            destination = ROOT / "docs/dev/architecture"
+            destination.mkdir(parents=True, exist_ok=True)
+            for name in ("targets", "files", "directories", "classes"):
+                for extension in ("dot", "svg"):
+                    shutil.copyfile(args.output / f"{name}.{extension}", destination / f"{name}.{extension}")
         if analysis.errors:
             print("Tree-sitter syntax recovery used for: " + ", ".join(analysis.errors))
     print(f"Architecture figures: {args.output}")
@@ -276,17 +318,39 @@ def generate(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--build", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--dot", default="dot")
-    parser.add_argument("--doxygen", default="doxygen")
+    parser.add_argument("--build", type=Path, help="Optional real SDK build; default uses SDK-free CMake introspection")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--dot", help="Optional external Graphviz; default uses the isolated bundled binaries")
+    parser.add_argument("--doxygen")
     parser.add_argument("--tred")
     parser.add_argument("--unflatten")
-    parser.add_argument("--document", type=Path, help="Update only the marked generated tables in architecture.md")
+    parser.add_argument("--document", type=Path, default=ROOT / "docs/dev/architecture.md",
+                        help="Update only the marked generated tables in architecture.md")
+    parser.add_argument("--publish", action="store_true", help="Publish the eight generated figures (default without --output)")
+    parser.add_argument("--tools-root", type=Path, default=DEFAULT_TOOLS)
+    parser.add_argument("--test", action="store_true", help="Run Python tests inside the isolated documentation environment")
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
+        toolchain_file = args.tools_root / "toolchain.json"
+        if toolchain_file.exists():
+            toolchain = json.loads(toolchain_file.read_text(encoding="utf-8"))
+            if toolchain["requirements_sha256"] != sha256(ROOT / "tools/architecture-requirements.txt"):
+                raise ValueError("Documentation dependencies changed; run python tools/setup_architecture.py")
+            if not args.worker:
+                result = subprocess.run([toolchain["python"], str(Path(__file__).resolve()), *sys.argv[1:], "--worker"])
+                raise SystemExit(result.returncode)
+            args.doxygen = args.doxygen or toolchain["doxygen"]
+        elif not args.doxygen:
+            raise ValueError("Run python tools/setup_architecture.py first")
+        if args.test:
+            run(sys.executable, "-m", "unittest", "discover", "-s", ROOT / "tests/python", "-v")
+            return
+        if args.output is None:
+            args.output = ROOT / "build/architecture-generated" / uuid.uuid4().hex
+            args.publish = True
         generate(args)
-    except (ValueError, OSError, subprocess.CalledProcessError, ET.ParseError) as error:
+    except (ValueError, OSError, ImportError, subprocess.CalledProcessError, ET.ParseError) as error:
         parser.exit(1, f"Architecture generation failed: {error}\n")
 
 

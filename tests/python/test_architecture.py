@@ -91,12 +91,15 @@ class ArchitectureTests(unittest.TestCase):
             self.assertEqual(architecture.target_sources(build),
                              {"smoothmail_ui": {"src/ui/mainwindow.cpp", "src/ui/mainwindow.h"}})
 
-    def test_source_table_one_item_per_row_and_markdown_escaping(self):
-        analysis = SimpleNamespace(files={"src/a.h": {"classes": {"A", "B"}, "functions": {"f()"},
+    def test_source_table_one_source_per_row_and_br_lists(self):
+        analysis = SimpleNamespace(files={"src/a.h": {"classes": {"ns::A", "ns::B"}, "functions": {"ns::f(int value)", "ns::g()"},
                                                         "includes": {"<vector>"}}})
         table = architecture.source_tables({"smoothmail": {"src/a.h"}}, analysis)
-        self.assertIn("| src/a.h | A | f() | &lt;vector&gt; |", table)
-        self.assertIn("|  | B |  |  |", table)
+        self.assertIn("| src/a.h | A<br>B | f<br>g | &lt;vector&gt; |", table)
+        self.assertEqual(len([line for line in table.splitlines() if line.startswith("| src/")]), 1)
+        self.assertNotIn("ns::", table)
+        self.assertNotIn("int value", table)
+        self.assertNotIn("f(", table)
 
 
 @unittest.skipUnless(importlib.util.find_spec("tree_sitter") and importlib.util.find_spec("tree_sitter_cpp"),
