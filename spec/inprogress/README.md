@@ -18,7 +18,7 @@
 
 | ID | 項目 | 現在の状態 | 詳細 |
 |---|---|---|---|
-| BATCH-01 | Python配布入口での製品ZIP検証 | バッチ移行・個別試験済み。新入口での製品ZIP通し再検証が残る | [配布バッチ移行](batch-migration.md) |
+| BATCH-01 | 新標準入口の構築・製品ZIP検証 | Release ZIP生成・全バイト照合済み。Debug全体構築、SDKなしOSでの実行・DLL差替えの確認が残る | [配布バッチ移行](batch-migration.md) |
 
 ## 更新方法
 

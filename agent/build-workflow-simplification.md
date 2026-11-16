@@ -29,7 +29,7 @@
 - CMakeのビルドガード、ライセンス環境／テンプレート16件、配布入口9件が成功。
 - MSVCで配布補助を別途構築し、CRT実バイナリ・長いパス・ソースアーカイブ・通知・ZIP・Pythonを含むCTest全12件が成功。最初の補助構成は検証コマンド内の`%PATH%`早期展開でNMakeを失ったが、`cmake -E env --modify`によるPATH追加へ修正して成功した。
 - clean cloneへ検証専用`.env`だけを作成して`python tools/build.py dist`を実行し、Ninjaの自動取得・実コンパイルと固定vcpkgの取得を確認。CMake HTTPSのstatus 35には、文書どおり`.env`へOpenSSL対応curlを指定して再実行し、vcpkgの構築ツール・GNU／MSYS2取得へ進んだ。実運用の`.env`・Qt SDKは変更していない。
-- 製品全体のclean cloneからの取得・Debug／Release構築・SDKなし実行・改変DLL差替えは、この時点では未検証。BATCH-01で管理し、個別試験や既存旧入口の成功を通し検証済みとは扱わない。
+- Releaseの通し生成・成果物照合は後述のとおり成功。Debug全体の構築、SDKなしOSでの製品実行・改変DLL差替えはBATCH-01で管理し、個別fixtureや旧入口の成功を製品全体の検証済みとは扱わない。
 
 ## 反復実行時の保護
 
@@ -54,4 +54,16 @@
 - SASL用のパス許容エントリを削除し、以後は通常の厳格検査で扱う。Qt SDK向け限定ポリシーは変更しない。
 - 実SASL Release DLLを再構築し、例外なしの`--audit-stage`検査が成功。実DLLのPLAIN／LOGIN／XOAUTH2等のQt Testは7 passed、0 failed、0 skipped。原本保持・パッチ分離・再利用・改変拒否fixtureとPython44件の試験も成功した。
 - SASL fixture登録後の配布補助CTestは全14件成功。Release生成で固定したQtソース／供給元ポリシーと整合するよう、通常手順の対象SDKをQt 6.12.0 `msvc2022_64`と明記した。
-- `3529268`を検証用cloneへ反映し、前回出力や原本を削除せず、修正後のReleaseワークフローを再実行している。
+- `3529268`を検証用cloneへ反映し、前回出力や原本を削除せず、修正後のReleaseワークフローを再実行し、終了コード0で完了した。
+
+## Release生成成功・独立した成果物照合
+
+- 検証対象の本体・対応ソースのcommitは`352926821c9c573745cdc3501912546433f43365`。ビルド対象のcloneと実運用の`.env`を分離し、登録情報を持たない検証専用`.env`を使用した。初回の依存取得で準備したキャッシュは再利用しており、修正後の空キャッシュ取得をもう一度実施したという意味ではない。
+- `build/workflow-release-fixed.log`に`Ready: .../run/launch.cmd`と`Built target smoothmail`を確認した。成功ジョブは`build/workflow-clean/build/rel/jobs/f27b08cb0128d91f/`。
+- 出力ZIPは`build/workflow-clean/build/rel/artifacts/SmoothMail-windows-x64.zip`（18,487,767 bytes、SHA256 `b336b36c79a5877e35deef5312b6e167e370721b602695eb3e30129defa31d88`）。ソース23アーカイブ・ソース識別子・通知・再構築案内・公開前監査の注意も生成された。配布用入力の手動manifest作成・昇格は行っていない。
+- 別の照合処理で`SHA256SUMS.txt`の27ファイルと実ファイル集合を検証し、ZIPの361エントリと`run/`の361ファイルの集合・全バイト一致を確認した。`runtime-sha256.txt`も自己自身を除く全360ファイルを照合した。
+- `app/smoothmail.exe`とZIP内／`run/runtime/Smoothmail.exe`のSHA256一致、ソース一覧のcommit一致、README／storageの対応ソース内文書とのバイト一致、SASLパッチの収録、実`.env`の非収録を確認した。
+- `verify_license_resource_bytes.cmake`でも321件の埋込み文書について、パス・拡張子・原本バイトが生成資料と一致することを確認した。
+- 配布済み配置だけを探索先にして、実EXE・Qtプラグイン・SASLプラグインの通常／遅延importを再帰検査した。WindowsシステムDLL以外の25 DLL（うちCRT 5 DLL）が配置内だけで解決し、Qt SDK／依存prefixを探索先へ加える必要がないことを確認した。SDK未導入OSでの実行確認とは区別する。
+- この結果は法的監査・公開承認・実サービスの機能確認ではない。検証用URLで生成した資料を公開せず、配布担当者は実際の公開情報で再生成し、`docs/dev/distribution.md`の監査・動作確認・公開条件を履行する。
+- Release結果を確定後、同じ検証用cloneで文書どおりのDebug構成・ビルド2行も実行開始した。ログは`build/workflow-debug.log`。実`.env`の変更、実アカウントやOS資格情報へのアクセスは行っていない。
