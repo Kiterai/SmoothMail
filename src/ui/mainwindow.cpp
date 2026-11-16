@@ -48,6 +48,28 @@ namespace {
 
 class MessageTreeView final : public QTreeView
 {
+class PageNumberBox final : public QSpinBox
+{
+public:
+    using QSpinBox::QSpinBox;
+    QValidator::State validate(QString &text, int &) const override
+    {
+        if (text.isEmpty()) return QValidator::Intermediate;
+        for (const auto ch : text) if (ch < u'0' || ch > u'9') return QValidator::Invalid;
+        bool ok = false;
+        const auto value = text.toULongLong(&ok);
+        return ok && value >= quint64(minimum()) && value <= quint64(maximum())
+            ? QValidator::Acceptable : QValidator::Intermediate;
+    }
+    void fixup(QString &text) const override
+    {
+        bool ok = false;
+        const auto value = text.toULongLong(&ok);
+        text = QString::number(text.isEmpty() ? minimum() : !ok ? maximum()
+            : int(qBound<quint64>(minimum(), value, maximum())));
+    }
+};
+
 public:
     using QTreeView::QTreeView;
     void scrollTo(const QModelIndex &index, ScrollHint hint = EnsureVisible) override
@@ -323,16 +345,27 @@ void MainWindow::createPanes()
     m_unreadOnly = new QCheckBox(QStringLiteral("未読のみ"), listPane); m_unreadOnly->setObjectName(QStringLiteral("unreadOnly"));
     m_filterProgress = new QProgressBar(listPane); m_filterProgress->setObjectName(QStringLiteral("filterProgress")); m_filterProgress->setRange(0, 0); m_filterProgress->setMaximumWidth(60); m_filterProgress->hide();
     m_pageRange = new QLabel(QStringLiteral("0 - 0 / 0件"), listPane); m_pageRange->setObjectName(QStringLiteral("pageRange"));
-    m_page = new QSpinBox(listPane); m_page->setObjectName(QStringLiteral("mailPage")); m_page->setRange(1, 1); m_page->setEnabled(false); m_page->setKeyboardTracking(false);
+    m_page = new PageNumberBox(listPane); m_page->setObjectName(QStringLiteral("mailPage")); m_page->setRange(1, 1); m_page->setEnabled(false); m_page->setKeyboardTracking(false);
+    m_page->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    m_page->setCorrectionMode(QAbstractSpinBox::CorrectToNearestValue);
+    m_previousPage = new QPushButton(listPane); m_previousPage->setObjectName(QStringLiteral("previousPage"));
+    m_nextPage = new QPushButton(listPane); m_nextPage->setObjectName(QStringLiteral("nextPage"));
+    m_previousPage->setIcon(style()->standardIcon(QStyle::SP_ArrowLeft));
+    m_nextPage->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
+    m_previousPage->setToolTip(QStringLiteral("前のページ")); m_nextPage->setToolTip(QStringLiteral("次のページ"));
+    m_previousPage->setAccessibleName(m_previousPage->toolTip()); m_nextPage->setAccessibleName(m_nextPage->toolTip());
+    m_previousPage->setEnabled(false); m_nextPage->setEnabled(false);
     m_pageCount = new QLabel(QStringLiteral("/ 1"), listPane); m_pageCount->setObjectName(QStringLiteral("pageCount"));
     toolbar->addWidget(m_filter, 1); toolbar->addWidget(search); toolbar->addWidget(m_importantOnly); toolbar->addWidget(m_unreadOnly); toolbar->addWidget(m_filterProgress);
-    toolbar->addStretch(); toolbar->addWidget(m_pageRange); toolbar->addWidget(m_page); toolbar->addWidget(m_pageCount);
+    toolbar->addStretch(); toolbar->addWidget(m_pageRange); toolbar->addWidget(m_previousPage); toolbar->addWidget(m_page); toolbar->addWidget(m_pageCount); toolbar->addWidget(m_nextPage);
     listLayout->addLayout(toolbar);
     const auto applyFilter = [this] { m_filterText = m_filter->text(); requestPage(true); };
     connect(search, &QPushButton::clicked, this, applyFilter); connect(m_filter, &QLineEdit::returnPressed, this, applyFilter);
     connect(m_importantOnly, &QCheckBox::toggled, this, [this] { requestPage(true); });
     connect(m_unreadOnly, &QCheckBox::toggled, this, [this] { requestPage(true); });
-    connect(m_page, &QSpinBox::valueChanged, this, [this] { requestPage(); });
+    connect(m_previousPage, &QPushButton::clicked, m_page, &QSpinBox::stepDown);
+    connect(m_nextPage, &QPushButton::clicked, m_page, &QSpinBox::stepUp);
+    connect(m_page, &QSpinBox::valueChanged, this, [this] { updatePageButtons(); requestPage(); });
     auto *messages = new MessageTreeView(listPane); listLayout->addWidget(messages);
     m_messageView = messages;
     messages->setObjectName(QStringLiteral("messageList"));
@@ -528,9 +561,11 @@ void MainWindow::applyPage(const MailPage &page)
         if (!present) m_loadedMessage.reset();
     }
     rebuildMessages();
+        updatePageButtons();
     if (m_edgeSelection && m_messageModel->rowCount()) {
         auto index = m_messageModel->index(m_edgeSelection > 0 ? 0 : m_messageModel->rowCount() - 1, 0);
         if (m_edgeSelection < 0) while (m_messageView->isExpanded(index) && m_messageModel->rowCount(index)) index = m_messageModel->index(m_messageModel->rowCount(index) - 1, 0, index);
+    updatePageButtons();
         m_messageView->setCurrentIndex(index.siblingAtColumn(3)); m_messageView->scrollTo(index);
     }
     m_edgeSelection = 0;
@@ -546,6 +581,7 @@ void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &
     if (!error.isEmpty()) { m_loadedMessage.reset(); findChild<MessageViewer *>()->showFailure(); findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(false); statusBar()->showMessage(error); return; }
     m_loadedMessage = message;
     // A body request may have started before a local flag edit.
+    updatePageButtons();
     m_loadedMessage->seen = selected->seen; m_loadedMessage->important = selected->important;
     findChild<MessageViewer *>()->displayMessage(message.document);
     findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(true);
@@ -569,6 +605,11 @@ QChar MainWindow::folderSeparator(const QString &id, const QString &name) const
 bool MainWindow::eventFilter(QObject *object, QEvent *event)
 {
     if (object == m_messageView && event->type() == QEvent::KeyPress && m_pagedStorage) {
+void MainWindow::updatePageButtons()
+{
+    m_previousPage->setEnabled(m_page->value() > m_page->minimum());
+    m_nextPage->setEnabled(m_page->value() < m_page->maximum());
+}
         const auto *key = static_cast<QKeyEvent *>(event); const auto current = m_messageView->currentIndex();
         if (current.isValid() && key->modifiers() == Qt::NoModifier) {
             if (key->key() == Qt::Key_Up && !m_messageView->indexAbove(current).isValid() && m_page->value() > 1) { m_edgeSelection = -1; m_page->setValue(m_page->value() - 1); return true; }

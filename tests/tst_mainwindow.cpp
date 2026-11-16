@@ -26,6 +26,35 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void paginationButtonsAndClampedInput()
+    {
+        using namespace smoothmail;
+        MainWindow window(false); window.setPagedStorage(true);
+        Account account; account.id = QStringLiteral("paging"); window.setAccounts({account});
+        QSignalSpy requests(&window, &MainWindow::pageRequested);
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {});
+        MailPage result; result.query = qvariant_cast<MailQuery>(requests.last().first()); result.total = 234;
+        window.applyPage(result);
+        auto *page = window.findChild<QSpinBox *>(QStringLiteral("mailPage"));
+        auto *previous = window.findChild<QPushButton *>(QStringLiteral("previousPage"));
+        auto *next = window.findChild<QPushButton *>(QStringLiteral("nextPage"));
+        QCOMPARE(page->buttonSymbols(), QAbstractSpinBox::NoButtons);
+        QVERIFY(!previous->isEnabled()); QVERIFY(next->isEnabled());
+        QVERIFY(!previous->icon().isNull()); QVERIFY(!next->icon().isNull());
+        next->click(); QCOMPARE(page->value(), 2); QVERIFY(previous->isEnabled());
+        previous->click(); QCOMPARE(page->value(), 1);
+        auto *input = page->findChild<QLineEdit *>();
+        input->selectAll(); QTest::keyClicks(input, "999"); QTest::keyClick(input, Qt::Key_Return);
+        QCOMPARE(page->value(), 3); QVERIFY(!next->isEnabled());
+        QCOMPARE(qvariant_cast<MailQuery>(requests.last().first()).page, 3);
+        input->selectAll(); QTest::keyClicks(input, "0"); QTest::keyClick(input, Qt::Key_Return);
+        QCOMPARE(page->value(), 1); QVERIFY(!previous->isEnabled());
+        input->selectAll(); QTest::keyClicks(input, "9999999999999999999999999999"); QTest::keyClick(input, Qt::Key_Return);
+        QCOMPARE(page->value(), 3);
+        result.query = qvariant_cast<MailQuery>(requests.last().first()); result.query.page = 1; result.total = 1;
+        window.applyPage(result);
+        QVERIFY(!page->isEnabled()); QVERIFY(!previous->isEnabled()); QVERIFY(!next->isEnabled());
+    }
     void splitterLinesContrastAndRemainDraggable_data()
     {
         QTest::addColumn<bool>("dark"); QTest::addColumn<bool>("vertical");

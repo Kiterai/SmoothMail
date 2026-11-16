@@ -19,6 +19,7 @@ class QSpinBox;
 class QCheckBox;
 class QProgressBar;
 class QTimer;
+class QPushButton;
 
 namespace smoothmail {
 
@@ -80,6 +81,8 @@ protected:
     bool eventFilter(QObject *object, QEvent *event) override;
 
 private:
+    void updatePageButtons();
+    QPushButton *m_previousPage = nullptr, *m_nextPage = nullptr;
     void editFolder(const QModelIndex &index, bool create);
     QHash<QString, QString> m_syncErrors;
     QString m_pendingCreateId;
