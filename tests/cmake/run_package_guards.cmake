@@ -22,12 +22,25 @@ foreach(row IN LISTS inventory)
         message(FATAL_ERROR "ZIP inventory does not match extracted data.")
     endif()
 endforeach()
-if(NOT EXISTS "${root}/extracted/SmoothMail/empty.txt")
+if(NOT EXISTS "${root}/extracted/SmoothMail/runtime/empty.txt")
     message(FATAL_ERROR "ZIP lost empty file.")
 endif()
-if(NOT EXISTS "${root}/extracted/SmoothMail/licenses/manifest.json"
-        OR NOT EXISTS "${root}/extracted/SmoothMail/licenses/license.txt"
+if(NOT EXISTS "${root}/extracted/SmoothMail/license/manifest.json"
+        OR NOT EXISTS "${root}/extracted/SmoothMail/license/license.txt"
+        OR NOT EXISTS "${root}/extracted/SmoothMail/license/LICENSE"
+        OR NOT EXISTS "${root}/extracted/SmoothMail/runtime/Smoothmail.exe"
+        OR NOT EXISTS "${root}/extracted/SmoothMail/runtime/library.dll"
+        OR EXISTS "${root}/extracted/SmoothMail/smoothmail.exe"
+        OR EXISTS "${root}/extracted/SmoothMail/licenses"
         OR EXISTS "${root}/extracted/SmoothMail/legal")
-    message(FATAL_ERROR "Distribution ZIP must contain licenses/, not the former legal/ path.")
+    message(FATAL_ERROR "Distribution ZIP must separate license/ and runtime/.")
+endif()
+file(READ "${root}/extracted/SmoothMail/README.md" usage)
+if(NOT usage STREQUAL "# Fixture usage\n")
+    message(FATAL_ERROR "README.md differs from docs/usage.md.")
+endif()
+file(READ "${root}/extracted/SmoothMail/launch.cmd" launcher)
+if(NOT launcher MATCHES "%~dp0runtime" OR NOT launcher MATCHES "Smoothmail.exe")
+    message(FATAL_ERROR "Launcher must use its own directory to locate the executable.")
 endif()
 message(STATUS "Independent ZIP extraction and SHA256 inventory verification passed.")

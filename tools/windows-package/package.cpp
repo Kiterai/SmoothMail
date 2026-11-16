@@ -177,16 +177,21 @@ void prepareLegal(const QString &stage, const QString &directory, const QString 
         }
         require(covered, "Missing license/source coverage for a DLL");
     }
-    require(!QFileInfo::exists(stage + "/licenses") && !QFileInfo::exists(stage + "/legal"),
+    require(!QFileInfo::exists(stage + "/license") && !QFileInfo::exists(stage + "/licenses") && !QFileInfo::exists(stage + "/legal")
+                && !QFileInfo::exists(stage + "/README.md") && !QFileInfo::exists(stage + "/launch.cmd"),
             "Stage already contains license inputs");
     auto names = legal.files.values();
     std::sort(names.begin(), names.end());
     for (const auto &name : names)
-        write(stage + "/licenses/" + name, read(directory + "/" + name));
-    write(stage + "/licenses/manifest.json", QJsonDocument(legal.manifest).toJson());
+        write(stage + "/license/" + name, read(directory + "/" + name));
+    write(stage + "/license/manifest.json", QJsonDocument(legal.manifest).toJson());
     // Recipient notices come from the generated manifest, not the source-tree
     // development history in THIRD_PARTY_NOTICES.md.
-    write(stage + "/LICENSE", read(repository + "/LICENSE"));
+    require(!QFileInfo::exists(stage + "/license/LICENSE"), "Application license path collision");
+    write(stage + "/license/LICENSE", read(repository + "/LICENSE"));
+    write(stage + "/README.md", read(repository + "/docs/usage.md"));
+    write(stage + "/launch.cmd",
+          "@echo off\r\nstart \"\" /D \"%~dp0runtime\" \"%~dp0runtime\\Smoothmail.exe\" %*\r\n");
 }
 
 using PathPolicy = QMap<QString, QJsonObject>;
@@ -325,6 +330,13 @@ void u32(QByteArray &data, quint32 value)
 
 // Deterministic ZIP32: UTF-8 names, raw DEFLATE, 1980-01-01, Unix 0644.
 // Fail instead of truncating ZIP32 fields. No host path/name is recorded.
+QString distributionName(const QString &name)
+{
+    if (name.startsWith("license/") || name == "README.md" || name == "launch.cmd" || name == "runtime-sha256.txt") return name;
+    if (name == "smoothmail.exe") return QStringLiteral("runtime/Smoothmail.exe");
+    return QStringLiteral("runtime/") + name;
+}
+
 void archive(const QString &stage, const QString &output, const QStringList &roots,
              const PathPolicy &policy = {})
 {
@@ -337,7 +349,7 @@ void archive(const QString &stage, const QString &output, const QStringList &roo
         const auto data = read(stage + "/" + name);
         audit(data, name, roots, policy);
         inventory += QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex()
-            + "  " + name.toUtf8() + "\n";
+            + "  " + distributionName(name).toUtf8() + "\n";
     }
     write(stage + "/runtime-sha256.txt", inventory);
     files.append("runtime-sha256.txt");
@@ -351,14 +363,14 @@ void archive(const QString &stage, const QString &output, const QStringList &roo
         require(temporary.pos() < 0xffffffffLL, "ZIP32 size limit exceeded");
     };
     for (const auto &file : files) {
-        const auto name = ("SmoothMail/" + file).toUtf8();
+        const auto name = ("SmoothMail/" + distributionName(file)).toUtf8();
         const auto data = read(stage + "/" + file);
         // Recheck inputs read for archiving, not just the earlier inventory pass.
         audit(data, file, roots, policy);
         require(data.size() < 0xffffffffLL && name.size() < 65536, "ZIP32 size limit exceeded");
         if (file != "runtime-sha256.txt")
             require(inventory.contains(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex()
-                        + "  " + file.toUtf8() + "\n"), "Stage changed during packaging");
+                         + "  " + distributionName(file).toUtf8() + "\n"), "Stage changed during packaging");
         const auto wrapped = qCompress(data, 9);
         require(data.isEmpty() || wrapped.size() >= 10, "Cannot compress ZIP entry");
         const auto compressed = data.isEmpty() ? QByteArray::fromHex("0300")
@@ -512,11 +524,14 @@ void selfTest(const QString &artifact = {})
     rejects([&] { legalManifest(binaryReview, true); });
     const auto repository = temporary.path() + "/repo";
     write(repository + "/LICENSE", "Fixture license\n");
+    write(repository + "/docs/usage.md", "# Fixture usage\n");
     write(repository + "/THIRD_PARTY_NOTICES.md", "Fixture notices\n");
     prepareLegal(stage, legal, repository);
     archive(stage, temporary.path() + "/fixture.zip", {});
     const auto zip = read(temporary.path() + "/fixture.zip");
-    require(zip.contains("SmoothMail/smoothmail.exe") && zip.contains("SmoothMail/licenses/license.txt")
+    require(zip.contains("SmoothMail/runtime/Smoothmail.exe") && zip.contains("SmoothMail/license/license.txt")
+                && zip.contains("SmoothMail/README.md") && zip.contains("SmoothMail/launch.cmd")
+                && !zip.contains("SmoothMail/smoothmail.exe") && !zip.contains("SmoothMail/licenses/")
                 && !zip.contains("SmoothMail/legal/") && !zip.contains("SmoothMail/THIRD_PARTY_NOTICES.md"),
             "Missing ZIP entries");
     // Verify the first local header's fixed date, UTF-8 flag, and raw deflate data
@@ -525,7 +540,7 @@ void selfTest(const QString &artifact = {})
                 && qFromLittleEndian<quint16>(zip.constData() + 12) == 33
                 && qFromLittleEndian<quint16>(zip.constData() + 6) == 0x800,
             "Non-deterministic ZIP metadata");
-    const auto firstData = read(stage + "/LICENSE");
+    const auto firstData = read(stage + "/README.md");
     const auto wrapped = qCompress(firstData, 9);
     const auto size = qFromLittleEndian<quint32>(zip.constData() + 18);
     const auto length = qFromLittleEndian<quint16>(zip.constData() + 26);

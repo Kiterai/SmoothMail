@@ -1,6 +1,6 @@
 # Windows版の配布
 
-Windows x64向けのポータブルZIPを配布します。展開した`SmoothMail/smoothmail.exe`から起動します。以下はリポジトリルートのMSVC x64開発者コマンドプロンプトで実行してください。
+Windows x64向けのポータブルZIPを配布します。展開した`SmoothMail/launch.cmd`から起動します。本体・DLL・プラグインは`runtime/`へまとめます。以下はリポジトリルートのMSVC x64開発者コマンドプロンプトで実行してください。
 
 ## 1. 入力を準備する
 
@@ -64,7 +64,7 @@ cmake -DEDITION=windows-x64 -DEVIDENCE=build/legal-review -DSOURCE_REVIEW=build/
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-licenses -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
 ```
 
-依存取得・Release構築、アプリ構築、DLL／プラグイン／CRT・通知の収集、個人情報・Debug混入・ライセンス対応の検査、ZIP化を行います。通知は`SmoothMail/licenses/`、全ファイルのハッシュは`SmoothMail/runtime-sha256.txt`へ配置します。既存ZIPは上書きしません。
+依存取得・Release構築、アプリ構築、DLL／プラグイン／CRT・通知の収集、個人情報・Debug混入・ライセンス対応の検査、ZIP化を行います。通知は`SmoothMail/license/`、本体は`SmoothMail/runtime/Smoothmail.exe`、全ファイルのハッシュは`SmoothMail/runtime-sha256.txt`へ配置します。`README.md`には対象本体ソースの`docs/usage.md`をそのまま収録します。既存ZIPは上書きしません。
 
 `LEGAL_DIR`に通常ディレクトリと空ではない通常ファイルの`manifest.json`がない場合は、依存取得前に停止します。保存先を削除した場合は、保管したソースZIP等から生成済み`licenses/`を復元してください。
 
@@ -89,7 +89,7 @@ CRTは通常／遅延importと推移依存から必要なRelease DLLだけを選
 
 1. 新しいフォルダへZIPを展開し、`runtime-sha256.txt`の全ファイルを照合する。
 2. PDB、Debug CRT、DB、ログ、資格情報、登録JSON、ビルドキャッシュ・補助ツールの非混入と通知の対応を確認する。
-3. 開発ツール・Qt SDKのないWindowsで、空白を含むパスと開発用PATHなしでEXEを直接起動する。
+3. 開発ツール・Qt SDKのないWindowsで、空白を含むパスと開発用PATHなしで`launch.cmd`を別の作業ディレクトリから起動する。`runtime/Smoothmail.exe`の直接起動も確認する。
 4. 許可されたテストアカウントで登録・再起動・更新・閲覧・送受信・下書き・添付・トレイ終了を確認する。
 5. 対応ソースからの再構築・改変DLL差替え、オフライン通知表示、版・コミット・同梱通知と埋込み文書の一致を確認する。
 
