@@ -13,21 +13,13 @@ Ninja・vcpkgとQt以外の依存はスクリプトが取得・構築します�
 
 ### Windowsの制限付きサンドボックスでのHTTPS取得
 
-Safe Shellのwrite-restricted tokenでは、Windows SchannelがTLS資格情報の初期化を
-`SEC_E_NO_CREDENTIALS`で拒否し、CMakeの取得がstatus 35になる場合があります。
-CAの追加やTLSバージョン変更では解消しません。トークン制限を解除せず、
-**OpenSSL対応curlの絶対パス**を明示指定してください（Git for Windows等の既存ツール）。
+CMakeのHTTPS取得がstatus 35で失敗する制限環境では、**OpenSSL対応curlの絶対パス**を明示指定してください（Git for Windows等の既存ツール）。
 
 ```bat
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 "-DSMOOTHMAIL_DOWNLOAD_CURL=C:/path/to/Git/mingw64/bin/curl.exe" -P cmake/BuildWindows.cmake
 ```
 
-指定時はOpenSSLを強制し、ユーザーの`.curlrc`を読まず、HTTPSのみ・TLS 1.2以上・
-証明書検証・固定ハッシュ照合を維持します。vcpkgの子プロセスにも設定を引き継ぎます。
-サンドボックスのプロキシ変数は保持します。取得元とリダイレクト先のdomain許可、
-およびビルド先の書込み許可は別途必要です。未指定時は従来のCMake取得であり、
-失敗後に別の取得手段へ自動フォールバックしません。
-curlはセキュリティ更新された版を使用してください。Schannel専用curlは指定できません。
+指定時もHTTPS／TLS 1.2以上・証明書検証・固定ハッシュ照合を維持し、`.curlrc`は読みません。vcpkgへも設定を引き継ぎ、プロキシ変数は保持します。取得元・リダイレクト先への通信許可と構築先の書込み許可は別途必要です。更新済みのOpenSSL対応curlを使い、Schannel専用版は指定しないでください。未指定時はCMakeで取得し、失敗後の自動フォールバックは行いません。
 
 ## デバッグビルド
 

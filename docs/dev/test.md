@@ -68,14 +68,41 @@ cmake --build build/package-tests --parallel 4
 ctest --test-dir build/package-tests --output-on-failure
 ```
 
-CRTのimport選択ガードは `cmake -P tests/cmake/run_crt_guards.cmake` で単独実行できます。MSVC x64開発者環境では `cmake -P tests/cmake/run_crt_binary_guards.cmake` で、実再配布DLLのコピー一致・署名・版を確認し、改変コピー・未署名・版混在・不正/x86 PEの拒否を試験します。原本は変更せず、合成コピーは `build/` 以下に作ります。`VCToolsRedistDir` がある環境で配布補助をconfigureすると、これらもCTestへ登録されます。
+配布補助CTestには原本保持・不正入力・ZIP・ライセンス・Qt attributionのガードが含まれます。個別実行は次の形式です。
 
-ソースアーカイブの検証・非改変・パッチ適用と再利用のガードは `cmake -P tests/cmake/run_source_archive_guards.cmake` です。Git管理情報を作らず、ネットワークを使わずに12ケースと、Qt再構築先のSDK保護6ケースを確認します。配布補助のCTestにも含まれます。
+```bat
+cmake -P tests/cmake/run_package_entry_guards.cmake
+```
 
-ライセンス用`.env`とテンプレートの単体ガードは`cmake -P tests/cmake/run_license_template_guards.cmake`です。最終表記での草案表示除去を含む15ケースを、シェル評価や値の診断出力なしで確認します。`cmake -P tests/cmake/run_license_final_review_guards.cmake`では、実配置の改変・不足・余分なファイル・誤分類・重複・不正パスの6ケースを拒否することを確認します。いずれも配布補助CTestに含めます。
+| スクリプト（`tests/cmake/`） | 対象 |
+|---|---|
+| `run_crt_guards.cmake` | CRT import選択 |
+| `run_crt_binary_guards.cmake` | CRT署名・版・原本一致、不正PE／改変コピー拒否 |
+| `run_crt_long_path_guards.cmake` | 長い展開先での検証器構築・cache衝突拒否 |
+| `run_source_archive_guards.cmake` | アーカイブ・パッチ適用・原本非改変、Qt SDK出力先保護 |
+| `run_license_template_guards.cmake` | `.env`入力・変数置換・空白行整理 |
+| `run_license_final_review_guards.cmake` | 配置ファイルの不足・改変・誤分類・不正パス |
 
-ライセンス文面案を原文収集結果とまとめた後は、QtのRelease DLLをPATHで参照できる環境で `cmake -DDRAFT=build/windows-licenses-review -DEVIDENCE=build/d05-legal-baseline-review -DHELPER=build/licenses-policy-tools/smoothmail_package.exe -P tests/cmake/verify_windows_legal_draft.cmake` を実行します。34ファイル／19コンポーネントの対応保持、`originals/`の原文SHA256一致、文面内の相対リンク、英語正本／日本語訳の対・常体・manifestへの登録、未展開変数の不存在、未承認・改名入力の拒否を確認します。配布補助の合成ZIP試験では、`licenses/manifest.json`の配置と旧`legal/`の非混入も検証します。法的条件や翻訳の完全性、利用者の同意を認定する試験ではありません。
+CRT実バイナリの試験はMSVC x64開発者環境で行います。原本は変更せず、合成コピーは`build/`以下へ作成します。
 
-最終表記の検査では`verify_windows_legal_draft.cmake`へ`-DFINAL_REVIEW=ON`を追加し、本文に草案・例示文言が残らないこと、アプリとCRTの版が適切に表示されることも確認します。source reviewの展開検査では、ライセンステンプレートと`.env.example`の収録、実`.env`の非混入も検査します。
+WinFlexBisonの反復構築と原本保持を確認する場合は、`verify_winflex_source_isolation.cmake`に`Qt6_ROOT`、`DEPENDENCY_ROOT`、`SMOOTHMAIL_SOURCE_ARCHIVES`、`CMAKE_MAKE_PROGRAM`を指定します。固定ソースから実ツールを構築する試験です。
+
+### 生成済みライセンス資料
+
+[文面生成](distribution.md#文面の生成と確認)後、Qt Release DLLをPATHへ追加して実行します。
+
+```bat
+cmake -DDRAFT=build/windows-licenses-review -DEVIDENCE=build/legal-review -DHELPER=build/package-tests/smoothmail_package.exe -P tests/cmake/verify_windows_legal_draft.cmake
+```
+
+原文SHA256、相対リンク、英日文書の対・manifest登録、未置換変数・余分な空白行の不存在、未承認／改名入力の拒否を確認します。最終表記には`-DFINAL_REVIEW=ON`を追加します。対応ソースの展開検査には`verify_source_review.cmake`を使い、テンプレート・`.env.example`の収録と実`.env`の非混入も確認してください。法的条件・翻訳の完全性・同意取得を認定する試験ではありません。
+
+### HTTPS取得
+
+ネットワーク不要の入力・ハッシュガードは`cmake -P tests/cmake/run_download_guards.cmake`です。制限付きWindows環境のTLS実通信試験は、次のように明示して実行します。固定されたビルドツールを取得し、CMake status 35の再現、OpenSSL取得、ハッシュ不一致・不正CAの拒否を確認するため、このエラーが再現する環境が前提です。
+
+```bat
+cmake "-DSMOOTHMAIL_DOWNLOAD_CURL=C:/path/to/Git/mingw64/bin/curl.exe" -P tests/cmake/run_download_tls.cmake
+```
 
 実Google認可・送受信などの手動プローブ（`tests/manual/`）は通常テストに含めません。実行には対象アカウントの本人認可と、通信・メール作成・資格情報保存それぞれの許可が必要です。
