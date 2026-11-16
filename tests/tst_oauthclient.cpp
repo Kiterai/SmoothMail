@@ -139,19 +139,45 @@ private slots:
         FakeNetwork network; OAuthClient client(nullptr, &network);
         QSignalSpy errors(&client, &OAuthClient::failed);
         network.status = 400;
-        for (const auto &code : {QStringLiteral("invalid_client"), QStringLiteral("unauthorized_client"),
-                                QStringLiteral("invalid_request"), QStringLiteral("invalid_scope")}) {
-            network.response = {{"error", code}, {"error_description", "must-not-echo-token-or-request"}};
-            client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("dummy_refresh"));
-            QTRY_COMPARE(errors.size(), 1);
-            const auto error = errors.takeFirst().first().toString();
-            QVERIFY(error.contains(code));
-            QVERIFY(!error.contains(QStringLiteral("must-not-echo")));
+        for (const auto &provider : {QStringLiteral("google"), QStringLiteral("microsoft")}) {
+            for (const auto &code : {QStringLiteral("invalid_client"), QStringLiteral("unauthorized_client"),
+                                    QStringLiteral("invalid_request"), QStringLiteral("invalid_scope")}) {
+                network.response = {{"error", code}, {"error_description", "must-not-echo-token-or-request"}};
+                client.refresh(provider, QStringLiteral("id"), QStringLiteral("dummy_refresh"));
+                QTRY_COMPARE(errors.size(), 1);
+                const auto error = errors.takeFirst().first().toString();
+                QVERIFY(error.contains(code));
+                QVERIFY(!error.contains(QStringLiteral("must-not-echo")));
+                if (provider == QStringLiteral("microsoft")) {
+                    QVERIFY(!error.contains(QStringLiteral("Google"), Qt::CaseInsensitive));
+                    if (code == QStringLiteral("invalid_client")) {
+                        QVERIFY(error.contains(QStringLiteral("Microsoft")));
+                        QVERIFY(error.contains(QStringLiteral("モバイル アプリケーションとデスクトップ アプリケーション")));
+                        QVERIFY(error.contains(QStringLiteral("http://localhost")));
+                        QVERIFY(error.contains(QStringLiteral("SMOOTHMAIL_MICROSOFT_CLIENT_ID")));
+                        QVERIFY(error.contains(QStringLiteral("クライアントシークレットは不要")));
+                    }
+                } else if (code == QStringLiteral("invalid_client")) {
+                    QVERIFY(error.contains(QStringLiteral("Google")));
+                    QVERIFY(error.contains(QStringLiteral("Desktop app")));
+                    QVERIFY(error.contains(QStringLiteral("client_secret")));
+                    QVERIFY(!error.contains(QStringLiteral("Microsoft")));
+                }
+            }
         }
         network.response = {{"error", "invalid_request"}, {"error_description", "client_secret is missing."}};
-        client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("dummy_refresh"));
-        QTRY_COMPARE(errors.size(), 1);
-        QVERIFY(errors.first().first().toString().contains(QStringLiteral("SMOOTHMAIL_GOOGLE_CLIENT_SECRET")));
+        for (const auto &provider : {QStringLiteral("google"), QStringLiteral("microsoft")}) {
+            client.refresh(provider, QStringLiteral("id"), QStringLiteral("dummy_refresh"));
+            QTRY_COMPARE(errors.size(), 1);
+            const auto error = errors.takeFirst().first().toString();
+            if (provider == QStringLiteral("google")) {
+                QVERIFY(error.contains(QStringLiteral("SMOOTHMAIL_GOOGLE_CLIENT_SECRET")));
+            } else {
+                QVERIFY(error.contains(QStringLiteral("invalid_request")));
+                QVERIFY(!error.contains(QStringLiteral("Google"), Qt::CaseInsensitive));
+                QVERIFY(!error.contains(QStringLiteral("client_secret")));
+            }
+        }
     }
     void microsoftAndCancellation()
     {
