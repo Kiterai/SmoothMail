@@ -9,8 +9,6 @@
 #include <QSpinBox>
 #include <QUuid>
 #include <QVBoxLayout>
-#include <QScrollArea>
-#include <QScreen>
 #include <QStylePainter>
 #include <QStyleOptionButton>
 
@@ -107,18 +105,17 @@ AccountDialog::AccountDialog(QWidget *parent)
 {
     setWindowTitle(QStringLiteral("アカウントの追加"));
     setModal(true);
-    const auto available = screen()->availableGeometry().size();
-    resize(qMin(560, available.width() - 80), qMin(700, available.height() - 80));
     auto *layout = new QVBoxLayout(this);
+    // Keep the native window fixed to the visible content, including OAuth.
+    layout->setSizeConstraint(QLayout::SetFixedSize);
     auto *form = new QFormLayout;
     m_email->setObjectName(QStringLiteral("accountEmail"));
+    m_email->setMinimumWidth(360);
     form->addRow(QStringLiteral("メールアドレス"), m_email);
     layout->addLayout(form);
-    auto *scroll = new QScrollArea(this);
-    auto *servers = new QWidget(scroll);
-    m_serverLayout = new QVBoxLayout(servers);
-    scroll->setWidget(servers); scroll->setWidgetResizable(true); layout->addWidget(scroll, 1);
-    m_oauthBox = new QGroupBox(QStringLiteral("OAuth"), servers);
+    m_serverLayout = new QVBoxLayout;
+    layout->addLayout(m_serverLayout);
+    m_oauthBox = new QGroupBox(QStringLiteral("OAuth"), this);
     auto *oauthForm = new QFormLayout(m_oauthBox);
     m_provider = new QComboBox(m_oauthBox);
     m_provider->setObjectName(QStringLiteral("accountOAuthProvider"));
@@ -136,6 +133,7 @@ AccountDialog::AccountDialog(QWidget *parent)
     m_error->setTextFormat(Qt::PlainText);
     m_error->setWordWrap(true);
     layout->addWidget(m_error);
+    m_error->hide();
     m_buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("決定"));
     layout->addWidget(m_buttons);
     m_buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
@@ -163,6 +161,7 @@ AccountDialog::AccountDialog(QWidget *parent)
         emit saveRequested(value, m_smtp.secret(), m_imap.secret());
     });
     connect(m_test, &QPushButton::clicked, this, [this] {
+        m_error->show();
         const auto value = account();
         const auto error = validateAccount(value, false);
         if (!error.isEmpty()) { m_error->setText(error); return; }
@@ -213,6 +212,7 @@ void AccountDialog::saveFinished(const QString &error)
 void AccountDialog::testFinished(const QString &smtpError, const QString &imapError)
 {
     if (m_authorizing) return;
+    if (!smtpError.isEmpty() || !imapError.isEmpty()) m_error->show();
     if (!m_testing) { if (!smtpError.isEmpty() || !imapError.isEmpty()) { invalidateTest(); m_error->setText(smtpError + u'\n' + imapError); } return; }
     m_testing = false; m_testPassed = smtpError.isEmpty() && imapError.isEmpty();
     if (!smtpError.isEmpty() && m_smtp.value().authentication == AuthenticationMode::OAuth2) m_smtp.oauthGrant.clear();

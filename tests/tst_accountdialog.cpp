@@ -10,12 +10,53 @@
 #include <QPlainTextEdit>
 #include <QScreen>
 #include <QSpinBox>
+#include <QScrollArea>
+#include <QGroupBox>
 
 using namespace smoothmail;
 class AccountDialogTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void fixedLayoutFollowsOAuthWithoutScrollbars()
+    {
+        AccountDialog dialog;
+        dialog.show(); QCoreApplication::processEvents();
+        QVERIFY(dialog.findChildren<QScrollArea *>().isEmpty());
+        QCOMPARE(dialog.findChildren<QGroupBox *>().size(), 3);
+        const auto plain = dialog.size();
+        QCOMPARE(dialog.minimumSize(), plain); QCOMPARE(dialog.maximumSize(), plain);
+        dialog.resize(plain + QSize(100, 100));
+        QCOMPARE(dialog.size(), plain);
+        auto *imap = dialog.findChild<QComboBox *>(QStringLiteral("IMAP4Authentication"));
+        auto *smtp = dialog.findChild<QComboBox *>(QStringLiteral("SMTPAuthentication"));
+        auto *oauth = dialog.findChild<QComboBox *>(QStringLiteral("accountOAuthProvider"))->parentWidget();
+        imap->setCurrentIndex(imap->findData(int(AuthenticationMode::OAuth2)));
+        QTRY_VERIFY(dialog.height() > plain.height());
+        const auto expanded = dialog.size();
+        QVERIFY(oauth->isVisible());
+        QCOMPARE(dialog.minimumSize(), expanded); QCOMPARE(dialog.maximumSize(), expanded);
+        smtp->setCurrentIndex(smtp->findData(int(AuthenticationMode::OAuth2)));
+        imap->setCurrentIndex(0);
+        QCoreApplication::processEvents();
+        QVERIFY(oauth->isVisible()); QCOMPARE(dialog.size(), expanded);
+        smtp->setCurrentIndex(0);
+        QTRY_COMPARE(dialog.size(), plain);
+        QVERIFY(oauth->isHidden());
+        for (const auto *group : dialog.findChildren<QGroupBox *>())
+            if (group->isVisible())
+                QVERIFY(dialog.rect().contains(QRect(group->mapTo(&dialog, QPoint()), group->size())));
+        for (const auto *widget : {static_cast<QWidget *>(dialog.findChild<QPushButton *>(QStringLiteral("connectionTest"))),
+                 static_cast<QWidget *>(dialog.findChild<QDialogButtonBox *>())}) {
+            QVERIFY(dialog.rect().contains(QRect(widget->mapTo(&dialog, QPoint()), widget->size())));
+        }
+        // Error text must remain visible when the fixed layout grows.
+        dialog.findChild<QPushButton *>(QStringLiteral("connectionTest"))->click();
+        QCoreApplication::processEvents();
+        auto *error = dialog.findChild<QLabel *>(QStringLiteral("accountError"));
+        QVERIFY(error->isVisible()); QVERIFY(!error->text().isEmpty());
+        QCOMPARE(dialog.minimumSize(), dialog.size()); QCOMPARE(dialog.maximumSize(), dialog.size());
+    }
     void inputDefaultsAndOAuthVisibility()
     {
         AccountDialog dialog;
