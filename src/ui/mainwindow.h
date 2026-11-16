@@ -85,6 +85,8 @@ protected:
 
 private:
     void updatePageButtons();
+    bool m_pageLoading = false;
+    int m_requestedPage = 1;
     QPushButton *m_previousPage = nullptr, *m_nextPage = nullptr;
     void editFolder(const QModelIndex &index, bool create);
     QHash<QString, QString> m_syncErrors;

@@ -396,7 +396,10 @@ void MainWindow::createPanes()
     connect(m_unreadOnly, &QCheckBox::toggled, this, [this] { requestPage(true); });
     connect(m_previousPage, &QPushButton::clicked, m_page, &QSpinBox::stepDown);
     connect(m_nextPage, &QPushButton::clicked, m_page, &QSpinBox::stepUp);
-    connect(m_page, &QSpinBox::valueChanged, this, [this] { updatePageButtons(); requestPage(); });
+    connect(m_page, &QSpinBox::valueChanged, this, [this] {
+        if (m_pageLoading) { const QSignalBlocker block(m_page); m_page->setValue(m_requestedPage); return; }
+        requestPage();
+    });
     auto *messages = new MessageTreeView(listPane); listLayout->addWidget(messages);
     m_messageView = messages;
     messages->setObjectName(QStringLiteral("messageList"));
@@ -568,13 +571,13 @@ void MainWindow::requestPage(bool reset)
 {
     if (!m_pagedStorage) return;
     if (m_accountId.isEmpty() || m_folder.isEmpty()) {
-        ++m_queryGeneration; m_filterProgress->hide(); m_loadedMessage.reset(); m_mailCache.clear();
+        ++m_queryGeneration; m_pageLoading = false; m_filterProgress->hide(); m_loadedMessage.reset(); m_mailCache.clear();
         { const QSignalBlocker block(m_page); m_page->setRange(1, 1); m_page->setValue(1); m_page->setEnabled(false); }
         updatePageButtons();
         m_pageRange->setText(QStringLiteral("0 - 0 / 0件")); m_pageCount->setText(QStringLiteral("/ 1")); rebuildMessages(); return;
     }
     if (reset) { const QSignalBlocker block(m_page); m_page->setValue(1); }
-    updatePageButtons();
+    m_pageLoading = true; m_requestedPage = m_page->value(); updatePageButtons();
     MailQuery query; query.accountId = m_accountId; query.folder = m_folder; query.text = m_filterText;
     query.page = m_page->value(); query.sortColumn = m_sortColumn; query.order = m_sortOrder;
     query.importantOnly = m_importantOnly->isChecked(); query.unreadOnly = m_unreadOnly->isChecked(); query.generation = ++m_queryGeneration;
@@ -594,7 +597,12 @@ void MainWindow::applyPage(const MailPage &page)
 {
     if (page.query.generation != m_queryGeneration || page.query.accountId != m_accountId || page.query.folder != m_folder) return;
     m_filterProgress->hide();
-    if (!page.error.isEmpty()) { if (!m_loadedMessage) findChild<MessageViewer *>()->showFailure(); statusBar()->showMessage(QStringLiteral("検索に失敗しました: ") + page.error); return; }
+    m_pageLoading = false;
+    if (!page.error.isEmpty()) {
+        m_edgeSelection = 0; m_pageSelection = -1; updatePageButtons();
+        if (!m_loadedMessage) findChild<MessageViewer *>()->showFailure();
+        statusBar()->showMessage(QStringLiteral("検索に失敗しました: ") + page.error); return;
+    }
     const auto pages = qMax<qint64>(1, (page.total + page.query.pageSize - 1) / page.query.pageSize);
     { const QSignalBlocker block(m_page); m_page->setRange(1, int(pages)); m_page->setValue(page.query.page); m_page->setEnabled(pages > 1); }
     updatePageButtons();
@@ -634,8 +642,9 @@ void MainWindow::applyPage(const MailPage &page)
 }
 void MainWindow::updatePageButtons()
 {
-    m_previousPage->setEnabled(m_page->value() > m_page->minimum());
-    m_nextPage->setEnabled(m_page->value() < m_page->maximum());
+    m_page->setEnabled(!m_pageLoading && m_page->maximum() > 1);
+    m_previousPage->setEnabled(!m_pageLoading && m_page->value() > m_page->minimum());
+    m_nextPage->setEnabled(!m_pageLoading && m_page->value() < m_page->maximum());
 }
 void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &error)
 {
@@ -688,6 +697,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
     if (object == m_messageView && event->type() == QEvent::KeyPress && m_pagedStorage) {
         const auto *key = static_cast<QKeyEvent *>(event); const auto current = m_messageView->currentIndex();
         if (key->modifiers() == Qt::AltModifier && (key->key() == Qt::Key_Left || key->key() == Qt::Key_Right)) {
+            if (m_pageLoading) return true;
             const int destination = m_page->value() + (key->key() == Qt::Key_Left ? -1 : 1);
             if (destination >= m_page->minimum() && destination <= m_page->maximum()) {
                 m_pageSelection = -1;
@@ -700,6 +710,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
             return true;
         }
         if (current.isValid() && key->modifiers() == Qt::NoModifier) {
+            if (m_pageLoading && (key->key() == Qt::Key_Up || key->key() == Qt::Key_Down)) return true;
             if (key->key() == Qt::Key_Up && !m_messageView->indexAbove(current).isValid() && m_page->value() > 1) { m_edgeSelection = -1; m_page->setValue(m_page->value() - 1); return true; }
             if (key->key() == Qt::Key_Down && !m_messageView->indexBelow(current).isValid() && m_page->value() < m_page->maximum()) { m_edgeSelection = 1; m_page->setValue(m_page->value() + 1); return true; }
         }
