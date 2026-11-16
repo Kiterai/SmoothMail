@@ -15,6 +15,21 @@ class AboutDialogTest : public QObject
 {
     Q_OBJECT
 private slots:
+    void resizingGrowsLicenseArea()
+    {
+        smoothmail::AboutDialog dialog;
+        dialog.show();
+        QTest::qWait(20);
+        const auto labels = dialog.findChildren<QLabel *>(QString(), Qt::FindDirectChildrenOnly);
+        QList<int> heights;
+        for (auto *label : labels) heights.append(label->height());
+        auto *splitter = dialog.findChild<QSplitter *>();
+        const int height = splitter->height();
+        dialog.resize(dialog.width(), dialog.height() + 200);
+        QTest::qWait(20);
+        for (int i = 0; i < labels.size(); ++i) QCOMPARE(labels[i]->height(), heights[i]);
+        QCOMPARE(splitter->height(), height + 200);
+    }
     void embeddedNotices()
     {
         smoothmail::AboutDialog dialog;

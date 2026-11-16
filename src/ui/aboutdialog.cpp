@@ -47,6 +47,7 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     auto *layout = new QVBoxLayout(this);
     auto *name = new QLabel(QStringLiteral("SmoothMail %1").arg(QStringLiteral(SMOOTHMAIL_VERSION)), this);
     name->setTextFormat(Qt::PlainText);
+    name->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     layout->addWidget(name);
     auto *version = new QLabel(QStringLiteral("ビルド日 %1 / コミット %2")
         .arg(QStringLiteral(SMOOTHMAIL_BUILD_DATE), QStringLiteral(SMOOTHMAIL_SOURCE_ID)), this);
@@ -54,6 +55,7 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     version->setTextFormat(Qt::PlainText);
     version->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     version->setWordWrap(true);
+    version->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     layout->addWidget(version);
     auto *splitter = new QSplitter(Qt::Horizontal, this);
     auto *items = new QListWidget(splitter);
@@ -66,7 +68,7 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({220, 620});
-    layout->addWidget(splitter);
+    layout->addWidget(splitter, 1);
     QFile catalog(QStringLiteral(":/licenses/catalog.json"));
     if (catalog.open(QIODevice::ReadOnly)) {
         for (const auto &entry : QJsonDocument::fromJson(catalog.readAll()).array()) {
