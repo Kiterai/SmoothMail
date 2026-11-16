@@ -32,6 +32,7 @@ public:
     bool busy() const { return m_busy; }
 signals:
     void authorizationUrlReady(const QUrl &url);
+    void authorizationCodeReceived();
     void tokensReady(const smoothmail::OAuthTokens &tokens);
     void failed(const QString &error);
 private:

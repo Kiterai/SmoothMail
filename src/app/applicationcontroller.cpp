@@ -187,6 +187,10 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             if (m_dialog) m_dialog->oauthFinished(m_authorizingSmtp, {}, {}, QStringLiteral("外部ブラウザを開けませんでした。"));
         }
     });
+    connect(m_authorization, &OAuthClient::authorizationCodeReceived, this, [this] {
+        if (m_dialog) m_dialog->oauthCodeReceived();
+        if (m_oauthProgress) m_oauthProgress->setLabelText(QStringLiteral("ブラウザから認可結果を受信しました。OAuthトークンを取得中..."));
+    });
     connect(m_authorization, &OAuthClient::failed, this, [this](const QString &error) {
         if (!m_reauthorizingId.isEmpty()) {
             m_window->statusBar()->showMessage(error);

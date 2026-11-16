@@ -239,12 +239,26 @@ void AccountDialog::setOAuthGrant(bool smtp, const QString &grant, const QString
     fields.oauthGrant = grant;
     if (!clientId.isEmpty()) fields.clientId = clientId;
 }
+void AccountDialog::oauthCodeReceived()
+{
+    if (m_testing && m_authorizing) m_error->setText(QStringLiteral("ブラウザから認可結果を受信しました。OAuthトークンを取得中..."));
+}
 void AccountDialog::oauthFinished(bool smtp, const QString &grant, const QString &clientId, const QString &error)
 {
     if (!m_testing || !m_authorizing || smtp != m_authorizingSmtp) return;
     m_authorizing = false;
     if (!error.isEmpty() || grant.isEmpty() || clientId.isEmpty()) { m_testing = false; setBusy(false); m_error->setText(error.isEmpty() ? QStringLiteral("OAuth認可の情報が不足しています。") : error); return; }
-    setOAuthGrant(smtp, grant, clientId); continueTest();
+    setOAuthGrant(smtp, grant, clientId);
+    // Both providers request IMAP and SMTP permissions together. Do not open
+    // a second browser flow for the same identity after the user returns.
+    const auto &authorized = smtp ? m_smtp : m_imap;
+    auto &other = smtp ? m_imap : m_smtp;
+    if (other.value().authentication == AuthenticationMode::OAuth2
+        && other.provider->currentData() == authorized.provider->currentData()
+        && other.user->text() == authorized.user->text() && other.oauthGrant.isEmpty()) {
+        setOAuthGrant(!smtp, grant, clientId);
+    }
+    continueTest();
 }
 void AccountDialog::invalidateTest()
 {

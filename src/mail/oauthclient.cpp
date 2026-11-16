@@ -148,6 +148,8 @@ void OAuthClient::acceptCallback()
             if (errors == 1) { respond(true); finishError(QStringLiteral("OAuth認可が拒否または取り消されました。")); return; }
             if (codes != 1 || !safeOpaque(code)) { respond(false); return; }
             respond(true); m_callback.close(); m_deadline.stop();
+            emit authorizationCodeReceived();
+            if (!m_busy) return;
             postToken({{"grant_type", "authorization_code"}, {"code", code}, {"redirect_uri", m_redirect.toString()},
                        {"code_verifier", QString::fromLatin1(m_verifier)}});
             m_state.clear(); m_verifier.clear();

@@ -84,6 +84,7 @@ private slots:
         QSignalSpy url(&client, &OAuthClient::authorizationUrlReady);
         QSignalSpy result(&client, &OAuthClient::tokensReady);
         QSignalSpy errors(&client, &OAuthClient::failed);
+        QSignalSpy received(&client, &OAuthClient::authorizationCodeReceived);
         client.authorize(QStringLiteral("google"), QStringLiteral("dummy-client"), QStringLiteral("test+tag@example.test"));
         QCOMPARE(url.size(), 1);
         const auto authorization = url.first().first().toUrl();
@@ -95,12 +96,13 @@ private slots:
         const QUrl redirect(parameters.queryItemValue(QStringLiteral("redirect_uri"), QUrl::FullyDecoded));
         QCOMPARE(redirect.host(), QStringLiteral("127.0.0.1"));
         callback(redirect, "state=wrong&code=dummy");
-        QCOMPARE(network.requests.size(), 0); QVERIFY(result.isEmpty()); QVERIFY(errors.isEmpty());
+        QCOMPARE(network.requests.size(), 0); QVERIFY(result.isEmpty()); QVERIFY(errors.isEmpty()); QVERIFY(received.isEmpty());
         const auto encodedState = QUrl::toPercentEncoding(state);
         callback(redirect, "state=" + encodedState + "&state=" + encodedState + "&code=dummy");
         QCOMPARE(network.requests.size(), 0);
         callback(redirect, "state=" + encodedState + "&code=dummy%2Bcode");
         QTRY_COMPARE(result.size(), 1);
+        QCOMPARE(received.size(), 1);
         QVERIFY(errors.isEmpty());
         QCOMPARE(network.requests.size(), 1);
         QCOMPARE(network.requests.first().url(), QUrl(QStringLiteral("https://oauth2.googleapis.com/token")));

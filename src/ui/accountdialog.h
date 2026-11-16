@@ -21,6 +21,7 @@ public:
     void saveFinished(const QString &error);
     void testFinished(const QString &smtpError, const QString &imapError);
     void oauthFinished(bool smtp, const QString &grant, const QString &clientId, const QString &error);
+    void oauthCodeReceived();
     void setOAuthGrant(bool smtp, const QString &grant, const QString &clientId = {});
 signals:
     void saveRequested(const smoothmail::Account &account, const QString &smtpPassword, const QString &imapPassword);
