@@ -22,6 +22,7 @@ foreach(stage IN ITEMS Native Framework WinFlexBison I18n Solid Kio Sasl XOAuth2
         "-DSMOOTHMAIL_GETTEXT_TOOLS_ROOT=${SMOOTHMAIL_GETTEXT_TOOLS_ROOT}"
         "-DSMOOTHMAIL_SOURCE_ARCHIVES=${SMOOTHMAIL_SOURCE_ARCHIVES}"
         "-DSMOOTHMAIL_ASSET_CACHE=${SMOOTHMAIL_ASSET_CACHE}"
+        "-DSMOOTHMAIL_DOWNLOAD_CURL=${SMOOTHMAIL_DOWNLOAD_CURL}"
         -P "${CMAKE_CURRENT_LIST_DIR}/${script}.cmake")
 endforeach()
 message(STATUS "Windows dependency prefix ready (${CMAKE_BUILD_TYPE}).")

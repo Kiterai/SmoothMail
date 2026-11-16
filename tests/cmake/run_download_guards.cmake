@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
-foreach(case IN ITEMS cache hash scheme mismatch provided provided-bad missing-source)
+foreach(case IN ITEMS cache hash scheme mismatch provided provided-bad missing-source
+        curl-relative curl-missing curl-backend)
     execute_process(COMMAND "${CMAKE_COMMAND}" "-DCASE=${case}"
         -P "${CMAKE_CURRENT_LIST_DIR}/download_guards.cmake"
         RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
@@ -11,4 +12,4 @@ foreach(case IN ITEMS cache hash scheme mismatch provided provided-bad missing-s
         message(FATAL_ERROR "Download guard accepted ${case}")
     endif()
 endforeach()
-message(STATUS "7 download/source-cache guards passed (offline).")
+message(STATUS "10 download/source-cache/transport guards passed (offline).")

@@ -16,7 +16,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P cmake/BuildWindows.cmake
 
 - Ninja 1.13.1は固定Git commitから内部取得し、MSVC付属NMakeで構築します。手動インストールやPATH設定は不要です。
 - vcpkg本体は固定URL/SHA512で内部取得します。用途はGNU gettext/libintl/libiconvのみで、Qtのport/toolchainは導入しません。
-- アーカイブはCMakeでHTTPS取得・TLS証明書検証・ハッシュ検証します。途中ファイルを再利用せず、既存キャッシュの不一致は上書きせず停止します。プロキシ・CA設定はCMakeが使える環境にしてください。TLS検証を無効にする回避策はありません。
+- アーカイブは既定でCMake、明示した`SMOOTHMAIL_DOWNLOAD_CURL`があればOpenSSL版curlでHTTPS取得・TLS証明書検証・ハッシュ検証します。途中ファイルを再利用せず、既存キャッシュの不一致は上書きせず停止します。プロキシ・CA設定は選択した取得手段が使える環境にしてください。TLS検証を無効にする回避策はありません。
 - プロジェクトのスクリプト・テストはCMake/C++です。PythonはKI18n上流のconfigure/翻訳データ生成からのみ間接利用します。
 - SolidとそのFlex/Bisonも標準入口で構築します。変更対象7依存のパッチ・原本分離・receipt照合を維持します。
 - 既存presetだけ使う場合は、最初に`cmake -DQt6_ROOT=... -P cmake/PrepareBuildTools.cmake`を実行します。カスタム依存rootでは`CMAKE_MAKE_PROGRAM`もその内部Ninjaへ指定してください。
@@ -37,7 +37,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DDEPENDENCY_ROOT=C:/build/smoothmail-
 
 2026-11-14、固定Gitソース17件の新規取得と全Release依存構築が成功し、構築後のcommit・取得物一覧52ファイルのハッシュ再照合も通過しました。[検証結果](clean-dependency-verification.md)を参照してください。
 
-TLS証明書検証は常に有効です。CMakeのstatus 35だけでCA不備とは断定せず、実行環境側のTLSエラーも確認してください。Safe Shell内のSchannel `SEC_E_NO_CREDENTIALS`では通常環境との比較が必要です。証明書検証の無効化や外部curlへの切替は行いません。
+TLS証明書検証は常に有効です。CMakeのstatus 35だけでCA不備とは断定せず、実行環境側のTLSエラーも確認してください。Safe Shell内のSchannel `SEC_E_NO_CREDENTIALS`はwrite-restricted tokenでのTLS資格情報初期化拒否です。2026-11-16に、隔離を維持するためOpenSSL版curlの明示指定を追加しました。以前の「外部curlへの切替は行わない」は旧方針です。失敗時の自動切替ではなく、ビルド入口で取得手段を選択します。詳細は`agent/sandbox-tls-diagnosis.md`、利用方法は`docs/dev/build.md`を参照してください。
 
 ## MIME依存
 
