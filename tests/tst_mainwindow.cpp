@@ -17,6 +17,7 @@
 #include <QCheckBox>
 #include "ui/systemsettingsdialog.h"
 #include "core/oauthconfiguration.h"
+#include <QGroupBox>
 #include <QDialogButtonBox>
 #include <QScrollBar>
 #include <QMenu>
@@ -316,6 +317,26 @@ private slots:
         dialog.saved(QStringLiteral("fixture failure")); QVERIFY(page->isEnabled()); QCOMPARE(page->value(), 17); QVERIFY(button->isEnabled());
         page->setValue(100); QVERIFY(!button->isEnabled());
         buttons->button(QDialogButtonBox::Cancel)->click(); QCOMPARE(dialog.result(), int(QDialog::Rejected));
+    }
+    void systemSettingsUsesTopLevelGroups()
+    {
+        using namespace smoothmail;
+        SystemSettingsDialog dialog({}, {});
+        const auto groups = dialog.findChildren<QGroupBox *>(QString(), Qt::FindDirectChildrenOnly);
+        QCOMPARE(groups.size(), 3);
+        auto *display = dialog.findChild<QGroupBox *>(QStringLiteral("settingsDisplayGroup"));
+        auto *refresh = dialog.findChild<QGroupBox *>(QStringLiteral("settingsRefreshGroup"));
+        auto *oauth = dialog.findChild<QGroupBox *>(QStringLiteral("settingsOAuthGroup"));
+        QVERIFY(display); QVERIFY(refresh); QVERIFY(oauth);
+        QCOMPARE(display->title(), QStringLiteral("表示設定"));
+        QCOMPARE(refresh->title(), QStringLiteral("更新処理設定"));
+        QCOMPARE(oauth->title(), QStringLiteral("OAuth設定"));
+        QCOMPARE(dialog.findChild<QSpinBox *>(QStringLiteral("settingsPageSize"))->parentWidget(), display);
+        QCOMPARE(dialog.findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"))->parentWidget(), refresh);
+        QCOMPARE(dialog.findChild<QSpinBox *>(QStringLiteral("settingsInterval"))->parentWidget(), refresh);
+        QCOMPARE(oauth->findChildren<QGroupBox *>(QString(), Qt::FindDirectChildrenOnly).size(), 2);
+        QVERIFY(oauth->isAncestorOf(dialog.findChild<QLineEdit *>(QStringLiteral("settingsGoogleClient"))));
+        QVERIFY(oauth->isAncestorOf(dialog.findChild<QLineEdit *>(QStringLiteral("settingsMicrosoftClient"))));
     }
     void oauthSettingsDefaultsAndCustomClients()
     {
