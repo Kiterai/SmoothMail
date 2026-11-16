@@ -14,6 +14,8 @@
 
 CMakeでは診断・接続方針・OAuth・保存・認証・スレッド・通信・MIME・UIを`smoothmail_*`静的ライブラリに分け、実行対象`smoothmail`へリンクします。外部LGPLライブラリは動的リンクです。
 
+標準の`debug`／`release` presetは、MSVC付属NMakeを使う薄い外側の入口です。`cmake/RunBuildWorkflow.cmake`が依存と本体の構築を管理し、配置・通知・ソース収集・圧縮だけをPythonへ委譲します。Releaseの2行ビルドと`tools/build.py dist`は同じ経路を通り、生成後の法的監査・公開は配布担当者が行います。
+
 通信・MIME解析・DB処理はGUIスレッドから分離し、DB接続は専用ワーカー内で管理します。
 
 ## 外部ライブラリ・ツール

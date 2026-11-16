@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import sys
 import tempfile
@@ -139,6 +140,38 @@ class BuildWorkflowTests(unittest.TestCase):
             self.assertTrue(args.distribution and args.final_review)
             self.assertEqual(args.application_build, root / "app")
             self.assertFalse(any("--build" in call.args for call in run.call_args_list))
+
+    def test_debug_staging_is_complete_and_keeps_sdk_bytes_unchanged(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            qt, deps, native, sasl = (root / name for name in ("qt", "deps", "native", "sasl"))
+            crt = root / "redist/debug_nonredist/x64/Microsoft.VC143.DebugCRT"
+            ucrt = root / "sdk/bin/1/x64/ucrt"
+            app = root / "smoothmail.exe"
+            app.write_bytes(b"app")
+            inputs = [qt / "bin/Qt6Cored.dll", crt / "vcruntime140d.dll", ucrt / "ucrtbased.dll",
+                      *[qt / "plugins" / name for name in stage_windows_debug.PLUGINS],
+                      *[sasl / name for name in stage_windows_debug.SASL]]
+            for path in inputs:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"original fixture")
+            def inspect(path):
+                return {"Qt6Cored.dll", "vcruntime140d.dll", "ucrtbased.dll"} if path == app else set()
+            environment = {"VCToolsRedistDir": str(root / "redist"),
+                           "UniversalCRTSdkDir": str(root / "sdk"), "UCRTVersion": "1"}
+            resolve = stage_windows_debug.resolve
+            with patch.dict(os.environ, environment), patch.object(stage_windows_debug, "run") as run, \
+                    patch.object(stage_windows_debug, "resolve",
+                                 side_effect=lambda roots, dirs: resolve(roots, dirs, inspect)):
+                stage_windows_debug.stage(app, qt, deps, native, sasl, root / "run")
+            self.assertEqual((root / "run/smoothmail.exe").read_bytes(), b"app")
+            for relative in ("Qt6Cored.dll", "vcruntime140d.dll", "ucrtbased.dll",
+                             *stage_windows_debug.PLUGINS, *["sasl2/" + name for name in stage_windows_debug.SASL]):
+                self.assertTrue((root / "run" / relative).is_file(), relative)
+            self.assertIn("non-redistributable", (root / "run/DEVELOPMENT-ONLY.txt").read_text())
+            self.assertIn("SMOOTHMAIL_SASL_PATH", (root / "run/launch.cmd").read_text())
+            self.assertTrue(all(path.read_bytes() == b"original fixture" for path in inputs))
+            self.assertIn("--no-patchqt", run.call_args.args)
 
     def test_final_package_revalidates_source_and_publishes_hashes_and_runtime(self):
         with tempfile.TemporaryDirectory() as temporary:

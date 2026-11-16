@@ -66,6 +66,9 @@ def stage(app, qt, dependency_bin, native_bin, sasl_dir, destination):
     (destination / "qt.conf").write_bytes(b"[Paths]\nPrefix=.\nPlugins=.\n")
     (destination / "launch.cmd").write_bytes(
         b'@echo off\r\nsetlocal\r\nset "QT_QPA_PLATFORM=windows"\r\n'
+        b'set "QT_PLUGIN_PATH=%~dp0"\r\n'
+        b'set "QT_QPA_PLATFORM_PLUGIN_PATH=%~dp0platforms"\r\n'
+        b'set "SMOOTHMAIL_SASL_PATH=%~dp0sasl2"\r\n'
         b'start "" /D "%~dp0" "%~dp0smoothmail.exe" %*\r\n')
     (destination / "DEVELOPMENT-ONLY.txt").write_text(
         "Local Debug runtime. Contains non-redistributable Debug CRT.\n"
