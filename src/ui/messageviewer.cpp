@@ -58,12 +58,21 @@ MessageViewer::MessageViewer(QWidget *parent)
     m_summary->setWordWrap(true);
     m_summary->setTextInteractionFlags(Qt::TextSelectableByMouse);
     informationLayout->addWidget(m_summary);
+    auto *attachmentsSplitter = new VisibleSplitter(Qt::Vertical, this);
+    attachmentsSplitter->setObjectName(QStringLiteral("attachmentHeaderSplitter"));
+    attachmentsSplitter->setChildrenCollapsible(false);
+    layout->addWidget(attachmentsSplitter, 1);
     m_attachments->setObjectName(QStringLiteral("messageAttachments"));
     m_attachments->setViewMode(QListView::IconMode);
     m_attachments->setFlow(QListView::LeftToRight);
-    m_attachments->setMaximumHeight(110);
+    m_attachments->setMinimumHeight(0);
     m_attachments->setWrapping(true);
-    informationLayout->addWidget(m_attachments);
+    attachmentsSplitter->addWidget(m_attachments);
+    auto *content = new QWidget(attachmentsSplitter);
+    auto *contentLayout = new QVBoxLayout(content); contentLayout->setContentsMargins(0, 0, 0, 0);
+    attachmentsSplitter->addWidget(content);
+    attachmentsSplitter->setStretchFactor(0, 0); attachmentsSplitter->setStretchFactor(1, 1);
+    attachmentsSplitter->setSizes({110, 400});
     connect(m_attachments, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         emit attachmentRequested(item->data(Qt::UserRole).toString());
     });
@@ -82,7 +91,7 @@ MessageViewer::MessageViewer(QWidget *parent)
     else font.setPixelSize(qMax(1, qRound(font.pixelSize() * 2.0 / 3.0)));
     m_headerToggle->setFont(font);
     m_headerToggle->setStyleSheet(QStringLiteral("QToolButton { border: none; background: transparent; } QToolButton:hover { background: palette(midlight); }"));
-    headerRow->addWidget(m_headerToggle); headerRow->addWidget(separator, 1); informationLayout->addLayout(headerRow);
+    headerRow->addWidget(m_headerToggle); headerRow->addWidget(separator, 1); contentLayout->addLayout(headerRow);
     m_headers->setObjectName(QStringLiteral("messageHeaders"));
     m_headers->setReadOnly(true);
     m_headers->setMinimumHeight(0);
@@ -99,7 +108,7 @@ MessageViewer::MessageViewer(QWidget *parent)
 
     m_body->setObjectName(QStringLiteral("messageBody"));
     splitter->addWidget(m_body); splitter->setStretchFactor(0, 0); splitter->setStretchFactor(1, 1);
-    layout->addWidget(splitter, 1);
+    contentLayout->addWidget(splitter, 1);
     connect(splitter, &QSplitter::splitterMoved, this, [this] { centerCurrentMatch(); });
     connect(m_body->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { if (m_searchText) highlightMatches(); });
     m_search = new QWidget(this); m_search->setObjectName(QStringLiteral("bodySearchBar")); auto *searchLayout = new QHBoxLayout(m_search); searchLayout->setContentsMargins(0, 0, 0, 0);

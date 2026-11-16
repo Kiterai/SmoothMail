@@ -34,6 +34,26 @@ class MessageViewerTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void attachmentAreaCanResizeAndHidesItsHandle()
+    {
+        smoothmail::MessageViewer viewer; viewer.resize(700, 600); viewer.show();
+        auto *splitter = viewer.findChild<QSplitter *>(QStringLiteral("attachmentHeaderSplitter"));
+        QVERIFY(splitter); QCOMPARE(splitter->count(), 2);
+        QVERIFY(!splitter->handle(1)->isVisible());
+        smoothmail::MessageDocument document;
+        document.attachments.append({QStringLiteral("1.2"), QStringLiteral("file.txt"), QStringLiteral("text/plain")});
+        viewer.displayMessage(document);
+        QTRY_VERIFY(splitter->handle(1)->isVisible());
+        splitter->setSizes({180, 300}); QCoreApplication::processEvents();
+        const auto firstHeight = splitter->sizes().first();
+        splitter->setSizes({260, 220}); QCoreApplication::processEvents();
+        QVERIFY(splitter->sizes().first() > firstHeight);
+        viewer.findChild<QToolButton *>(QStringLiteral("headerToggle"))->click();
+        QVERIFY(splitter->handle(1)->isVisible());
+        document.attachments.clear(); viewer.displayMessage(document);
+        QTRY_VERIFY(!splitter->handle(1)->isVisible());
+        viewer.clear(); QVERIFY(!splitter->handle(1)->isVisible());
+    }
     void collapsedHeadersHaveNoHandleOrFlexibleInformationGap()
     {
         smoothmail::MessageViewer viewer; viewer.resize(700, 700);
