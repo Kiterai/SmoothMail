@@ -13,6 +13,7 @@
 | KConfig 6.31.0 | 2026-11-14 | Windowsにおけるkconf_update経由の外部設定移行を無効化 |
 | KCrash 6.31.0 | 2026-11-14 | WindowsのDrKonqi探索から元ビルド先へのフォールバックを除去 |
 | KIO 6.31.0 | 2026-11-12、2026-11-14 | favicon cache実装を除外し、favicon探索は空文字列を返却。Windowsにおける元ビルド先のhelper探索を除去し、Windows admin workerを無効化 |
+| Cyrus SASL 2.1.28 | 2026-11-17 | Windowsの絶対プラグイン／設定探索既定値を除去。組込み側アプリケーションがプラグイン探索先を明示 |
 
 GNU libiconv 1.19及びGNU gettext libintl 0.22.5には、提供vcpkgレシピのパッチ及び提供Windowsビルド設定を適用する。当該パッチ及び設定は対応ソースに収録する。
 

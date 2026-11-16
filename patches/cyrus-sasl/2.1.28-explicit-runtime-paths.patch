@@ -1,0 +1,16 @@
+diff --git a/win32/include/config.h b/win32/include/config.h
+--- a/win32/include/config.h
++++ b/win32/include/config.h
+@@ -117,8 +117,10 @@
+ #define HAVE_MEMCPY 1
+ #define HAVE_OPENSSL 1
+ 
+-#define PLUGINDIR "C:\\CMU\\bin\\sasl2"
+-#define CONFIGDIR "C:\\CMU\\bin\\sasl2"
++/* Modified by SmoothMail contributors, 2026-11-17:
++ * the embedding application supplies its plugin path explicitly. */
++#define PLUGINDIR ""
++#define CONFIGDIR ""
+ 
+ /* Windows calls these functions something else
+  */

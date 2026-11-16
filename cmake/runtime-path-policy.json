@@ -46,11 +46,6 @@
       "ranges":[{"offset":101280,"length":47,"sha256":"4e7a0d264592f2951b40c0bc6a8682b58e174eea49be654f14df8f5f8172ccac","reason":"supplier-pdb"}]
     },
     {
-      "file":"libsasl.dll","sha256":"157ed60cd28db364c5a132e984424f6ae7b037c0570d6baeaf293091a78548a4",
-      "origin":"Cyrus SASL 2.1.28 fixed archive rebuilt through standard Release bootstrap; win32/include/config.h PLUGINDIR/CONFIGDIR bytes and offset unchanged; reviewed 2026-11-16",
-      "ranges":[{"offset":86208,"length":16,"sha256":"c32b6272a726c789340c8e0de23bba02d008f4fabe291cd0330d2e854d3dba7f","reason":"upstream-default"}]
-    },
-    {
       "file":"platforms/qwindows.dll","sha256":"12eef54bcdb6711b2722e9cef983d91a54546565a96b684d7bd9e2a7370fde92",
       "origin":"Qt 6.12.0 SDK; SHA256 matched, Authenticode Valid; reviewed 2026-11-14",
       "ranges":[{"offset":772400,"length":63,"sha256":"40bac236100307c2347bf4315717e2ad730090d7b86b7c15e5626b17382c7fba","reason":"supplier-pdb"}]

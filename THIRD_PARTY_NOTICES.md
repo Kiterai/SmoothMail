@@ -92,3 +92,9 @@ PDB参照名を固定し、gettext-libintlの論理インストールprefixと�
 この対応でGNUソースへの新しいパッチやライセンス表記の変更は追加していません。元のvcpkgレシピ・既存パッチ・著作権・各許諾条件は維持します。
 製品配布ではこれらの設定ファイルも必要な構築スクリプトとして対応ソースとともに提供できるよう整備します。
 GNU DLLのライセンス・対応ソース等の義務は、設定だけの対応でもなくなりません。gettextホストツール自体は製品同梱対象ではありません。
+## Cyrus SASL 2.1.28: Windows runtime paths
+
+Cyrus SASL 2.1.28 is modified by SmoothMail contributors (2026-11-17):
+absolute Windows plugin/configuration defaults are removed; SmoothMail supplies
+the plugin path explicitly. See `patches/cyrus-sasl/README.md` and the supplied
+patch. Original copyright and license terms are retained.

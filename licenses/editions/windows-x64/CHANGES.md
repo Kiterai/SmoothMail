@@ -13,6 +13,7 @@ The following libraries have been modified by **SmoothMail contributors**. The o
 | KConfig 6.31.0 | 2026-11-14 | Disabled external configuration migration through kconf_update on Windows |
 | KCrash 6.31.0 | 2026-11-14 | Removed the original build-prefix fallback from Windows DrKonqi lookup |
 | KIO 6.31.0 | 2026-11-12; 2026-11-14 | Excluded favicon-cache implementation; favicon lookup returns an empty string. Removed original build-prefix helper lookup on Windows and disabled the Windows admin worker |
+| Cyrus SASL 2.1.28 | 2026-11-17 | Removed absolute Windows plugin/configuration defaults; the embedding application supplies its plugin path explicitly |
 
 GNU libiconv 1.19 and GNU gettext libintl 0.22.5 incorporate the patches of the supplied vcpkg recipes and the supplied Windows build configuration. Those patches and configuration are included in the corresponding source.
 

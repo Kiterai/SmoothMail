@@ -24,6 +24,8 @@ add_test(NAME qt_legal_attribution_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_qt_legal_attribution_guards.cmake")
 add_test(NAME source_archive_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_source_archive_guards.cmake")
+add_test(NAME sasl_source_guards COMMAND "${CMAKE_COMMAND}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_sasl_source_guards.cmake")
 add_test(NAME crt_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_guards.cmake")
 if(WIN32 AND DEFINED ENV{VCToolsRedistDir})

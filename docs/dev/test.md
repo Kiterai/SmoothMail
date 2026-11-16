@@ -90,6 +90,7 @@ cmake -P tests/cmake/run_package_entry_guards.cmake
 | `run_crt_binary_guards.cmake` | CRT署名・版・原本一致、不正PE／改変コピー拒否 |
 | `run_crt_long_path_guards.cmake` | 長い展開先での検証器構築・cache衝突拒否 |
 | `run_source_archive_guards.cmake` | アーカイブ・パッチ適用・原本非改変、Qt SDK出力先保護 |
+| `run_sasl_source_guards.cmake` | SASLの絶対探索既定値除去、原本保持、反復利用、設定改変時の停止 |
 | `run_license_template_guards.cmake` | `.env`入力・変数置換・空白行整理 |
 | `run_license_final_review_guards.cmake` | 配置ファイルの不足・改変・誤分類・不正パス |
 

@@ -127,7 +127,8 @@ def collect(stage, output, dependencies, archives=None, native_root=None):
         item = component("cyrus-sasl", "2.1.28", ["libsasl.dll", "sasl2/saslPLAIN.dll", "sasl2/saslLOGIN.dll"],
                          "https://github.com/cyrusimap/cyrus-sasl/releases/tag/cyrus-sasl-2.1.28; "
                          "tar.gz SHA256 7ccfc6abd01ed67c1a0924b353e526f1b766b21f42d4562ee635a8ebfc5bb38c. "
-                         "Client mechanisms only; see cmake/BuildSaslDependencies.cmake.")
+                          "Client mechanisms only; absolute Windows plugin/configuration defaults removed. "
+                          "See patches/cyrus-sasl and cmake/BuildSaslDependencies.cmake.")
         original(item, regular(prefix, "cyrus-sasl/COPYING"), "licenses/cyrus-sasl/COPYING")
         append_notice(item, "\nThis product includes software developed by Computing Services at Carnegie Mellon University (http://www.cmu.edu/computing/).\n")
         item = component("cyrus-sasl-xoauth2", "36aabca", ["sasl2/saslXOAuth2.dll"],

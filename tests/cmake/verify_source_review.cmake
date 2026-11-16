@@ -63,10 +63,14 @@ foreach(patch IN ITEMS
         "${GIT_EXECUTABLE}" -C "${root}/${component}" apply --check
         "${root}/SmoothMail/patches/${patch}" COMMAND_ERROR_IS_FATAL ANY)
 endforeach()
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env "GIT_CEILING_DIRECTORIES=${root}"
+    "${GIT_EXECUTABLE}" -C "${root}/cyrus-sasl-2.1.28" apply --check
+    "${root}/SmoothMail/patches/cyrus-sasl/2.1.28-explicit-runtime-paths.patch"
+    COMMAND_ERROR_IS_FATAL ANY)
 file(READ "${root}/SmoothMail/CMakeLists.txt" cmake)
 file(READ "${root}/qtbase/LICENSES/LGPL-3.0-only.txt" lgpl)
 if(NOT cmake MATCHES "LicenseResources.cmake" OR NOT lgpl MATCHES "GNU LESSER GENERAL PUBLIC LICENSE")
     message(FATAL_ERROR "Missing exported build or Qt license evidence.")
 endif()
-message(STATUS "23 source archives independently extracted and hashed, 19 pristine trees pinned; 7 active KDE patches apply.")
+message(STATUS "23 source archives independently extracted and hashed, 19 pristine trees pinned; 7 KDE patches and the SASL path patch apply.")
 message(STATUS "Review extraction retained; full rebuild and source/binary attribution remain separate checks.")
