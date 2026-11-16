@@ -20,43 +20,15 @@
 #include <QScrollBar>
 #include <QMenu>
 #include <QTimer>
-#include <QStyledItemDelegate>
+#include <QStatusBar>
 #include <QPainter>
+#include <QStyledItemDelegate>
 
 class MainWindowTest final : public QObject
 {
     Q_OBJECT
 
 private slots:
-    void badgeShapesAndColors()
-    {
-        using namespace smoothmail;
-        MainWindow window(false);
-        Account account; account.id = QStringLiteral("badges"); window.setAccounts({account});
-        MailRecord record{account.id, QStringLiteral("INBOX"), 10, 1};
-        record.important = true;
-        window.applySnapshot(account.id, record.folder, {{record.folder, u'/', {}, 0}}, {record}, {});
-        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
-        const auto render = [view](int column, const QString &value) {
-            const auto index = view->model()->index(0, column);
-            view->model()->setData(index, value);
-            QImage image(32, 24, QImage::Format_ARGB32); image.fill(Qt::white);
-            QPainter painter(&image);
-            QStyleOptionViewItem option; option.rect = image.rect(); option.widget = view;
-            option.palette.setColor(QPalette::Base, Qt::white);
-            view->itemDelegateForColumn(column)->paint(&painter, option, index);
-            return image;
-        };
-        const auto star = render(0, QStringLiteral("★"));
-        QCOMPARE(star.pixelColor(15, 11), QColor(255, 200, 0));
-        const auto outline = render(0, QStringLiteral("☆"));
-        QCOMPARE(outline.pixelColor(15, 11), QColor(Qt::white));
-        const auto unread = render(1, QStringLiteral("●"));
-        QCOMPARE(unread.pixelColor(15, 11), QColor(Qt::black));
-        const auto read = render(1, QStringLiteral("○"));
-        QCOMPARE(read.pixelColor(15, 11), QColor(Qt::white));
-        QVERIFY(render(2, QStringLiteral("📎")) != render(2, {}));
-    }
     void paginationButtonsAndClampedInput()
     {
         using namespace smoothmail;
@@ -85,6 +57,47 @@ private slots:
         result.query = qvariant_cast<MailQuery>(requests.last().first()); result.query.page = 1; result.total = 1;
         window.applyPage(result);
         QVERIFY(!page->isEnabled()); QVERIFY(!previous->isEnabled()); QVERIFY(!next->isEnabled());
+    }
+    void folderProgressHidesUnknownCounts()
+    {
+        smoothmail::MainWindow window(false);
+        smoothmail::Account account; account.id = QStringLiteral("progress"); account.email = QStringLiteral("test@example.test");
+        window.setAccounts({account});
+        window.showSyncProgress(account.id, QStringLiteral("Archive"), 0, -1);
+        QCOMPARE(window.statusBar()->currentMessage(), QStringLiteral("test@example.test: Archive フォルダを取得中..."));
+        window.showSyncProgress(account.id, QStringLiteral("Archive"), 1, 2);
+        QCOMPARE(window.statusBar()->currentMessage(), QStringLiteral("test@example.test: Archive フォルダを取得中 1 / 2 件..."));
+        window.showSyncProgress(account.id, QStringLiteral("INBOX"), 0, 0);
+        QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("INBOX フォルダを取得中 0 / 0 件")));
+    }
+    void badgeShapesAndColors()
+    {
+        using namespace smoothmail;
+        MainWindow window(false);
+        Account account; account.id = QStringLiteral("badges"); window.setAccounts({account});
+        MailRecord record{account.id, QStringLiteral("INBOX"), 10, 1};
+        record.important = true;
+        window.applySnapshot(account.id, record.folder, {{record.folder, u'/', {}, 0}}, {record}, {});
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+        const auto render = [view](int column, const QString &value) {
+            const auto index = view->model()->index(0, column);
+            view->model()->setData(index, value);
+            QImage image(32, 24, QImage::Format_ARGB32); image.fill(Qt::white);
+            QPainter painter(&image);
+            QStyleOptionViewItem option; option.rect = image.rect(); option.widget = view;
+            option.palette.setColor(QPalette::Base, Qt::white);
+            view->itemDelegateForColumn(column)->paint(&painter, option, index);
+            return image;
+        };
+        const auto star = render(0, QStringLiteral("★"));
+        QCOMPARE(star.pixelColor(15, 11), QColor(255, 200, 0));
+        const auto outline = render(0, QStringLiteral("☆"));
+        QCOMPARE(outline.pixelColor(15, 11), QColor(Qt::white));
+        const auto unread = render(1, QStringLiteral("●"));
+        QCOMPARE(unread.pixelColor(15, 11), QColor(Qt::black));
+        const auto read = render(1, QStringLiteral("○"));
+        QCOMPARE(read.pixelColor(15, 11), QColor(Qt::white));
+        QVERIFY(render(2, QStringLiteral("📎")) != render(2, {}));
     }
     void splitterLinesContrastAndRemainDraggable_data()
     {

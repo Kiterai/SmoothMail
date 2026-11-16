@@ -47,7 +47,7 @@ public:
     void requestPage(bool reset = false);
     void applyPage(const MailPage &page);
     void displayLoadedMessage(const MailRecord &message, const QString &error);
-    void showSyncProgress(const QString &id, qint64 done, qint64 total);
+    void showSyncProgress(const QString &id, const QString &folder, qint64 done, qint64 total);
     void followFolderRename(const QString &id, const QString &source, const QString &destination);
     void applySettings(const SystemSettings &settings);
     QChar folderSeparator(const QString &id, const QString &name) const;

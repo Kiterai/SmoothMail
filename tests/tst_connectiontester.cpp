@@ -275,14 +275,38 @@ private slots:
         AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
         cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
         MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
-        const auto sync = [&](MailService::SyncMode mode) { result.clear(); service.synchronize(account, QStringLiteral("dummy"), QStringLiteral("INBOX"), &cache, mode); };
+        QSignalSpy progress(&service, &MailService::syncProgress);
+        const auto sync = [&](MailService::SyncMode mode) { result.clear(); progress.clear(); service.synchronize(account, QStringLiteral("dummy"), QStringLiteral("INBOX"), &cache, mode); };
         sync(MailService::SyncMode::All); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty()); QCOMPARE(server.fullFetchCount, 4);
+        for (const auto &event : progress) {
+            const auto total = event.at(3).toLongLong();
+            if (total >= 0) QCOMPARE(total, event.at(1).toString() == QStringLiteral("INBOX") ? qint64(3) : qint64(1));
+        }
         server.messageFlags[1] = {"\\Seen"}; server.messageFlags[2] = {"\\Seen"};
         server.messages.insert(4, raw("Fri, 13 Nov 2026 08:59:59 +0000"));
         server.messages.insert(5, raw("Thu, 12 Nov 2026 23:30:00 -1000")); // UTC 09:30; SENTSINCE ignores timezone.
         server.folderMessages["Archive"].insert(11, raw("Thu, 05 Nov 2026 09:30:00 +0000"));
         server.extraFolders.insert("New"); server.folderMessages["New"].insert(70, raw("Sun, 01 Nov 2026 00:00:00 +0000"));
         sync(MailService::SyncMode::Recent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString())); QCOMPARE(server.fullFetchCount, 7);
+        QMap<QString, QPair<qint64, qint64>> finalProgress;
+        QSet<QString> unknown;
+        for (const auto &event : progress) {
+            const auto folder = event.at(1).toString();
+            const auto done = event.at(2).toLongLong(), total = event.at(3).toLongLong();
+            if (total < 0) { unknown.insert(folder); continue; }
+            QVERIFY(unknown.contains(folder)); QVERIFY(done <= total);
+            finalProgress[folder] = {done, total};
+        }
+        QCOMPARE(finalProgress.value(QStringLiteral("INBOX")), qMakePair(qint64(1), qint64(1)));
+        QCOMPARE(finalProgress.value(QStringLiteral("Archive")), qMakePair(qint64(1), qint64(1)));
+        QCOMPARE(finalProgress.value(QStringLiteral("New")), qMakePair(qint64(1), qint64(1)));
+        sync(MailService::SyncMode::SelectedRecent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
+        QVERIFY(result.first().at(4).toString().isEmpty());
+        QVERIFY(!progress.isEmpty());
+        QCOMPARE(progress.last().at(1).toString(), QStringLiteral("INBOX"));
+        QCOMPARE(progress.last().at(2).toLongLong(), qint64(0));
+        QCOMPARE(progress.last().at(3).toLongLong(), qint64(0));
+        QCOMPARE(server.fullFetchCount, 7);
         MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX"); query.sortColumn = 3;
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 4);
         bool oldSeen = true, boundarySeen = false; for (const auto &message : page.messages) { QVERIFY(message.uid != 4); if (message.uid == 1) oldSeen = message.seen; if (message.uid == 2) boundarySeen = message.seen; }

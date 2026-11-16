@@ -31,7 +31,7 @@ signals:
                       const QList<smoothmail::MailRecord> &messages, const QString &error);
     void submissionFinished(const QString &accountId, bool savedAsDraft, const QString &error);
     void folderChanged(const QString &accountId, const QString &error);
-    void syncProgress(const QString &accountId, qint64 completed, qint64 total);
+    void syncProgress(const QString &accountId, const QString &folder, qint64 completed, qint64 total);
     void messageFlagChanged(const smoothmail::MailRecord &identity, bool importantFlag, bool enabled, const QString &error);
 private:
     QObject *m_worker;

@@ -622,10 +622,11 @@ void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &
     findChild<MessageViewer *>()->displayMessage(message.document);
     findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(true);
 }
-void MainWindow::showSyncProgress(const QString &id, qint64 done, qint64 total)
+void MainWindow::showSyncProgress(const QString &id, const QString &folder, qint64 done, qint64 total)
 {
     for (const auto &account : m_accounts) if (account.id == id)
-        statusBar()->showMessage(QStringLiteral("%1 のデータを取得中... %2 / %3件").arg(account.email).arg(done).arg(total));
+        statusBar()->showMessage(QStringLiteral("%1: %2 フォルダを取得中").arg(account.email, folder)
+            + (total < 0 ? QStringLiteral("...") : QStringLiteral(" %1 / %2 件...").arg(done).arg(total)));
 }
 void MainWindow::applySettings(const SystemSettings &settings)
 {
