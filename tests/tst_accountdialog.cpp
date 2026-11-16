@@ -20,8 +20,8 @@ private slots:
     {
         AccountDialog dialog;
         auto *email = dialog.findChild<QLineEdit *>(QStringLiteral("accountEmail"));
-        auto *imap = dialog.findChild<QComboBox *>(QStringLiteral("IMAP4OAuthProvider"));
-        auto *smtp = dialog.findChild<QComboBox *>(QStringLiteral("SMTPOAuthProvider"));
+        auto *imap = dialog.findChild<QComboBox *>(QStringLiteral("accountOAuthProvider"));
+        auto *smtp = imap;
         QVERIFY(imap->parentWidget()->isHidden());
         for (const auto &domain : {"outlook.com", "outlook.jp", "hotmail.com", "hotmail.co.jp"}) {
             email->setText(QStringLiteral("user@") + QLatin1String(domain));
@@ -157,22 +157,26 @@ private slots:
         button->click(); QCOMPARE(oauth.size(), 3); buttons->button(QDialogButtonBox::Cancel)->click(); QCOMPARE(cancelled.size(), 1);
         dialog.oauthFinished(false, QStringLiteral("late-grant"), QStringLiteral("dummy-client"), {}); dialog.testFinished({}, {}); QVERIFY(tested.isEmpty()); QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
     }
-    void differentProvidersDoNotShareAuthorization()
+    void sharedProviderAppliesToBothProtocols()
     {
         AccountDialog dialog; auto value = dialog.account(); value.email = QStringLiteral("oauth@example.test");
         for (auto *server : {&value.smtp, &value.imap}) {
             server->host = QStringLiteral("mail.example.test"); server->user = value.email;
             server->authentication = AuthenticationMode::OAuth2; server->oauthProvider = QStringLiteral("microsoft");
         }
-        value.imap.oauthProvider = QStringLiteral("google");
         dialog.setAccount(value);
+        auto *provider = dialog.findChild<QComboBox *>(QStringLiteral("accountOAuthProvider"));
+        QCOMPARE(dialog.findChildren<QComboBox *>(QStringLiteral("accountOAuthProvider")).size(), 1);
+        provider->setCurrentIndex(provider->findData(QStringLiteral("google")));
+        QCOMPARE(dialog.account().imap.oauthProvider, QStringLiteral("google"));
+        QCOMPARE(dialog.account().smtp.oauthProvider, QStringLiteral("google"));
         QSignalSpy oauth(&dialog, &AccountDialog::oauthRequested), tested(&dialog, &AccountDialog::testRequested);
         dialog.findChild<QPushButton *>(QStringLiteral("connectionTest"))->click();
         dialog.oauthFinished(true, QStringLiteral("dummy-grant"), QStringLiteral("dummy-client"), {});
-        QCOMPARE(oauth.size(), 2); QVERIFY(!oauth.last().first().toBool()); QVERIFY(tested.isEmpty());
-        dialog.oauthFinished(false, {}, {}, QStringLiteral("Token exchange failed"));
+        QCOMPARE(oauth.size(), 1); QCOMPARE(tested.size(), 1);
+        dialog.testFinished({}, QStringLiteral("Token exchange failed"));
         QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("connectionTest"))->isEnabled());
-        QCOMPARE(dialog.findChild<QLabel *>(QStringLiteral("accountError"))->text(), QStringLiteral("Token exchange failed"));
+        QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("accountError"))->text().contains(QStringLiteral("Token exchange failed")));
     }
     void sameIdentityUsesOneAuthorization_data()
     {

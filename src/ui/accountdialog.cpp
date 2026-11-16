@@ -13,7 +13,6 @@
 #include <QScreen>
 #include <QStylePainter>
 #include <QStyleOptionButton>
-#include <QSignalBlocker>
 
 namespace smoothmail {
 namespace {
@@ -55,7 +54,7 @@ AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int
     auto *box = new QGroupBox(name, this);
     auto *form = new QFormLayout(box);
     ServerFields fields{new QLineEdit(box), new QSpinBox(box), new QLineEdit(box), new QLineEdit(box),
-                        new QComboBox(box), new QComboBox(box), new QComboBox(box), {}, {}};
+                        new QComboBox(box), new QComboBox(box), m_provider, {}, {}};
     fields.host->setObjectName(name + QStringLiteral("Host"));
     fields.port->setObjectName(name + QStringLiteral("Port"));
     fields.user->setObjectName(name + QStringLiteral("User"));
@@ -77,18 +76,11 @@ AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int
     form->addRow(QStringLiteral("パスワード"), fields.password);
     form->addRow(QStringLiteral("認証方式"), fields.authentication);
     form->addRow(QStringLiteral("暗号化"), fields.encryption);
-    fields.provider->setObjectName(name + QStringLiteral("OAuthProvider"));
-    fields.provider->addItem(QStringLiteral("Gmail"), QStringLiteral("google"));
-    fields.provider->addItem(QStringLiteral("Outlook"), QStringLiteral("microsoft"));
-    auto *oauth = new QGroupBox(QStringLiteral("OAuth"), box);
-    auto *oauthForm = new QFormLayout(oauth);
-    oauthForm->addRow(QStringLiteral("OAuthプロバイダ"), fields.provider);
-    form->addRow(oauth);
-    oauth->hide();
-    connect(fields.authentication, &QComboBox::currentIndexChanged, this, [fields, oauth] {
+    connect(fields.authentication, &QComboBox::currentIndexChanged, this, [this, fields] {
         const auto password = fields.authentication->currentData().toInt() != int(AuthenticationMode::OAuth2);
         fields.password->setEnabled(password);
-        oauth->setVisible(!password);
+        m_oauthBox->setVisible(m_imap.authentication->currentData().toInt() == int(AuthenticationMode::OAuth2)
+            || m_smtp.authentication->currentData().toInt() == int(AuthenticationMode::OAuth2));
         if (!password) fields.password->clear();
     });
     const auto clearGrant = [this, name] { auto &server = name == QStringLiteral("SMTP") ? m_smtp : m_imap; server.oauthGrant.clear(); server.clientId.clear(); invalidateTest(); };
@@ -127,8 +119,16 @@ AccountDialog::AccountDialog(QWidget *parent)
     auto *servers = new QWidget(scroll);
     m_serverLayout = new QVBoxLayout(servers);
     scroll->setWidget(servers); scroll->setWidgetResizable(true); layout->addWidget(scroll, 1);
+    m_oauthBox = new QGroupBox(QStringLiteral("OAuth"), servers);
+    auto *oauthForm = new QFormLayout(m_oauthBox);
+    m_provider = new QComboBox(m_oauthBox);
+    m_provider->setObjectName(QStringLiteral("accountOAuthProvider"));
+    m_provider->addItem(QStringLiteral("Gmail"), QStringLiteral("google"));
+    m_provider->addItem(QStringLiteral("Outlook"), QStringLiteral("microsoft"));
+    oauthForm->addRow(QStringLiteral("OAuthプロバイダ"), m_provider);
     m_imap = createServer(QStringLiteral("IMAP4"), 993);
     m_smtp = createServer(QStringLiteral("SMTP"), 465);
+    m_serverLayout->addWidget(m_oauthBox); m_oauthBox->hide();
     m_test = new ConnectionTestButton(QStringLiteral("接続テスト: 未"), this);
     auto testFont = m_test->font(); testFont.setBold(true); m_test->setFont(testFont);
     m_test->setObjectName(QStringLiteral("connectionTest"));
@@ -148,8 +148,7 @@ AccountDialog::AccountDialog(QWidget *parent)
         else if (QStringList{QStringLiteral("outlook.com"), QStringLiteral("outlook.jp"),
                  QStringLiteral("hotmail.com"), QStringLiteral("hotmail.co.jp")}.contains(domain))
             provider = QStringLiteral("microsoft");
-        if (!provider.isEmpty()) for (const auto *fields : {&m_imap, &m_smtp})
-            fields->provider->setCurrentIndex(fields->provider->findData(provider));
+        if (!provider.isEmpty()) m_provider->setCurrentIndex(m_provider->findData(provider));
     });
     connect(m_buttons, &QDialogButtonBox::rejected, this, &AccountDialog::reject);
     connect(m_buttons, &QDialogButtonBox::accepted, this, [this] {
@@ -180,13 +179,15 @@ Account AccountDialog::account() const
 void AccountDialog::setAccount(const Account &value)
 {
     m_id = value.id; m_email->setText(value.email);
+    const auto &oauthServer = value.imap.authentication == AuthenticationMode::OAuth2 ? value.imap : value.smtp;
+    const auto providerIndex = m_provider->findData(oauthServer.oauthProvider);
+    if (providerIndex >= 0) m_provider->setCurrentIndex(providerIndex);
     setWindowTitle(QStringLiteral("アカウントの編集"));
     const auto populate = [](ServerFields &fields, const ServerSettings &settings) {
         fields.host->setText(settings.host); fields.user->setText(settings.user);
         fields.authentication->setCurrentIndex(fields.authentication->findData(int(settings.authentication)));
         fields.encryption->setCurrentIndex(fields.encryption->findData(int(settings.encryption)));
         fields.port->setValue(settings.port);
-        fields.provider->setCurrentIndex(fields.provider->findData(settings.oauthProvider));
         fields.clientId = settings.oauthClientId;
     };
     populate(m_imap, value.imap); populate(m_smtp, value.smtp);
@@ -249,9 +250,8 @@ void AccountDialog::setBusy(bool busy)
         fields->authentication->setEnabled(!busy);
         fields->encryption->setEnabled(!busy);
         fields->password->setEnabled(!busy && fields->authentication->currentData().toInt() != int(AuthenticationMode::OAuth2));
-        const bool oauth = fields->authentication->currentData().toInt() == int(AuthenticationMode::OAuth2);
-        fields->provider->setEnabled(!busy && oauth);
     }
+    m_provider->setEnabled(!busy);
     if (m_authorizing) m_buttons->button(QDialogButtonBox::Cancel)->setEnabled(true);
 }
 

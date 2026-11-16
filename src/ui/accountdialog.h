@@ -9,6 +9,7 @@ class QLabel;
 class QDialogButtonBox;
 class QPushButton;
 class QVBoxLayout;
+class QGroupBox;
 namespace smoothmail {
 class AccountDialog final : public QDialog
 {
@@ -53,6 +54,8 @@ private:
     QDialogButtonBox *m_buttons;
     QVBoxLayout *m_serverLayout = nullptr;
     QPushButton *m_test = nullptr;
+    QComboBox *m_provider = nullptr;
+    QGroupBox *m_oauthBox = nullptr;
     ServerFields m_smtp;
     ServerFields m_imap;
     QString m_id;
