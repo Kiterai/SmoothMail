@@ -6,7 +6,7 @@
 
 ## AUTH-02: Microsoft実アカウント
 
-- **対象仕様:** [OAuth対応先と認証・秘密情報保存](../tech.md)、[アカウント追加・編集](../ui.md)、[接続・更新動作](../behavior.md)。
+- **対象仕様:** [アカウント追加・編集とOAuth認証](../ui.md)、[接続・更新動作](../behavior.md)。旧tech.mdにあった実装構成・秘密情報保存の注意は[技術引継ぎ](../../agent/tech-implementation-notes.md)を参照する。
 - **事情:** Microsoftのアプリ登録・実試験用設定／本人認可の準備が未提供で、利用者指定でも後回し。対象アカウント種別、redirect URI、委任権限、組織側のIMAP／SMTP AUTH許可が外部設定に依存する。
 - **完了範囲:** Google／Microsoft向けOAuth実装。固定endpoint／scope、PKCE・state・callback検査、トークン更新・失効・保存失敗時の拒否、パスワードへの自動切替禁止。合成環境でMicrosoft向け要求scope等を検査。資料: [Microsoft設定・検証手順](../../agent/docs/oauth.md)。
 - **未完了範囲:** Microsoft実アカウントでの認可・認証・メール操作、OS保存・再起動復元、組織側制限による拒否時の動作の確認。

@@ -7,6 +7,7 @@
 - 通常の手順：`../../docs/usage.md`、`../../docs/dev/`。
 - 現在の未完了範囲：`../../spec/inprogress/README.md`。
 - 個別依存の構築・パッチ・認証設計：`dependencies.md`、`oauth.md`。
+- 旧tech.mdの実装構成・安全上の注意と情報の移管先：[技術引継ぎ](../tech-implementation-notes.md)。
 - 配布監査の根拠：`distribution-legal-audit.md`、`distribution-path-policy.md`、`clean-dependency-verification.md`。
 - 障害の再調査：`sync-diagnostics.md`、`crash-investigation-20261113.md`、`list-duplicates-20261114.md`。
 - 検証・配備の根拠：`gui-checks.md`、日付・変更名別の各記録。Google通常GUIと同期障害の利用者確認は `manual-validation-20261114.md`。
