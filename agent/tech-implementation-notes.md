@@ -26,7 +26,7 @@
 - Qt NetworkAuthはGPL/商用ライセンスのため、非GPL配布を維持する現構成では使用しない。Gmail API/Microsoft Graphによるメール操作SDKも使用しない。
 - access tokenはKIMAP/KSMTPのXOAUTH2認証へ渡す。パスワード認証への暗黙の切替を行わず、サーバが必要な認証機構を広告しない場合はtokenを送らず失敗させる。
 - 各社へのアプリ登録が必要。Googleのメールスコープは`https://mail.google.com/`で、公開形態に応じた検証・審査要件を確認する。Microsoftは`https://outlook.office.com/IMAP.AccessAsUser.All`、`https://outlook.office.com/SMTP.Send`、`offline_access`を使用し、組織側のSMTP AUTH制限も扱う。
-- redirect URI、更新・失効・保存失敗時の動作、外部設定と検証根拠は[OAuth資料](docs/oauth.md)に集約済み。未承認の操作方針は[OAuth暫定UI](../spec/provisional/oauth-controls.md)、Microsoft実認証の残件は[AUTH-02](../spec/inprogress/live-authentication.md)で管理する。
+- redirect URI、更新・失効・保存失敗時の動作、外部設定と検証根拠は[OAuth資料](docs/oauth.md)に集約済み。未承認の操作方針は[OAuth暫定UI](../spec/provisional/oauth-controls.md)を参照する。
 
 ## 変更済み依存の保守
 
@@ -45,7 +45,7 @@
 | Qt未導入WindowsでのTLS・Cyrus SASL・XOAUTH2配布／探索／認証、長いtokenと保存失敗 | [依存構築・合成試験記録](docs/dependencies.md)、[OAuth検証記録](docs/oauth.md) |
 | 日本語MIME・添付名・フォルダ名、UIDVALIDITY/UID・既読／削除同期、30秒更新時の応答性 | [GUI検証](docs/gui-checks.md)、[設定・移動](docs/settings-and-moves.md)、[大規模メール](docs/large-mailboxes.md)、[手動確認](docs/manual-validation-20261114.md) |
 | Google実認可・refresh・XOAUTH2、自己宛送受信・下書き読戻し、専用OSストア保存と別プロセス復元 | [OAuth検証記録](docs/oauth.md)。通常GUIでの登録・再起動・更新は[利用者の手動確認](docs/manual-validation-20261114.md)と区別する |
-| Microsoft実アカウント | 既存の[AUTH-02](../spec/inprogress/live-authentication.md)を維持。合成試験成功を実認証完了と扱わない |
+| Microsoft実アカウント | 利用者の正常ログイン報告と明示指示によりAUTH-02をクローズ。[OAuth資料](docs/oauth.md)に確認範囲を記載。合成試験やログイン成功を未実施の個別試験の証拠にしない |
 | 将来のHTML表示 | [未承認の設計案](../spec/provisional/html-rendering.md)。macOS/Linuxと同様、将来方針を現行仕様の未完了項目に数えない |
 
 バックアップには「Releaseおよび他OSの互換性は未検証」と、後段の「Debug/Release構築確認済み」が混在していた。また「Release配布と全ライセンス監査は未完了」は後続履歴で解消済みだった。

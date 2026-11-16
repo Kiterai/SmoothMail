@@ -1,6 +1,6 @@
 # Google / Microsoft OAuth
 
-認証実装・外部設定・手動プローブの引継ぎ資料です。過去の試験経緯を含みます。通常の登録操作は[利用方法](../../docs/usage.md)、未検証範囲は[未完了仕様](../../spec/inprogress/live-authentication.md)を優先してください。
+認証実装・外部設定・手動プローブの引継ぎ資料です。過去の試験経緯を含みます。通常の登録操作は[利用方法](../../docs/usage.md)、現在の未完了項目は[未完了一覧](../../spec/inprogress/README.md)を優先してください。
 
 Qt Network上にAuthorization Code + PKCE S256 + state検証を実装しています。ブラウザはシステムの外部ブラウザを使用し、callbackはIPv4 loopbackのランダムポートに限定します。暗号化・乱数・SHA-256はQtの機能を利用します。
 
@@ -29,6 +29,8 @@ set SMOOTHMAIL_MICROSOFT_CLIENT_ID=<Microsoft public clientのアプリID>
 失効後はアカウント行の右クリックから対象プロトコルのOAuthを再認可できます。アカウントIDとメールキャッシュは維持します。背景更新の失敗を理由に勝手にブラウザを起動しません。暫定UIの説明は`spec/provisional/oauth-controls.md`を参照してください。
 
 ## 検証
+
+**2026-11-17追記:** 個人用Microsoftの別アカウントで正常ログインしたとの利用者報告と、動作確認を完了扱いにする明示指示によりAUTH-02をクローズしました。元のアカウントではSMTP AUTH無効・IMAP接続拒否が継続し、アカウント側要因が疑われますが詳細原因は未確定です。Thunderbirdは正常ログインできた側を含む両アカウントで失敗しており、原因の比較根拠にはしません。今回の報告を実送受信・下書き・OS保存復元などの個別試験を新たに実施した証拠には拡張しません。経緯は[調査記録](microsoft-oauth-callback-20261117.md)を参照してください。
 
 **2026-11-14追記:** 通常GUIでのGoogle登録から再起動・更新までの確認待ち（AUTH-01）は、利用者本人の手動による正常動作確認報告で完了しました。[完了記録](manual-validation-20261114.md)を参照してください。以下は専用プローブ等の過去の検証経緯です。Microsoft実アカウント検証の完了を意味しません。
 

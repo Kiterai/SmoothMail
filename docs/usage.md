@@ -36,7 +36,7 @@ Windows版はZIPをすべて展開し、`launch.cmd`から起動します。`run
 
 Google OAuthでは、先に**設定 → システム設定**へDesktop app用のクライアントIDと必要なシークレットを登録します。Google Cloudで同意画面・メール用スコープ `https://mail.google.com/` を設定し、テスト中のアプリでは利用アカウントをテストユーザーへ追加してください。Gmailの例はIMAP4 `imap.gmail.com:993`、SMTP `smtp.gmail.com:465`、ともにSSL/TLS・OAuth2／Googleです。
 
-Microsoft OAuthにはpublic clientのアプリ登録（リダイレクトURI `http://localhost`）、メール用の委任権限とサーバ側のIMAP／SMTP AUTH許可が必要です。起動環境に `SMOOTHMAIL_MICROSOFT_CLIENT_ID` を設定します。Microsoftの実サービスでの動作確認は未完了です。
+Microsoft OAuthにはpublic clientのアプリ登録（「モバイル アプリケーションとデスクトップ アプリケーション」、リダイレクトURI `http://localhost`）、メール用の委任権限とサーバ側のIMAP／SMTP AUTH許可が必要です。起動環境に `SMOOTHMAIL_MICROSOFT_CLIENT_ID` を設定します。個人用Microsoft実アカウントでの正常ログインは利用者確認済みです。アカウント側の設定・制限により接続を拒否される場合があります。
 
 ## 画面の見方と操作
 

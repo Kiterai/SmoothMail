@@ -22,3 +22,10 @@
 - 外部ネットワーク無効のWindows Sandboxで、専用テスト配置のみread-only共有し、専用出力フォルダへログを回収。OAuth 8 passed、UI 11 passed、0 failed / 0 skipped、両EXEのexit code 0。guestの使い捨て資格情報ストアを使うローテーション試験も成功。ログは`build/auth02-sandbox-output/`。Sandboxは終了済み。ホスト資格情報・DB・アプリ登録情報は共有／変更していない。
 - 修正版起動フォルダ：`build/auth02-debug/start-smoothmail.cmd`。既存の配置・ランチャー・登録情報は未変更。Microsoft client IDを設定した起動環境から利用する。
 - Microsoft実認証・実メール操作・OS保存復元の完了を意味しない。AUTH-02は継続。
+
+## 後続の利用者確認とクローズ
+
+- アプリ登録をWebからデスクトップに変更し、`invalid_client`は解消。その後、元の個人用アカウントではSMTP AUTH無効とIMAP接続拒否が継続した。
+- 別の個人用MicrosoftアカウントではSmoothMailで正常ログインしたとの利用者報告を受領。元アカウントの詳細原因は未確定で、アカウント側要因が疑われる。
+- Thunderbirdはどちらのアカウントでも失敗したとの報告があり、今回の比較・原因確定の根拠には採用しない。
+- 利用者の「動作確認は完了としてマーク」の指示によりAUTH-02をクローズし、未完了仕様の項目と索引を削除。根拠は本人報告と受入判断であり、実送受信・下書き・OS保存復元などの新しい個別試験ログを取得したという意味ではない。
