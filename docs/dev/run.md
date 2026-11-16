@@ -24,7 +24,7 @@ python tools/stage_windows_release.py --app build/windows/Release/smoothmail.exe
 build\run-release\smoothmail.exe
 ```
 
-こちらも新しい空の配置先を使います。必要なCRTだけを再帰的に選択し、署名・x64・版・非改変を確認するビルド専用C++補助をMSVC/NMakeで内部構築します。配置だけでは配布用のライセンス・プライバシー検査は完了しません。実際に配布するZIPと、配布担当者の責務は[配布手順](distribution.md)を参照してください。
+こちらも新しい空の配置先を使います。必要なCRTだけを再帰的に選択し、署名・x64・版・非改変を確認するビルド専用C++補助をCMakeで内部構築します。依存rootを変更した場合は`--dependency-root`も指定し、提供原本から構築した環境では`--source-archives <アーカイブ置場>`も引き継いでください。必要なら`--asset-cache`／`--download-curl`を指定できます。配置だけでは配布用のライセンス・プライバシー検査は完了しません。実際に配布するZIPと、配布担当者の責務は[配布手順](distribution.md)を参照してください。
 
 ## 実行時の注意
 

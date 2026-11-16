@@ -117,13 +117,19 @@ def main():
     for name in ("app", "qt-bin", "dependency-bin", "native-bin", "sasl-dir", "crt-bin", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--dependency-root", type=Path, default=ROOT / "build/deps")
+    parser.add_argument("--source-archives", type=Path)
+    parser.add_argument("--asset-cache", type=Path)
+    parser.add_argument("--download-curl", type=Path)
     args = parser.parse_args()
     try:
         new_output(args.destination)
         crt_directory(args.crt_bin)
         if not args.app.is_file() or linked(args.app):
             raise ValueError("Missing or linked Release application")
-        _, verifier = tools(args.qt_bin.resolve().parent, args.dependency_root.resolve())
+        _, verifier = tools(args.qt_bin.resolve().parent, args.dependency_root.resolve(), {
+            "SMOOTHMAIL_SOURCE_ARCHIVES": args.source_archives,
+            "SMOOTHMAIL_ASSET_CACHE": args.asset_cache,
+            "SMOOTHMAIL_DOWNLOAD_CURL": args.download_curl})
         stage(args.app.resolve(), args.qt_bin.resolve(), args.dependency_bin.resolve(),
               args.native_bin.resolve(), args.sasl_dir.resolve(), args.crt_bin,
               args.destination, verifier)
