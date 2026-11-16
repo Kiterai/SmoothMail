@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.30)
-include("${CMAKE_CURRENT_LIST_DIR}/BuildWindowsDependencies.cmake")
 get_filename_component(repository "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+if(NOT DEFINED APPLICATION_SOURCE_DIR)
+    set(APPLICATION_SOURCE_DIR "${repository}")
+endif()
+get_filename_component(APPLICATION_SOURCE_DIR "${APPLICATION_SOURCE_DIR}" ABSOLUTE)
+if(NOT IS_DIRECTORY "${APPLICATION_SOURCE_DIR}" OR IS_SYMLINK "${APPLICATION_SOURCE_DIR}"
+        OR NOT EXISTS "${APPLICATION_SOURCE_DIR}/CMakeLists.txt" OR NOT EXISTS "${APPLICATION_SOURCE_DIR}/LICENSE")
+    message(FATAL_ERROR "APPLICATION_SOURCE_DIR must contain the application CMakeLists.txt and LICENSE.")
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/BuildWindowsDependencies.cmake")
 if(NOT DEFINED APPLICATION_BUILD)
     set(APPLICATION_BUILD "${repository}/build/windows/${CMAKE_BUILD_TYPE}")
 endif()
@@ -14,7 +22,7 @@ else()
 endif()
 set(gettext_tools "${SMOOTHMAIL_GETTEXT_TOOLS_BIN}")
 set(ENV{PATH} "${native_bin};${gettext_tools};${prefix}/bin;${Qt6_ROOT}/bin;$ENV{PATH}")
-execute_process(COMMAND "${CMAKE_COMMAND}" -S "${repository}" -B "${APPLICATION_BUILD}" -G Ninja
+execute_process(COMMAND "${CMAKE_COMMAND}" -S "${APPLICATION_SOURCE_DIR}" -B "${APPLICATION_BUILD}" -G Ninja
     "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
     "-DQt6_ROOT=${Qt6_ROOT}" "-DCMAKE_PREFIX_PATH=${prefix}"
     "-DDEPENDENCY_ROOT=${DEPENDENCY_ROOT}" "-DSMOOTHMAIL_NATIVE_ROOT=${SMOOTHMAIL_NATIVE_ROOT}"

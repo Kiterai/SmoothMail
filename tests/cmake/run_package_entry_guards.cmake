@@ -9,10 +9,11 @@ file(MAKE_DIRECTORY "${root}/legal" "${root}/missing-manifest"
 file(WRITE "${root}/legal/manifest.json" "{}")
 file(WRITE "${root}/empty-manifest/manifest.json" "")
 file(WRITE "${root}/not-a-directory" "not a directory")
-set(cases existing extension crt missing-legal missing-manifest directory-manifest empty-manifest file-legal)
+set(cases existing extension crt missing-legal missing-manifest directory-manifest empty-manifest file-legal missing-application)
 foreach(case IN LISTS cases)
     set(output "${root}/${case}.zip")
     set(legal "${root}/legal")
+    set(application "${repository}")
     set(expected "LEGAL_DIR must contain")
     if(case STREQUAL extension)
         set(output "${root}/not-a-zip.txt")
@@ -23,12 +24,16 @@ foreach(case IN LISTS cases)
         set(expected "CRT_BIN must")
     elseif(case STREQUAL file-legal)
         set(legal "${root}/not-a-directory")
+    elseif(case STREQUAL missing-application)
+        set(application "${root}/missing-application")
+        set(expected "APPLICATION_SOURCE_DIR must contain")
     else()
         set(legal "${root}/${case}")
     endif()
     execute_process(COMMAND "${CMAKE_COMMAND}" "-DQt6_ROOT=${root}/no-qt"
         "-DLEGAL_DIR=${legal}" "-DCRT_BIN=${root}/no-crt" "-DOUTPUT=${output}"
         "-DDEPENDENCY_ROOT=${root}/deps-${case}"
+        "-DAPPLICATION_SOURCE_DIR=${application}"
         -P "${repository}/cmake/PackageWindows.cmake"
         RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
     if(result STREQUAL "0" OR NOT "${out}\n${err}" MATCHES "${expected}")

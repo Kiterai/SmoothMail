@@ -26,6 +26,15 @@ file(SIZE "${LEGAL_DIR}/manifest.json" manifest_size)
 if(manifest_size EQUAL 0)
     message(FATAL_ERROR "LEGAL_DIR must contain a nonempty release manifest.json.")
 endif()
+get_filename_component(repository "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+if(NOT DEFINED APPLICATION_SOURCE_DIR)
+    set(APPLICATION_SOURCE_DIR "${repository}")
+endif()
+get_filename_component(APPLICATION_SOURCE_DIR "${APPLICATION_SOURCE_DIR}" ABSOLUTE)
+if(NOT IS_DIRECTORY "${APPLICATION_SOURCE_DIR}" OR IS_SYMLINK "${APPLICATION_SOURCE_DIR}"
+        OR NOT EXISTS "${APPLICATION_SOURCE_DIR}/CMakeLists.txt" OR NOT EXISTS "${APPLICATION_SOURCE_DIR}/LICENSE")
+    message(FATAL_ERROR "APPLICATION_SOURCE_DIR must contain the application CMakeLists.txt and LICENSE.")
+endif()
 if(NOT DEFINED CRT_BIN)
     file(TO_CMAKE_PATH "$ENV{VCToolsRedistDir}" redist)
     file(GLOB crt_candidates LIST_DIRECTORIES TRUE "${redist}/x64/Microsoft.VC*.CRT")
@@ -69,8 +78,8 @@ smoothmail_dependency_command("${CMAKE_COMMAND}"
     "-DSASL_DIR=${prefix}/bin/sasl2" "-DCRT_BIN=${CRT_BIN}"
     "-DDESTINATION=${stage}" -DCONFIGURATION=Release
     -P "${CMAKE_CURRENT_LIST_DIR}/StageWindowsRelease.cmake")
-smoothmail_dependency_command("${helper}" --package-with-policy "${stage}" "${LEGAL_DIR}" "${repository}" "${OUTPUT}"
+smoothmail_dependency_command("${helper}" --package-with-policy "${stage}" "${LEGAL_DIR}" "${APPLICATION_SOURCE_DIR}" "${OUTPUT}"
     "${CMAKE_CURRENT_LIST_DIR}/runtime-path-policy.json"
-    "${repository}" "${DEPENDENCY_ROOT}" "${job}" "${Qt6_ROOT}" "${CRT_BIN}" "${LEGAL_DIR}"
+    "${repository}" "${APPLICATION_SOURCE_DIR}" "${DEPENDENCY_ROOT}" "${job}" "${Qt6_ROOT}" "${CRT_BIN}" "${LEGAL_DIR}"
     "$ENV{USERPROFILE}" "$ENV{TEMP}" "$ENV{USERNAME}" "$ENV{COMPUTERNAME}")
 message(STATUS "Release ZIP published; privacy and coverage checks passed.")

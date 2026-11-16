@@ -2,7 +2,7 @@
 
 配布形式はWindows x64向けポータブルZIPです。展開した `SmoothMail/smoothmail.exe` を直接起動します。
 
-**2026-11-16、最終構成ZIPの動作・ライセンス内容及び表示・再構築性について利用者確認を受領し、配布物監査（DIST-02）は完了しました。** 対象成果物とSHA256は[完了記録](../../agent/license-display-final-zips.md)を参照してください。必要ファイルの正当な公開・配布とMSVC CRTの許諾表示は配布作業担当者の責務です。標準入口の最終入力による通し実行記録等の技術的残件は[未完了仕様](../../spec/inprogress/distribution.md)で区別して管理します。
+**2026-11-16、利用者による動作・ライセンス内容／表示・再構築性の確認と配布物監査（DIST-02）、及び最終入力による標準入口の通し実行・独立ZIP検査（DIST-01）が完了しました。** 利用者確認の対象は[成果物記録](../../agent/license-display-final-zips.md)、標準入口のコマンド・修正・生成物SHA256は[通し検証記録](../../agent/dist01-standard-entry-verification.md)を参照してください。必要ファイルの正当な公開・配布とMSVC CRTの許諾表示は配布作業担当者の責務です。公開を実施したとの記録ではありません。
 
 ## 1. 入力を準備する
 
@@ -95,6 +95,8 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-licenses -DOUTP
 依存取得・Release構築、アプリの配布用Release構築、DLL／プラグイン／CRT・ライセンス資料の収集、個人パス・Debug混入等の検査、ZIP化を行います。ZIP内では`SmoothMail/licenses/`に配置し、未改変の原文はその`originals/`以下に置きます。`LEGAL_DIR`／`SMOOTHMAIL_LEGAL_DIR`という既存の引数名は互換性のため維持しますが、格納先を`legal/`にはしません。CRTの場所を一意に決定できない場合は `-DCRT_BIN=.../VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` を追加します。既存ZIPは上書きしません。
 
 `LEGAL_DIR`には監査済みの生成物を実際に配置してください。通常ディレクトリと、空ではない通常ファイルの`manifest.json`がない場合は、依存取得を始める前に停止します。テンプレートだけ、又は`manifest.review.json`の改名は代用になりません。manifestの内容と参照文書は引き続きpackage helperで検査します。過去の`build/`を削除した場合は、保存した対応ソースZIP等から生成済みの`licenses/`を復元します。
+
+配布補助・依存構築の修正を利用しつつ、確認済みアプリのソースを維持する場合は、`-DAPPLICATION_SOURCE_DIR=<展開済み本体ソース>`を指定できます。省略時は従来どおり当リポジトリを構築します。アーカイブ展開ソースでは、その製品に対応する`-DSMOOTHMAIL_SOURCE_COMMIT=<commit>`を指定し、生成済み通知の対応ソースと一致させます。この指定は依存検査・配布用Release設定・個人情報検査を省略するものではありません。
 
 WinFlexBisonの構築は、原本とは別のパッチ適用済み作業コピーを使い、EXE・Bison dataを構築先へ出力します。上流の原本内出力によって再実行時のtree pin検査に失敗しないようにするもので、原本検査の除外・緩和は行いません。
 

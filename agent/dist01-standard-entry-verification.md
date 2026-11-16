@@ -1,5 +1,7 @@
 # DIST-01: 最終入力での標準配布入口の通し検証
 
+最終状態: **DIST-01完了。** 標準入口の通し実行と独立ZIP検査は成功。途中の停止・修正・再実行履歴は以下に保持する。
+
 2026-11-16。利用者から、標準単一コマンド入口の実行、問題があれば修正、成功した場合の完了マークを依頼された。DIST-02の利用者確認済み状態は維持する。公開・push・実メール利用・通常起動先の更新は行わない。
 
 ## 入力の現状
@@ -81,3 +83,48 @@ MSVC開発者環境を設定する`build/dist01-run-final.cmd`から上記を実
 パッチを余分な空白なしの表現へ整理した際、一度context不足で適用拒否となったが、前後contextを保持した表現へ訂正した。確定したパッチで同じ2回構築・原本保持・実行試験を再実行して成功した最終ログは`build/dist01-winflex-regression-checked.log`。適用検査やtree pinの条件は変更していない。
 
 確認済み旧版ソースの通し検証は、固定原本を復元して未改変の標準入口から再実行している（`build/dist01-short-final.log`、実行ID `70b5e41d90b54c19b57b1c06945795ea`）。旧版の生成物を無視するようtree pinを緩めたものではない。新実装の反復構築回帰と、旧版の最終入力での通し検証を区別する。
+
+## 最終段のパスポリシー照合と標準入口の更新
+
+短いパスでの旧版実行はCRT5件の署名・x64・原本一致・版`14.44.35211.0`を確認したが、最終監査で`Reviewed supplier binary changed`として停止した。既存ポリシー全件を実配置と照合し、相違は新規構築した`libsasl.dll`1件だけと確認した。
+
+- 新規DLL SHA256: `157ed60cd28db364c5a132e984424f6ae7b037c0570d6baeaf293091a78548a4`。
+- 許容対象は固定Cyrus SASL原本`win32/include/config.h`のPLUGINDIR／CONFIGDIR（`C:\CMU\bin\sasl2`）。当該原本は既知SHA256の公式tarからの構築入力である。
+- バイナリ内の許容範囲は従来と同じoffset 86208、length 16、範囲SHA256 `c32b6272a726c789340c8e0de23bba02d008f4fabe291cd0330d2e854d3dba7f`であることを再照合した。
+- `runtime-path-policy.json`ではDLL全体の識別ハッシュと由来説明だけを今回の実構築物へ更新した。範囲・長さ・内容ハッシュ・理由を変更せず、DLL名による包括除外や検査コードの緩和は行っていない。異なる次の構築物に無条件で適用できるポリシーとはしない。
+- 更新したポリシーを用い、実配置とライセンス一式の全体をhelperで再監査して成功した。作業者root・識別子は引き続き範囲内も含めて拒否する。
+
+確認済み製品ソースと新しい構築補助を混同しないため、現標準入口に`APPLICATION_SOURCE_DIR`を追加した。デフォルトは従来の当リポジトリ。明示した本体の`CMakeLists.txt`／`LICENSE`を依存取得前に検査し、本体構築とLICENSEコピーにそのrootを使う。個人情報検査の拒否rootにも当該パスを追加する。`BuildWindows.cmake`からも同じ指定を利用できる。
+
+これにより、未改変の製品ソース`build/d1/SmoothMail`（`aba52da`）と監査済み通知を保ちつつ、現リポジトリのCRT・WinFlexBison修正と再照合済みパスポリシーで標準入口を実行できる。入口の不正なアプリソース拒否を追加し、入口9ケースを含む配布補助11対象が成功した（`build/dist01-package-final-regression.log`）。source root切替に伴う今回生成cache3件は、同様に旧参照を確認して削除せず`-before-canonical-entry`へ退避した。旧版WinFlexBisonの生成物入りtreeも`-from-old-bootstrap`へ保存し、固定tarから原本をimportし直す。
+
+最終の実行入口は`build/dist01-run-canonical.cmd`。MSVC開発者環境設定後、次の1コマンドで全ステージを実行する。ログは`build/dist01-canonical-run.log`、実行ID `a071ea4ef607444397d33052b865d866`。
+
+```bat
+cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DAPPLICATION_SOURCE_DIR=build/d1/SmoothMail -DLEGAL_DIR=build/dist01-restored-input/SmoothMail-source/licenses -DSMOOTHMAIL_SOURCE_ARCHIVES=build/dist01-restored-input/SmoothMail-source/archives -DSMOOTHMAIL_SOURCE_COMMIT=aba52dac6b049d8cd2b941c54301d82fcb9eadce -DDEPENDENCY_ROOT=build/dist01-full/deps -DOUTPUT=build/dist01-full/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
+```
+
+## 最終の通し実行・独立検査結果
+
+上記の現標準入口が終了コード0で完走した。依存10ステージ、アプリの配布用Release構築、必要DLL／プラグイン配置、CRT5件の署名・x64・版・原本照合、全ライセンス対応と個人情報検査、ZIP生成まで成功した。初回に新しい専用prefixから構築した依存を、修正後の再実行では同じprefixで検証付き再利用した。最終回だけで空prefixから全依存を再構築した、という主張ではない。
+
+その後`build/dist01-verify-output.ps1`も終了コード0。標準helperとは独立した.NET ZIP readerで、358ファイル全体と357件のinventoryハッシュ、重複・不正パス・禁止ファイル、確認済みmanifestのコンポーネント一致、参照文書321件のUTF-8と入力ファイルとのSHA256一致、コンパイル用リソース入力との全バイト一致、EXEの製品ソース識別子`aba52da`を照合した。
+
+| 対象 | 結果 |
+| --- | --- |
+| ZIP | `build/dist01-full/SmoothMail-windows-x64.zip` |
+| ZIPサイズ | 18464505 bytes / 358 files |
+| ZIP SHA256 | `e9397eddef6150fa415dfcdb51bbb5e5dd8534eba54afd910924f6aac5997c25` |
+| EXE SHA256 | `028b00120e99f5d61cde749401892d3ee18b0178dbb7e2e9abb117e7141c09e0` |
+| 製品ソース | `aba52dac6b049d8cd2b941c54301d82fcb9eadce` |
+| 対応する本体tar SHA256 | `15021b8e2c8bb672dfe92d73f292da7d03a045b1ff215d63e538e8fecef7924b` |
+| 参照文書 | 321件（確認済み通知・原文と一致） |
+| CRT | 必要なRelease 5 DLL、FileVersion `14.44.35211.0` |
+
+機械可読結果は`build/dist01-full/verification.json`、独立検査ログは`build/dist01-final-verification.log`。成功した標準入口のログは`build/dist01-canonical-run.log`であり、先行する失敗ログや通常環境の全出力journalを成功ログへ書き換えてはいない。
+
+配布補助11対象（入口9ケース、CRT長パス構築／キャッシュ衝突拒否を含む）と、WinFlexBisonの実アーカイブからの2回構築・原本保持試験も成功した。検査の無効化、作業者情報の包括除外、DLLの事後書換えは行っていない。
+
+標準入口完走後、import済みの依存原本17 treeについても固定tree pinとの一致を再確認した（`build/dist01-pristine-final.log`）。Qt SDKの再構築は今回の対象ではない。利用者確認済みの動作・表示・再構築性は完了したDIST-02の記録を維持し、今回の技術残件を解消したためDIST-01を完了に移した。
+
+確認済み製品のアプリソース、ライセンス文面、提供された再圧縮ソースZIPは改変していない。新ZIPは標準生成経路の技術検証成果物であり、公開は行っていない。実メール・資格情報・通常アプリ保存領域は利用せず、利用者が既に完了した動作／表示／再構築性のレビューを再要求しない。公開・必要な同版ソース等の提供・CRT許諾表示はDIST-02完了時の方針どおり配布者の責務として維持する。

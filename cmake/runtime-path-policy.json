@@ -46,8 +46,8 @@
       "ranges":[{"offset":101280,"length":47,"sha256":"4e7a0d264592f2951b40c0bc6a8682b58e174eea49be654f14df8f5f8172ccac","reason":"supplier-pdb"}]
     },
     {
-      "file":"libsasl.dll","sha256":"ae8b47a6a9cf4e73ffcd05be69b88e72c686ea1ce3bef9201cbf439b27b0b091",
-      "origin":"Cyrus SASL 2.1.28 upstream win32/include/config.h PLUGINDIR/CONFIGDIR; reviewed 2026-11-14",
+      "file":"libsasl.dll","sha256":"157ed60cd28db364c5a132e984424f6ae7b037c0570d6baeaf293091a78548a4",
+      "origin":"Cyrus SASL 2.1.28 fixed archive rebuilt through standard Release bootstrap; win32/include/config.h PLUGINDIR/CONFIGDIR bytes and offset unchanged; reviewed 2026-11-16",
       "ranges":[{"offset":86208,"length":16,"sha256":"c32b6272a726c789340c8e0de23bba02d008f4fabe291cd0330d2e854d3dba7f","reason":"upstream-default"}]
     },
     {
