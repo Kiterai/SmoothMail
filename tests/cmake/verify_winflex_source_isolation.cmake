@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 3.30)
+foreach(required IN ITEMS Qt6_ROOT DEPENDENCY_ROOT SMOOTHMAIL_SOURCE_ARCHIVES CMAKE_MAKE_PROGRAM)
+    if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
+        message(FATAL_ERROR "Specify ${required}.")
+    endif()
+endforeach()
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/SourceArchives.cmake")
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../../cmake/dependencies.json" manifest)
+string(JSON commit GET "${manifest}" winflexbison commit)
+smoothmail_import_source_archive(winflexbison "${commit}" pristine)
+smoothmail_source_tree_digest("${pristine}" expected)
+foreach(round RANGE 1 2)
+    execute_process(COMMAND "${CMAKE_COMMAND}" "-DQt6_ROOT=${Qt6_ROOT}"
+        "-DDEPENDENCY_ROOT=${DEPENDENCY_ROOT}" "-DSMOOTHMAIL_SOURCE_ARCHIVES=${SMOOTHMAIL_SOURCE_ARCHIVES}"
+        "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" -DCMAKE_BUILD_TYPE=Release
+        -P "${CMAKE_CURRENT_LIST_DIR}/../../cmake/BuildWinFlexBison.cmake"
+        COMMAND_ERROR_IS_FATAL ANY)
+    smoothmail_source_tree_digest("${pristine}" actual)
+    if(NOT actual STREQUAL expected OR EXISTS "${pristine}/bin/Release")
+        message(FATAL_ERROR "WinFlexBison modified its pristine source.")
+    endif()
+endforeach()
+foreach(tool IN ITEMS win_flex win_bison)
+    execute_process(COMMAND "${DEPENDENCY_ROOT}/tools/winflexbison/${tool}.exe" --version
+        RESULT_VARIABLE result OUTPUT_QUIET ERROR_VARIABLE error)
+    if(NOT result STREQUAL "0")
+        message(FATAL_ERROR "Installed WinFlexBison tool failed: ${error}")
+    endif()
+endforeach()
+message(STATUS "WinFlexBison built twice, pristine source stayed pinned, and installed tools run.")

@@ -69,3 +69,15 @@ MSVC開発者環境を設定する`build/dist01-run-final.cmd`から上記を実
 ソースroot変更の初回再実行はpackage helperのCMake cacheが旧rootを参照していたため停止した（`build/dist01-short-run.log`）。今回新規生成したcacheのうち旧rootを参照する3ディレクトリだけを確認し、削除せず`-previous-source`へ退避した（package、native-runtime-probe、cyrus-sasl-xoauth2）。依存の原本・インストール済みDLL・既存の利用者成果物は削除・上書きしていない。
 
 `build/dist01-run-short.cmd`による再実行を開始した。引数は上記標準コマンドの`-P`だけを`build/d1/SmoothMail/cmake/PackageWindows.cmake`へ変更したものである。新規構築済みの検証付き依存と取得cacheを利用し、標準入口の全ステージを再度通過させる。実行IDは`9479a3323e454172bbf270281ad312a8`、ログは`build/dist01-short-retry.log`。ZIPと後続検査の成功まではDIST-01は未完了である。
+
+## WinFlexBisonの原本汚染と再構築回帰の修正
+
+短いパスでの再実行はWinFlexBison原本のtree pin不一致で停止した。初回の構築と既知tarから独立展開した原本を全ファイル比較し、上流CMakeが原本内`bin/Release`へEXE及びBison dataを32件追加していたことを確認した。既存原文の変更・欠落はなかった。元の生成物入りtreeは`-with-generated-output`として退避し、固定ハッシュ検査を行うimport経路で原本を再展開した。比較用の一度目のtar展開が作業ディレクトリへ出力された際は、今回作成した`winflexbison/`だけを直ちに専用比較ディレクトリへ移動した。利用者ファイルの削除はしていない。
+
+現リポジトリでは、`patches/winflexbison/out-of-source-output.patch`でDebug／Releaseの出力先を`CMAKE_CURRENT_BINARY_DIR`へ変更した。既存の`PreparePatchedSource`で別作業コピーにだけ適用し、原本Git／tar／import済みtreeは変更しない。構築先はパッチハッシュを含む別ディレクトリとし、旧CMake cacheを無理に再利用しない。
+
+実際の固定アーカイブとMSVCで`tests/cmake/verify_winflex_source_isolation.cmake`を実行した。2回連続の構築・インストール成功、両回の原本tree SHA256不変、原本への`bin/Release`非生成、インストール済みwin_flex／win_bisonの`--version`成功を確認した（`build/dist01-winflex-regression.log`）。
+
+パッチを余分な空白なしの表現へ整理した際、一度context不足で適用拒否となったが、前後contextを保持した表現へ訂正した。確定したパッチで同じ2回構築・原本保持・実行試験を再実行して成功した最終ログは`build/dist01-winflex-regression-checked.log`。適用検査やtree pinの条件は変更していない。
+
+確認済み旧版ソースの通し検証は、固定原本を復元して未改変の標準入口から再実行している（`build/dist01-short-final.log`、実行ID `70b5e41d90b54c19b57b1c06945795ea`）。旧版の生成物を無視するようtree pinを緩めたものではない。新実装の反復構築回帰と、旧版の最終入力での通し検証を区別する。
