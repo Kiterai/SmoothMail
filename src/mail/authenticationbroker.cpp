@@ -1,6 +1,7 @@
 #include "authenticationbroker.h"
 #include "storage/credentialstore.h"
 #include "storage/accountregistrar.h"
+#include "core/oauthconfiguration.h"
 #include <QPointer>
 
 namespace smoothmail {
@@ -21,8 +22,11 @@ void AuthenticationBroker::refresh(const ServerSettings &settings, const QString
     connect(client, &OAuthClient::tokensReady, this, [client, completion](const OAuthTokens &tokens) {
         client->deleteLater(); completion(tokens, {});
     });
+    const auto secret = m_googleSettings
+        ? oauthGoogleSecretForClient(*m_googleSettings, m_googleSecret, settings.oauthClientId)
+        : (m_googleSecret.isNull() ? oauthDefaults::googleSecret() : m_googleSecret);
     client->refresh(settings.oauthProvider, settings.oauthClientId, token,
-        settings.oauthProvider == QStringLiteral("google") ? (m_googleSecret.isNull() ? qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET") : m_googleSecret) : QString{});
+        settings.oauthProvider == QStringLiteral("google") ? secret : QString{});
 }
 
 void AuthenticationBroker::transient(const ServerSettings &settings, const QString &stored, TransientCompletion completion)

@@ -4,6 +4,8 @@
 #include <QHash>
 #include <functional>
 #include <QPointer>
+#include "core/systemsettings.h"
+#include <optional>
 
 namespace smoothmail {
 class CredentialStore;
@@ -18,7 +20,8 @@ public:
     void transient(const ServerSettings &settings, const QString &stored, TransientCompletion completion);
     void invalidate(const QString &accountId);
     void cancelAccount(const QString &accountId);
-    void setGoogleSecret(const QString &secret) { m_googleSecret = secret; }
+    void setGoogleSecret(const QString &secret) { m_googleSettings.reset(); m_googleSecret = secret; }
+    void setGoogleConfiguration(const SystemSettings &settings, const QString &secret) { m_googleSettings = settings; m_googleSecret = secret; }
 private:
     using TokensCompletion = std::function<void(const OAuthTokens &, const QString &)>;
     void refresh(const ServerSettings &settings, const QString &grant, TokensCompletion completion, const QString &accountId = {});
@@ -29,5 +32,6 @@ private:
     QHash<QString, quint64> m_cancelledBefore;
     QHash<QString, QList<QPointer<OAuthClient>>> m_refreshes;
     QString m_googleSecret;
+    std::optional<SystemSettings> m_googleSettings;
 };
 }

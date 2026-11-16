@@ -39,7 +39,9 @@ cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 | `DISTRIBUTION_URL` | バイナリと対応ソースを提供するHTTPSページ |
 | `BUILD_VERSION` | 対象ビルドの版情報 |
 
-`KEY=value`形式で、値全体の引用符は使用できます。シェル実行・変数展開は行いません。空値・未知キー・不正URL等は拒否します。アプリ資格情報用の設定と兼用せず、必要なら`--env-file <専用ファイル>`を指定してください。実`.env`は同梱しません。`.env.example`のURLはレビュー例示用です。
+`KEY=value`形式で、値全体の引用符は使用できます。シェル実行・変数展開は行いません。上記必須項目の空値・未知キー・不正URL等は拒否します。同じファイルに`SMOOTHMAIL_GOOGLE_CLIENT_ID`、`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`、`SMOOTHMAIL_MICROSOFT_CLIENT_ID`も指定できます（空値可）。これらはCMake構成時にアプリの既定OAuthクライアントとして埋め込まれ、起動時の環境変数では変更しません。`.env`がないビルドでは`.env.example`の未設定値を使い、利用者がシステム設定で独自登録を指定する必要があります。ライセンス生成ではOAuth値を文面・メタデータに出力しません。必要なら文面生成用に`--env-file <専用ファイル>`を指定してください。実`.env`は同梱しません。`.env.example`のURLはレビュー例示用です。
+
+Google Desktop用シークレットはネイティブアプリ登録の値であり、ビルド成果物から秘匿できる情報とは扱いません。PKCE・state・TLSの検証は引き続き必須です。設定変更後は再構成・再ビルドしてください。
 
 ```bat
 python tools/generate_licenses.py --edition windows-x64 --evidence build/legal-review --source-review build/source-review --output build/windows-licenses-review

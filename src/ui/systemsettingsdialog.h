@@ -5,6 +5,7 @@ class QSpinBox;
 class QLineEdit;
 class QPushButton;
 class QLabel;
+class QCheckBox;
 namespace smoothmail {
 class SystemSettingsDialog final : public QDialog {
     Q_OBJECT
@@ -21,7 +22,9 @@ private:
     SystemSettings m_original;
     QString m_secret;
     QSpinBox *m_page, *m_interval, *m_parallel;
-    QLineEdit *m_client, *m_password;
+    QLineEdit *m_client, *m_password, *m_microsoftClient;
+    QCheckBox *m_defaultGoogle, *m_defaultMicrosoft;
+    void updateInputs();
     QPushButton *m_save;
     QLabel *m_error;
     bool m_saving = false;

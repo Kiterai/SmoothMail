@@ -69,6 +69,7 @@ smoothmail_add_library(smoothmail_storage STATIC src/core/account.cpp src/core/a
     src/storage/credentialstore.cpp src/storage/credentialstore.h)
 smoothmail_add_sources(smoothmail_storage PRIVATE src/storage/downloadfile.cpp src/storage/downloadfile.h)
 smoothmail_include_directories(smoothmail_storage PUBLIC src)
+smoothmail_include_directories(smoothmail_storage PUBLIC "${PROJECT_BINARY_DIR}/generated")
 smoothmail_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy smoothmail_diagnostics Qt6::Core
     PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain smoothmail_mime smoothmail_oauth)
 smoothmail_target_defaults(smoothmail_storage)

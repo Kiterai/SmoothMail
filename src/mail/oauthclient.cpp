@@ -200,12 +200,12 @@ void OAuthClient::postToken(const QList<QPair<QString, QString>> &parameters)
         if (error != QNetworkReply::NoError || status != 200) {
             if (m_provider == QStringLiteral("google") && providerError == QStringLiteral("invalid_request")
                 && json.value("error_description").toString() == QStringLiteral("client_secret is missing.")) {
-                finishError(QStringLiteral("Google Desktopアプリのclient_secretが必要です。ダウンロードしたOAuthクライアント登録情報を確認し、SMOOTHMAIL_GOOGLE_CLIENT_SECRETをローカルで設定してください。秘密情報をチャットやログへ貼り付けないでください。")); return;
+                finishError(QStringLiteral("Google Desktopアプリのclient_secretが必要です。システム設定のGmail OAuth設定、またはビルド時の.envの既定クライアント設定を確認してください。秘密情報をチャットやログへ貼り付けないでください。")); return;
             }
             if (providerError == QStringLiteral("invalid_client")) {
                 finishError(m_provider == QStringLiteral("google")
                     ? QStringLiteral("Google OAuthアプリの登録情報が拒否されました (invalid_client)。Desktop app用のクライアントIDと、登録情報のclient_secretを確認してください。")
-                    : QStringLiteral("Microsoft OAuthアプリの登録情報が拒否されました (invalid_client)。アプリ登録が「モバイル アプリケーションとデスクトップ アプリケーション」で、リダイレクトURIが http://localhost であることと、SMOOTHMAIL_MICROSOFT_CLIENT_IDがアプリケーション（クライアント）IDに一致することを確認してください。public clientではクライアントシークレットは不要です。")); return;
+                    : QStringLiteral("Microsoft OAuthアプリの登録情報が拒否されました (invalid_client)。アプリ登録が「モバイル アプリケーションとデスクトップ アプリケーション」で、リダイレクトURIが http://localhost であることと、システム設定またはビルド時の.envのOutlookクライアントIDがアプリケーション（クライアント）IDに一致することを確認してください。public clientではクライアントシークレットは不要です。")); return;
             }
             if (providerError == QStringLiteral("unauthorized_client") || providerError == QStringLiteral("invalid_scope")
                 || providerError == QStringLiteral("invalid_request")) {

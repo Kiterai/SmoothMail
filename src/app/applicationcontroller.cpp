@@ -1,4 +1,5 @@
 #include "applicationcontroller.h"
+#include "core/oauthconfiguration.h"
 #include "ui/mainwindow.h"
 #include "ui/accountdialog.h"
 #include "ui/composedialog.h"
@@ -50,16 +51,18 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
         saved.sync();
         if (saved.status() != QSettings::NoError) m_window->statusBar()->showMessage(QStringLiteral("カラム設定を保存できませんでした。"));
     });
-    m_systemSettings = {settings.value(QStringLiteral("display/pageSize"), 100).toInt(), settings.value(QStringLiteral("refresh/seconds"), 30).toInt(), settings.value(QStringLiteral("google/clientId"), qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_ID")).toString()};
+    m_systemSettings = {settings.value(QStringLiteral("display/pageSize"), 100).toInt(), settings.value(QStringLiteral("refresh/seconds"), 30).toInt(), settings.value(QStringLiteral("google/clientId")).toString()};
     m_systemSettings.parallelUpdates = settings.value(QStringLiteral("refresh/parallelUpdates"), 4).toInt();
+    m_systemSettings.microsoftClientId = settings.value(QStringLiteral("microsoft/clientId")).toString();
+    m_systemSettings.useDefaultGoogleClient = settings.value(QStringLiteral("google/useDefault"), m_systemSettings.googleClientId.isEmpty()).toBool();
+    m_systemSettings.useDefaultMicrosoftClient = settings.value(QStringLiteral("microsoft/useDefault"), m_systemSettings.microsoftClientId.isEmpty()).toBool();
     if (!validSettings(m_systemSettings)) { m_systemSettings.pageSize = 100; m_systemSettings.refreshSeconds = 30; m_systemSettings.parallelUpdates = 4; }
     window->applySettings(m_systemSettings);
-    const bool configured = settings.value(QStringLiteral("google/configured"), false).toBool();
-    m_credentials->read(QStringLiteral("system/google-client-secret"), [this, configured](const QString &secret, const QString &error) {
+    m_credentials->read(QStringLiteral("system/google-client-secret"), [this](const QString &secret, const QString &error) {
         if (!error.isEmpty()) { m_window->statusBar()->showMessage(QStringLiteral("システム設定の秘密情報を読み込めません: ") + error); return; }
-        m_googleSecret = configured || !secret.isEmpty() ? secret : qEnvironmentVariable("SMOOTHMAIL_GOOGLE_CLIENT_SECRET");
+        m_googleSecret = secret;
         if (m_googleSecret.isNull()) m_googleSecret = QStringLiteral("");
-        m_authentication->setGoogleSecret(m_googleSecret); m_settingsReady = true;
+        m_authentication->setGoogleConfiguration(m_systemSettings, m_googleSecret); m_settingsReady = true;
     }, true);
     connect(window, &MainWindow::systemSettingsRequested, this, &ApplicationController::openSystemSettings);
     window->setPagedStorage(true);
@@ -224,7 +227,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             m_oauthProgress->setMinimumDuration(0); m_oauthProgress->setWindowModality(Qt::WindowModal); m_oauthProgress->show();
             connect(m_oauthProgress, &QProgressDialog::canceled, m_authorization, &OAuthClient::cancel);
             m_authorization->authorize(settings.oauthProvider, settings.oauthClientId, settings.user,
-                settings.oauthProvider == QStringLiteral("google") ? m_googleSecret : QString{});
+                settings.oauthProvider == QStringLiteral("google") ? oauthGoogleSecretForClient(m_systemSettings, m_googleSecret, settings.oauthClientId) : QString{});
             break;
         }
     });
@@ -365,17 +368,19 @@ void ApplicationController::openSystemSettings()
             if (!dialog) return;
             if (!error.isEmpty()) { dialog->saved(error); return; }
             QSettings settings;
-            const QStringList keys{QStringLiteral("display/pageSize"), QStringLiteral("refresh/seconds"), QStringLiteral("google/clientId"), QStringLiteral("google/configured"), QStringLiteral("refresh/parallelUpdates")};
+            const QStringList keys{QStringLiteral("display/pageSize"), QStringLiteral("refresh/seconds"), QStringLiteral("google/clientId"), QStringLiteral("google/configured"), QStringLiteral("refresh/parallelUpdates"), QStringLiteral("microsoft/clientId"), QStringLiteral("google/useDefault"), QStringLiteral("microsoft/useDefault")};
             QMap<QString, QVariant> previous;
             for (const auto &key : keys) if (settings.contains(key)) previous.insert(key, settings.value(key));
             settings.setValue(keys[0], value.pageSize); settings.setValue(keys[1], value.refreshSeconds); settings.setValue(keys[2], value.googleClientId); settings.setValue(keys[3], true);
-            settings.setValue(keys[4], value.parallelUpdates); settings.sync();
+            settings.setValue(keys[4], value.parallelUpdates);
+            settings.setValue(keys[5], value.microsoftClientId); settings.setValue(keys[6], value.useDefaultGoogleClient);
+            settings.setValue(keys[7], value.useDefaultMicrosoftClient); settings.sync();
             if (settings.status() != QSettings::NoError) {
                 for (const auto &key : keys) { if (previous.contains(key)) settings.setValue(key, previous.value(key)); else settings.remove(key); }
                 settings.sync();
                 m_credentials->write(QStringLiteral("system/google-client-secret"), previousSecret, [dialog](const QString &, const QString &rollbackError) { if (dialog) dialog->saved(rollbackError.isEmpty() ? QStringLiteral("設定ファイルを保存できませんでした。変更は適用していません。") : QStringLiteral("設定保存と秘密情報の復元に失敗しました。OS資格情報ストアを確認してください。")); }); return;
             }
-            m_systemSettings = value; m_googleSecret = secret; m_authentication->setGoogleSecret(secret); m_window->applySettings(value); dialog->saved({}); processNext();
+            m_systemSettings = value; m_googleSecret = secret; m_authentication->setGoogleConfiguration(value, secret); m_window->applySettings(value); dialog->saved({}); processNext();
         });
     });
     m_systemDialog->open();
@@ -459,9 +464,9 @@ void ApplicationController::openAccount(const QString &id)
     }
     connect(m_dialog, &AccountDialog::oauthRequested, this, [this](bool smtp, const QString &provider, const QString &hint) {
         m_authorizingSmtp = smtp;
-        m_authorizingClientId = provider == QStringLiteral("google") ? m_systemSettings.googleClientId : qEnvironmentVariable("SMOOTHMAIL_MICROSOFT_CLIENT_ID");
+        m_authorizingClientId = oauthClientId(m_systemSettings, provider);
         m_authorization->authorize(provider, m_authorizingClientId, hint,
-            provider == QStringLiteral("google") ? m_googleSecret : QString{});
+            provider == QStringLiteral("google") ? oauthGoogleSecret(m_systemSettings, m_googleSecret) : QString{});
     });
     connect(m_dialog, &AccountDialog::oauthCancelled, m_authorization, &OAuthClient::cancel);
     connect(m_dialog, &AccountDialog::testRequested, this,

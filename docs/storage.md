@@ -8,7 +8,7 @@ ZIPの展開先には本体・ライブラリ・ライセンス資料を配置�
 |---|---|
 | `%LOCALAPPDATA%\SmoothMail\SmoothMail\smoothmail.sqlite` | アカウントのメールアドレス・接続設定、フォルダ、取得済みメール原文（本文・添付を含む）、検索索引、既読・重要等の状態、未同期の変更、ダウンロード履歴 |
 | 同じディレクトリの`diagnostics\` | セッションごとの診断ログ、異常終了情報、実行中・異常終了を示すマーカー |
-| レジストリ`HKEY_CURRENT_USER\Software\SmoothMail\SmoothMail` | 表示件数・列の並び／幅／ソート、自動更新周期・並列数、Google OAuthクライアントID等の設定（QtのQSettings） |
+| レジストリ`HKEY_CURRENT_USER\Software\SmoothMail\SmoothMail` | 表示件数・列の並び／幅／ソート、自動更新周期・並列数、Gmail／Outlookの独自OAuthクライアントID・既定クライアント使用フラグ等の設定（QtのQSettings） |
 | OSの資格情報ストア（Windows資格情報マネージャー） | QtKeychain経由で保存するSMTP／IMAPのパスワード、OAuth更新トークンを含む認証情報、Google OAuthクライアントシークレット。サービス名は`SmoothMail` |
 | OSで設定された「ダウンロード」フォルダ | 閲覧画面から保存した添付ファイル。同名ファイルは上書きせず連番を付ける |
 

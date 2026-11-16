@@ -18,10 +18,15 @@ class LicenseTests(unittest.TestCase):
             good = "SOFTWARE_NAME=SmoothMail\nDISTRIBUTION_URL=https://download.invalid/mail\nBUILD_VERSION=1\n"
             path.write_text(good, encoding="utf-8")
             self.assertEqual(licenses.read_env(path)["SOFTWARE_NAME"], "SmoothMail")
+            path.write_text(good + "SMOOTHMAIL_GOOGLE_CLIENT_ID=fixture-client\n"
+                            "SMOOTHMAIL_GOOGLE_CLIENT_SECRET=not-to-be-printed\n"
+                            "SMOOTHMAIL_MICROSOFT_CLIENT_ID=\n", encoding="utf-8")
+            self.assertEqual(set(licenses.read_env(path)), licenses.KEYS)
             for text in (good + "UNKNOWN=not-to-be-printed\n", good + "BUILD_VERSION=2\n",
                          good.replace("https://download.invalid", "https://user:secret@host.invalid"),
                          good.replace("SmoothMail", "${SECRET}"), good.replace("SmoothMail", "a;b"),
-                         good.replace("BUILD_VERSION=1", "BUILD_VERSION="), good.replace("https:", "http:")):
+                         good.replace("BUILD_VERSION=1", "BUILD_VERSION="), good.replace("https:", "http:"),
+                         good + "SMOOTHMAIL_GOOGLE_CLIENT_ID=a\nSMOOTHMAIL_GOOGLE_CLIENT_ID=b\n"):
                 path.write_text(text, encoding="utf-8")
                 with self.assertRaises(ValueError) as caught:
                     licenses.read_env(path)

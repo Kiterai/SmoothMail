@@ -134,6 +134,24 @@ private slots:
         client.refresh(QStringLiteral("google"), QStringLiteral("id"), QStringLiteral("refresh"));
         QTRY_COMPARE(errors.size(), 2); QVERIFY(result.isEmpty());
     }
+    void brokerUsesConfiguredSecretWithoutProcessEnvironment()
+    {
+        FakeNetwork network;
+        AuthenticationBroker broker(nullptr, nullptr, &network);
+        SystemSettings configuration; configuration.googleClientId = QStringLiteral("custom-id");
+        configuration.useDefaultGoogleClient = false;
+        broker.setGoogleConfiguration(configuration, QStringLiteral("explicit-secret"));
+        ServerSettings server; server.authentication = AuthenticationMode::OAuth2;
+        server.oauthProvider = QStringLiteral("google"); server.oauthClientId = configuration.googleClientId;
+        qputenv("SMOOTHMAIL_GOOGLE_CLIENT_SECRET", "must-not-use-environment");
+        int completed = 0;
+        broker.transient(server, refreshGrant(QStringLiteral("dummy-refresh")),
+            [&](const QString &, const QString &, const QString &error) { QVERIFY(error.isEmpty()); ++completed; });
+        QTRY_COMPARE(completed, 1);
+        const QUrlQuery posted(QString::fromLatin1(network.bodies.last()));
+        QCOMPARE(posted.queryItemValue(QStringLiteral("client_secret")), QStringLiteral("explicit-secret"));
+        qunsetenv("SMOOTHMAIL_GOOGLE_CLIENT_SECRET");
+    }
     void reportsRegistrationErrorsWithoutEchoingProviderData()
     {
         FakeNetwork network; OAuthClient client(nullptr, &network);
@@ -154,7 +172,8 @@ private slots:
                         QVERIFY(error.contains(QStringLiteral("Microsoft")));
                         QVERIFY(error.contains(QStringLiteral("モバイル アプリケーションとデスクトップ アプリケーション")));
                         QVERIFY(error.contains(QStringLiteral("http://localhost")));
-                        QVERIFY(error.contains(QStringLiteral("SMOOTHMAIL_MICROSOFT_CLIENT_ID")));
+                        QVERIFY(error.contains(QStringLiteral("システム設定")));
+                        QVERIFY(error.contains(QStringLiteral(".env")));
                         QVERIFY(error.contains(QStringLiteral("クライアントシークレットは不要")));
                     }
                 } else if (code == QStringLiteral("invalid_client")) {
@@ -171,7 +190,8 @@ private slots:
             QTRY_COMPARE(errors.size(), 1);
             const auto error = errors.takeFirst().first().toString();
             if (provider == QStringLiteral("google")) {
-                QVERIFY(error.contains(QStringLiteral("SMOOTHMAIL_GOOGLE_CLIENT_SECRET")));
+                QVERIFY(error.contains(QStringLiteral("システム設定")));
+                QVERIFY(error.contains(QStringLiteral(".env")));
             } else {
                 QVERIFY(error.contains(QStringLiteral("invalid_request")));
                 QVERIFY(!error.contains(QStringLiteral("Google"), Qt::CaseInsensitive));

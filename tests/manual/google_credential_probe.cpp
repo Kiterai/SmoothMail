@@ -105,11 +105,9 @@ int runGoogleCredentialChild(QGuiApplication &app, const Account &account, const
         std::cout << "CREDENTIAL_CHILD_SETUP_INVALID" << std::endl;
         return 2;
     }
-    // AuthenticationBroker reads the Google Desktop secret from its process
-    // environment. This child loads it locally; it is never placed in argv.
-    qputenv("SMOOTHMAIL_GOOGLE_CLIENT_SECRET", secret.toUtf8());
     CredentialStore credentials(nullptr, service);
     AuthenticationBroker broker(&credentials);
+    broker.setGoogleSecret(secret); // Loaded locally; never passed in argv.
     MailService mail(plugins);
     QString imapToken;
     bool completed = false;

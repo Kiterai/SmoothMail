@@ -11,6 +11,8 @@ from stage_windows_release import crt_directory
 
 
 KEYS = {"SOFTWARE_NAME", "DISTRIBUTION_URL", "BUILD_VERSION"}
+OAUTH_KEYS = {"SMOOTHMAIL_GOOGLE_CLIENT_ID", "SMOOTHMAIL_GOOGLE_CLIENT_SECRET",
+              "SMOOTHMAIL_MICROSOFT_CLIENT_ID"}
 PLACEHOLDER = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*)@")
 ALLOWED = KEYS | {
     "EDITION", "COMPONENT_ROWS", "SOURCE_ROWS", "COMPONENT_NAME", "COMPONENT_VERSION",
@@ -34,20 +36,21 @@ def read_env(path):
         if not match:
             raise ValueError("Invalid license environment assignment")
         key, value = match.groups()
-        if key not in KEYS or key in values:
+        if key not in KEYS | OAUTH_KEYS or key in values:
             raise ValueError("Unknown or duplicate license environment key")
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
-        if not value or any(character in value for character in "\r\n\t;`<>\\#*[]@\"'") or "${" in value:
+        if (not value and key in KEYS) or any(character in value for character in "\r\n\t;`<>\\#*[]@\"'") or "${" in value:
             raise ValueError("Unsafe license environment value; expansion is not supported")
         values[key] = value
-    if values.keys() != KEYS:
+    if not KEYS <= values.keys():
         raise ValueError("Required license environment key is missing")
     if not re.fullmatch(r"https://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]+)?([/?][A-Za-z0-9._~/?&=%+-]*)?",
                         values["DISTRIBUTION_URL"]):
         raise ValueError("License distribution URL must be a plain HTTPS URL without credentials")
-    return values
+    # OAuth registration data must never enter notices or their metadata.
+    return {key: values[key] for key in KEYS}
 
 
 def render(text, values, final=False):

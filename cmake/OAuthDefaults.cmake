@@ -1,0 +1,21 @@
+# Read data at configure time, never from the launching process environment.
+include("${CMAKE_CURRENT_LIST_DIR}/LicenseTemplates.cmake")
+set(oauth_env "${PROJECT_SOURCE_DIR}/.env")
+if(NOT EXISTS "${oauth_env}")
+    set(oauth_env "${PROJECT_SOURCE_DIR}/.env.example")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/.env" "${oauth_env}")
+smoothmail_read_license_env("${oauth_env}")
+file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/generated")
+set(defaults "#pragma once\n#include <QString>\n#include <QByteArray>\nnamespace smoothmail::oauthDefaults {\n")
+foreach(pair IN ITEMS "googleClientId|SMOOTHMAIL_GOOGLE_CLIENT_ID"
+                      "googleSecret|SMOOTHMAIL_GOOGLE_CLIENT_SECRET"
+                      "microsoftClientId|SMOOTHMAIL_MICROSOFT_CLIENT_ID")
+    string(REPLACE "|" ";" parts "${pair}")
+    list(GET parts 0 name)
+    list(GET parts 1 key)
+    string(HEX "${${key}}" hex)
+    string(APPEND defaults "inline QString ${name}() { return QString::fromUtf8(QByteArray::fromHex(\"${hex}\")); }\n")
+endforeach()
+string(APPEND defaults "}\n")
+file(CONFIGURE OUTPUT "${PROJECT_BINARY_DIR}/generated/oauthdefaults.h" CONTENT "${defaults}" @ONLY)

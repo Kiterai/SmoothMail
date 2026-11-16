@@ -73,6 +73,7 @@ function(smoothmail_target_defaults target)
     endif()
 endfunction()
 
+include(cmake/OAuthDefaults.cmake)
 include(cmake/ApplicationTargets.cmake)
 include(cmake/LicenseResources.cmake)
 
@@ -111,6 +112,7 @@ if(BUILD_TESTING)
     target_link_libraries(tst_singleinstance PRIVATE Qt6::Core Qt6::Test)
     smoothmail_target_defaults(tst_singleinstance)
     add_test(NAME singleinstance COMMAND tst_singleinstance)
+    add_test(NAME oauth_defaults COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/run_oauth_defaults.cmake")
     add_executable(tst_aboutdialog tests/tst_aboutdialog.cpp)
     qt_add_resources(tst_aboutdialog aboutdialog_test_notices
         PREFIX "/licenses/test" BASE "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/licenses"

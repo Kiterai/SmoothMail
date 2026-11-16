@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QCheckBox>
 #include "ui/systemsettingsdialog.h"
+#include "core/oauthconfiguration.h"
 #include <QDialogButtonBox>
 #include <QScrollBar>
 #include <QMenu>
@@ -315,6 +316,44 @@ private slots:
         dialog.saved(QStringLiteral("fixture failure")); QVERIFY(page->isEnabled()); QCOMPARE(page->value(), 17); QVERIFY(button->isEnabled());
         page->setValue(100); QVERIFY(!button->isEnabled());
         buttons->button(QDialogButtonBox::Cancel)->click(); QCOMPARE(dialog.result(), int(QDialog::Rejected));
+    }
+    void oauthSettingsDefaultsAndCustomClients()
+    {
+        using namespace smoothmail;
+        SystemSettings settings;
+        qputenv("SMOOTHMAIL_MICROSOFT_CLIENT_ID", "ignored-process-value");
+        QCOMPARE(oauthClientId(settings, QStringLiteral("microsoft")), oauthDefaults::microsoftClientId());
+        qunsetenv("SMOOTHMAIL_MICROSOFT_CLIENT_ID");
+        SystemSettingsDialog dialog(settings, QStringLiteral("custom-secret"));
+        auto *google = dialog.findChild<QCheckBox *>(QStringLiteral("settingsDefaultGoogle"));
+        auto *microsoft = dialog.findChild<QCheckBox *>(QStringLiteral("settingsDefaultMicrosoft"));
+        auto *client = dialog.findChild<QLineEdit *>(QStringLiteral("settingsGoogleClient"));
+        auto *secret = dialog.findChild<QLineEdit *>(QStringLiteral("settingsGoogleSecret"));
+        auto *outlook = dialog.findChild<QLineEdit *>(QStringLiteral("settingsMicrosoftClient"));
+        auto *save = dialog.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save);
+        QVERIFY(google->isChecked()); QVERIFY(microsoft->isChecked());
+        QVERIFY(!client->isEnabled()); QVERIFY(!secret->isEnabled()); QVERIFY(!outlook->isEnabled());
+        google->setChecked(false); microsoft->setChecked(false);
+        QVERIFY(client->isEnabled()); QVERIFY(secret->isEnabled()); QVERIFY(outlook->isEnabled());
+        client->setText(QStringLiteral("custom-google")); outlook->setText(QStringLiteral("custom-microsoft"));
+        QSignalSpy saved(&dialog, &SystemSettingsDialog::saveRequested);
+        save->click(); QCOMPARE(saved.size(), 1);
+        settings = qvariant_cast<SystemSettings>(saved.first().first());
+        QVERIFY(!settings.useDefaultGoogleClient); QVERIFY(!settings.useDefaultMicrosoftClient);
+        QCOMPARE(oauthClientId(settings, QStringLiteral("google")), QStringLiteral("custom-google"));
+        QCOMPARE(oauthClientId(settings, QStringLiteral("microsoft")), QStringLiteral("custom-microsoft"));
+        QCOMPARE(oauthGoogleSecret(settings, saved.first()[1].toString()), QStringLiteral("custom-secret"));
+        dialog.saved(QStringLiteral("fixture failure"));
+        QVERIFY(client->isEnabled()); QVERIFY(secret->isEnabled()); QVERIFY(outlook->isEnabled());
+        google->setChecked(true); microsoft->setChecked(true);
+        QVERIFY(!client->isEnabled()); QVERIFY(!secret->isEnabled()); QVERIFY(!outlook->isEnabled());
+        QCOMPARE(client->text(), QStringLiteral("custom-google"));
+        QCOMPARE(secret->text(), QStringLiteral("custom-secret"));
+        QCOMPARE(outlook->text(), QStringLiteral("custom-microsoft"));
+        settings.useDefaultGoogleClient = true;
+        QCOMPARE(oauthGoogleSecret(settings, QStringLiteral("custom-secret")), oauthDefaults::googleSecret());
+        QCOMPARE(oauthGoogleSecretForClient(settings, QStringLiteral("custom-secret"), QStringLiteral("custom-google")), QStringLiteral("custom-secret"));
+        QCOMPARE(oauthGoogleSecretForClient(settings, QStringLiteral("custom-secret"), QStringLiteral("unknown-registration")), QString{});
     }
     void messageDropRejectsWholeMalformedBatch()
     {
