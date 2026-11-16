@@ -13,6 +13,7 @@
 #include <QScreen>
 #include <QStylePainter>
 #include <QStyleOptionButton>
+#include <QSignalBlocker>
 
 namespace smoothmail {
 namespace {
@@ -76,14 +77,18 @@ AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int
     form->addRow(QStringLiteral("パスワード"), fields.password);
     form->addRow(QStringLiteral("認証方式"), fields.authentication);
     form->addRow(QStringLiteral("暗号化"), fields.encryption);
-    fields.provider->addItem(QStringLiteral("Google"), QStringLiteral("google"));
-    fields.provider->addItem(QStringLiteral("Microsoft"), QStringLiteral("microsoft"));
-    form->addRow(QStringLiteral("OAuthプロバイダ"), fields.provider);
-    fields.provider->setEnabled(false);
-    connect(fields.authentication, &QComboBox::currentIndexChanged, this, [fields] {
+    fields.provider->setObjectName(name + QStringLiteral("OAuthProvider"));
+    fields.provider->addItem(QStringLiteral("Gmail"), QStringLiteral("google"));
+    fields.provider->addItem(QStringLiteral("Outlook"), QStringLiteral("microsoft"));
+    auto *oauth = new QGroupBox(QStringLiteral("OAuth"), box);
+    auto *oauthForm = new QFormLayout(oauth);
+    oauthForm->addRow(QStringLiteral("OAuthプロバイダ"), fields.provider);
+    form->addRow(oauth);
+    oauth->hide();
+    connect(fields.authentication, &QComboBox::currentIndexChanged, this, [fields, oauth] {
         const auto password = fields.authentication->currentData().toInt() != int(AuthenticationMode::OAuth2);
         fields.password->setEnabled(password);
-        fields.provider->setEnabled(!password);
+        oauth->setVisible(!password);
         if (!password) fields.password->clear();
     });
     const auto clearGrant = [this, name] { auto &server = name == QStringLiteral("SMTP") ? m_smtp : m_imap; server.oauthGrant.clear(); server.clientId.clear(); invalidateTest(); };
@@ -93,6 +98,13 @@ AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int
     for (auto *input : {fields.host, fields.user, fields.password}) connect(input, &QLineEdit::textChanged, this, &AccountDialog::invalidateTest);
     connect(fields.port, &QSpinBox::valueChanged, this, &AccountDialog::invalidateTest);
     connect(fields.encryption, &QComboBox::currentIndexChanged, this, &AccountDialog::invalidateTest);
+    connect(fields.encryption, &QComboBox::currentIndexChanged, this, [fields, name] {
+        const auto mode = static_cast<EncryptionMode>(fields.encryption->currentData().toInt());
+        // These IMAP values follow spec/ui.md, including its nonstandard TLS mapping.
+        fields.port->setValue(name == QStringLiteral("SMTP")
+            ? (mode == EncryptionMode::None ? 25 : mode == EncryptionMode::ImplicitTls ? 465 : 587)
+            : (mode == EncryptionMode::StartTls ? 993 : 143));
+    });
     m_serverLayout->addWidget(box);
     return fields;
 }
@@ -129,6 +141,16 @@ AccountDialog::AccountDialog(QWidget *parent)
     layout->addWidget(m_buttons);
     m_buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
     connect(m_email, &QLineEdit::textChanged, this, &AccountDialog::invalidateTest);
+    connect(m_email, &QLineEdit::textChanged, this, [this](const QString &email) {
+        const auto domain = email.trimmed().section(u'@', 1).toLower();
+        QString provider;
+        if (domain == QStringLiteral("gmail.com")) provider = QStringLiteral("google");
+        else if (QStringList{QStringLiteral("outlook.com"), QStringLiteral("outlook.jp"),
+                 QStringLiteral("hotmail.com"), QStringLiteral("hotmail.co.jp")}.contains(domain))
+            provider = QStringLiteral("microsoft");
+        if (!provider.isEmpty()) for (const auto *fields : {&m_imap, &m_smtp})
+            fields->provider->setCurrentIndex(fields->provider->findData(provider));
+    });
     connect(m_buttons, &QDialogButtonBox::rejected, this, &AccountDialog::reject);
     connect(m_buttons, &QDialogButtonBox::accepted, this, [this] {
         if (!m_testPassed || m_saving) return;
@@ -160,9 +182,10 @@ void AccountDialog::setAccount(const Account &value)
     m_id = value.id; m_email->setText(value.email);
     setWindowTitle(QStringLiteral("アカウントの編集"));
     const auto populate = [](ServerFields &fields, const ServerSettings &settings) {
-        fields.host->setText(settings.host); fields.port->setValue(settings.port); fields.user->setText(settings.user);
+        fields.host->setText(settings.host); fields.user->setText(settings.user);
         fields.authentication->setCurrentIndex(fields.authentication->findData(int(settings.authentication)));
         fields.encryption->setCurrentIndex(fields.encryption->findData(int(settings.encryption)));
+        fields.port->setValue(settings.port);
         fields.provider->setCurrentIndex(fields.provider->findData(settings.oauthProvider));
         fields.clientId = settings.oauthClientId;
     };

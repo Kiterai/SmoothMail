@@ -9,12 +9,52 @@
 #include <QtTest>
 #include <QPlainTextEdit>
 #include <QScreen>
+#include <QSpinBox>
 
 using namespace smoothmail;
 class AccountDialogTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void inputDefaultsAndOAuthVisibility()
+    {
+        AccountDialog dialog;
+        auto *email = dialog.findChild<QLineEdit *>(QStringLiteral("accountEmail"));
+        auto *imap = dialog.findChild<QComboBox *>(QStringLiteral("IMAP4OAuthProvider"));
+        auto *smtp = dialog.findChild<QComboBox *>(QStringLiteral("SMTPOAuthProvider"));
+        QVERIFY(imap->parentWidget()->isHidden());
+        for (const auto &domain : {"outlook.com", "outlook.jp", "hotmail.com", "hotmail.co.jp"}) {
+            email->setText(QStringLiteral("user@") + QLatin1String(domain));
+            QCOMPARE(imap->currentData().toString(), QStringLiteral("microsoft"));
+            QCOMPARE(smtp->currentData().toString(), QStringLiteral("microsoft"));
+            smtp->setCurrentIndex(0);
+            QCOMPARE(smtp->currentData().toString(), QStringLiteral("google"));
+        }
+        email->setText(QStringLiteral("user@GMAIL.COM"));
+        QCOMPARE(imap->currentData().toString(), QStringLiteral("google"));
+        email->setText(QStringLiteral("user@unknown.test"));
+        QCOMPARE(imap->currentData().toString(), QStringLiteral("google"));
+        auto *auth = dialog.findChild<QComboBox *>(QStringLiteral("IMAP4Authentication"));
+        auth->setCurrentIndex(auth->findData(int(AuthenticationMode::OAuth2)));
+        QVERIFY(!imap->parentWidget()->isHidden());
+        auth->setCurrentIndex(0);
+        QVERIFY(imap->parentWidget()->isHidden());
+        for (const auto &prefix : {QStringLiteral("IMAP4"), QStringLiteral("SMTP")}) {
+            auto *encryption = dialog.findChild<QComboBox *>(prefix + QStringLiteral("Encryption"));
+            auto *port = dialog.findChild<QSpinBox *>(prefix + QStringLiteral("Port"));
+            for (const auto mode : {EncryptionMode::None, EncryptionMode::StartTls, EncryptionMode::ImplicitTls}) {
+                encryption->setCurrentIndex(encryption->findData(int(mode)));
+                QCOMPARE(port->value(), prefix == QStringLiteral("SMTP")
+                    ? (mode == EncryptionMode::None ? 25 : mode == EncryptionMode::StartTls ? 587 : 465)
+                    : (mode == EncryptionMode::StartTls ? 993 : 143));
+                port->setValue(1234);
+                QCOMPARE(port->value(), 1234);
+            }
+        }
+        auto value = dialog.account(); value.imap.encryption = EncryptionMode::StartTls; value.imap.port = 8143;
+        dialog.setAccount(value);
+        QCOMPARE(dialog.account().imap.port, 8143);
+    }
     void editPreservesIdentityAndImapComesFirst()
     {
         AccountDialog dialog;
