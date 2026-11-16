@@ -7,6 +7,26 @@
   },
   "configurePresets": [
     {
+      "name": "debug",
+      "displayName": "Self-contained Windows Debug",
+      "generator": "NMake Makefiles",
+      "binaryDir": "${sourceDir}/build/dbg",
+      "cacheVariables": {
+        "SMOOTHMAIL_WORKFLOW": "ON",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Self-contained Windows Release and distribution",
+      "generator": "NMake Makefiles",
+      "binaryDir": "${sourceDir}/build/rel",
+      "cacheVariables": {
+        "SMOOTHMAIL_WORKFLOW": "ON",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "dev",
       "displayName": "Developer-supplied Qt SDK",
       "generator": "Ninja",
@@ -22,6 +42,8 @@
     }
   ],
   "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release" },
     { "name": "dev", "configurePreset": "dev" }
   ],
   "testPresets": [

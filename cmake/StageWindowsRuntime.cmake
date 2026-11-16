@@ -109,7 +109,7 @@ file(WRITE "${DESTINATION}/qt.conf" "[Paths]\nPrefix=.\nPlugins=.\n")
 file(WRITE "${DESTINATION}/start-smoothmail.cmd"
     "@echo off\r\nsetlocal\r\ncd /d \"%~dp0\"\r\nset \"QT_PLUGIN_PATH=%~dp0\"\r\nset \"QT_QPA_PLATFORM_PLUGIN_PATH=%~dp0platforms\"\r\nset \"QT_QPA_PLATFORM=windows\"\r\nset \"SMOOTHMAIL_SASL_PATH=%~dp0sasl2\"\r\nstart \"\" \"%~dp0${app_name}\"\r\n")
 file(WRITE "${DESTINATION}/DEVELOPMENT-ONLY.txt"
-    "SmoothMail Debug developer runtime. NOT a release/distribution package.\nContains non-redistributable Debug CRT for local developer/disposable tests only.\nOAuth client IDs must be provided in the launching environment. Never put passwords or refresh tokens here.\n")
+    "SmoothMail Debug developer runtime. NOT a release/distribution package.\nContains non-redistributable Debug CRT for local developer/disposable tests only.\nOAuth defaults are embedded at build time. Never put passwords or refresh tokens here.\n")
 file(GLOB_RECURSE staged_files LIST_DIRECTORIES false "${DESTINATION}/*")
 set(inventory "SHA256  relative path\n")
 foreach(file IN LISTS staged_files)

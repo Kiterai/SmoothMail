@@ -6,7 +6,7 @@
 python -m unittest discover -s tests/python -v
 ```
 
-配布入口の事前検査、ランタイム依存解決、原本・テンプレート・生成manifest、依存図変換を検査します。バッチ処理はビルドから実行しません。MSVC CRTの署名検証と最終ZIPの検証には、以下のネイティブ試験も実行してください。
+配布入口の事前検査、ランタイム依存解決、原本・テンプレート・生成manifest、コマンド長と統合処理、依存図変換を検査します。試験自体はビルドから自動実行しません。MSVC CRTの署名検証と最終ZIPの検証には、以下のネイティブ試験も実行してください。
 
 クラス依存解析を含めた試験は、文書生成環境の導入後に`python tools/generate_architecture.py --test`で実行します。通常のPythonに解析用依存がない場合、その試験だけはスキップします。
 
@@ -16,19 +16,19 @@ python -m unittest discover -s tests/python -v
 
 ```bat
 set PATH=C:\Qt\6.12.0\msvc2022_64\bin;%CD%\build\deps\install\Debug\bin;%CD%\build\deps\native\gnu-runtime-v1\x64-windows\debug\bin;%CD%\build\deps\native\x64-windows\tools\gettext\bin;%PATH%
-ctest --test-dir build/windows/Debug --output-on-failure
+ctest --test-dir build/dbg/app --output-on-failure
 ```
 
-GUI単体テストはoffscreenで動作します。OS資格情報への書込みや意図的クラッシュを伴うケースは、通常環境ではスキップします。成功件数だけでなくスキップ内容も確認してください。個別実行は `ctest --test-dir build/windows/Debug -R "^mainwindow$" --output-on-failure` のように指定します。
+GUI単体テストはoffscreenで動作します。OS資格情報への書込みや意図的クラッシュを伴うケースは、通常環境ではスキップします。成功件数だけでなくスキップ内容も確認してください。個別実行は `ctest --test-dir build/dbg/app -R "^mainwindow$" --output-on-failure` のように指定します。
 
 ## 依存・通信の追加テスト
 
 同じビルド先へオプションを追加して再構築します。
 
 ```bat
-cmake -S . -B build/windows/Debug -DSMOOTHMAIL_TEST_SASL=ON -DSMOOTHMAIL_TEST_KDE_BASE=ON -DSMOOTHMAIL_TEST_KIO=ON -DSMOOTHMAIL_TEST_MAIL=ON -DSMOOTHMAIL_TEST_NATIVE=ON
-cmake --build build/windows/Debug --parallel 4
-ctest --test-dir build/windows/Debug --output-on-failure
+cmake -S . -B build/dbg/app -DSMOOTHMAIL_TEST_SASL=ON -DSMOOTHMAIL_TEST_KDE_BASE=ON -DSMOOTHMAIL_TEST_KIO=ON -DSMOOTHMAIL_TEST_MAIL=ON -DSMOOTHMAIL_TEST_NATIVE=ON
+cmake --build build/dbg/app --parallel 4
+ctest --test-dir build/dbg/app --output-on-failure
 ```
 
 SASL機構、KDE API、GNU DLL再配置、合成IMAP／SMTP・TLS・OAuthを検査します。通信系はループバックTCPが必要です。実サービスの認証や実メールは使いません。制限されたシェルで接続が拒否される場合は、テストを成功扱いせず、ループバックの使える隔離環境で実行してください。
@@ -36,7 +36,7 @@ SASL機構、KDE API、GNU DLL再配置、合成IMAP／SMTP・TLS・OAuthを検�
 ## Windows SandboxでのGUI・資格情報テスト
 
 1. 上記に `-DSMOOTHMAIL_BUILD_GUI_SMOKE=ON` を追加して構築します。`tst_guismoke` はCTestには登録されません。
-2. [Debugの配置手順](run.md#デバッグ実行)で実行用フォルダを作り、テストEXE・対応するQt Test DLL・SDKの `plugins/platforms/qoffscreend.dll`（offscreenテスト用）を追加した**専用テストセット**を用意します。通常起動フォルダを上書きしません。
+2. [Debugの実行環境](run.md#デバッグ実行)を専用フォルダへコピーし、テストEXE・対応するQt Test DLL・SDKの `plugins/platforms/qoffscreend.dll`（offscreenテスト用）を追加した**専用テストセット**を用意します。通常起動フォルダを上書きしません。
 3. 外部通信を無効にした使い捨てWindows Sandboxへコピーします。実メール、登録JSON、ホストのDB・資格情報は共有しません。ログ回収用の専用フォルダだけを書込み可能にします。
 4. ゲスト内で次を実行します（配置例は `C:\MailTest`、回収先は `C:\TestOutput`）。
 
@@ -99,7 +99,7 @@ WinFlexBisonの反復構築と原本保持を確認する場合は、`verify_win
 
 ### 生成済みライセンス資料
 
-[文面生成](distribution.md#文面の生成と確認)後、Qt Release DLLをPATHへ追加して実行します。
+低水準の`tools/generate_licenses.py`でレビュー草案を生成した場合、Qt Release DLLをPATHへ追加して実行します。標準の[配布生成](distribution.md#生成コマンド)は草案ではなく配布用資料を生成するため、この草案専用試験とは区別してください。
 
 ```bat
 cmake -DDRAFT=build/windows-licenses-review -DEVIDENCE=build/legal-review -DHELPER=build/package-tests/smoothmail_package.exe -P tests/cmake/verify_windows_legal_draft.cmake

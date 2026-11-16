@@ -41,7 +41,7 @@ class DocumentStructureTests(unittest.TestCase):
         expected = {
             "build.md": ["準備・要件", "デバッグビルド", "リリースビルド"],
             "run.md": ["デバッグ実行", "リリースビルド実行"],
-            "distribution.md": ["最終配布物の生成・検証", "配布手順", "ライセンス注意事項"],
+            "distribution.md": ["最終配布物の生成", "ライセンス注意事項", "配布手順"],
         }
         for name, headings in expected.items():
             with self.subTest(document=name):

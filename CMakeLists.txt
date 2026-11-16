@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 
+option(SMOOTHMAIL_WORKFLOW "Use the self-contained Windows build workflow" OFF)
+if(SMOOTHMAIL_WORKFLOW)
+    project(SmoothMailWorkflow LANGUAGES NONE)
+    include(cmake/BuildWorkflow.cmake)
+    return()
+endif()
+
 option(SMOOTHMAIL_DOCUMENTATION_ONLY "Inspect application declarations without compilers or an SDK" OFF)
 if(SMOOTHMAIL_DOCUMENTATION_ONLY)
     project(SmoothMail VERSION 0.1.0 LANGUAGES NONE)

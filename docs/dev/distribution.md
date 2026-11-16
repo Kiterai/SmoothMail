@@ -1,121 +1,83 @@
 # Windows版の配布
 
-Windows x64向けのポータブルZIPを配布します。展開した`SmoothMail/launch.cmd`から起動します。本体・DLL・プラグインは`runtime/`へまとめます。`README.md`と`storage.md`はそれぞれ`docs/usage.md`・`docs/storage.md`をZIP直下に収録します。以下はリポジトリルートのMSVC x64開発者コマンドプロンプトで実行してください。
+Windows x64向けポータブルZIPと対応ソース一式を生成します。**生成と監査・公開は別の工程です。** 生成前の手動ライセンス承認やmanifest編集は不要ですが、生成成功だけでは公開できません。
 
-## 最終配布物の生成・検証
+## 最終配布物の生成
 
-### 入力を準備する
+### .envの設定
 
-[ビルド要件](build.md)に加え、次を用意します。
-
-- 追跡ファイルに変更がない、配布対象のGitコミット。
-- Qt SDKのRelease DLL・プラグインと、MSVC 2022のx64 Release再配布用CRT。
-- 対象バイナリと対応するソース一式、レビュー済みの生成ライセンス資料と`manifest.json`。
-
-### 原文・対応ソースの収集
-
-依存を構築し、[Release配置](run.md#リリースビルド実行)を作成した後に実行します。各出力先は新しいディレクトリにしてください。
-
-```bat
-python tools/collect_sources.py --fetch-qt --output build/deps/qt-license-sources
-python tools/collect_legal.py --stage build/run-release --output build/legal-review
-python tools/collect_sources.py --output build/source-review
-cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
-```
-
-依存rootを変更した場合は収集にも`--dependency-root <依存root>`を指定します。提供済み原本から収集する場合は`--source-archives <アーカイブ置場>`を指定し、固定ハッシュを照合します。ソース収集はHEADを使うため、配布対象の変更は先にコミットしてください。[提供アーカイブからの再構築](build.md#リリースビルド)も確認します。
-
-収集結果はレビュー用です。原文・著作権・変更差分・再構築／DLL差替え・バイナリとの対応を確認してください。`review_only`資料は改名しても配布入力として拒否されます。
-
-### 文面の生成と確認
-
-テンプレートは[`licenses/common/`](../../licenses/common/)と[`licenses/editions/windows-x64/`](../../licenses/editions/windows-x64/)で管理します。英語`filename.md`が正本、日本語`filename.ja.md`は常体の訳文です。第三者原文は未改変のまま`originals/`へ保持します。
-
-`.env.example`を参考に、Git管理外のUTF-8の`.env`へ次を設定します。
+[ビルド要件](build.md)を満たすクリーンなcloneで、Git管理外のUTF-8の`.env`を作成します。`.env.example`を参考に次を記述してください。
 
 | 変数 | 内容 |
 |---|---|
-| `SOFTWARE_NAME` | 表示するソフトウェア名称 |
-| `DISTRIBUTION_URL` | バイナリと対応ソースを提供するHTTPSページ |
-| `BUILD_VERSION` | 対象ビルドの版情報 |
+| `SOFTWARE_NAME` | ソフトウェア表示名（必須） |
+| `DISTRIBUTION_URL` | バイナリと対応ソースを提供する実際のHTTPSページ（必須、例示URL不可） |
+| `BUILD_VERSION` | 配布版のバージョン文字列（必須） |
+| `SMOOTHMAIL_QT_ROOT` | 既存MSVC Qt SDKのパス（必須） |
+| `SMOOTHMAIL_DEPENDENCY_ROOT` | 依存保存先。空値なら`build/deps` |
+| `SMOOTHMAIL_CRT_BIN` | 正規の`VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT`。空値ならMSVC開発者環境から探索 |
+| `SMOOTHMAIL_DOWNLOAD_CURL` | 制限環境で使うOpenSSL対応curlの絶対パス。空値ならCMakeのHTTPS取得 |
+| `SMOOTHMAIL_SOURCE_ARCHIVES` | 提供済み依存原本アーカイブの置場。通常は空値で自動取得 |
+| `SMOOTHMAIL_ASSET_CACHE` | 外部ビルドツール取得物の再利用先。通常は空値 |
+| `SMOOTHMAIL_SOURCE_COMMIT` | Gitのない展開ソースを低水準入口で再構築する際の識別子。通常は空値。配布生成では検証したHEADを使用 |
+| `SMOOTHMAIL_GOOGLE_CLIENT_ID` | Google Desktop用OAuthクライアントID。空値可 |
+| `SMOOTHMAIL_GOOGLE_CLIENT_SECRET` | Google Desktop用登録シークレット。空値可 |
+| `SMOOTHMAIL_MICROSOFT_CLIENT_ID` | Microsoftネイティブアプリ用OAuthクライアントID。空値可 |
 
-`KEY=value`形式で、値全体の引用符は使用できます。シェル実行・変数展開は行いません。上記必須項目の空値・未知キー・不正URL等は拒否します。同じファイルに`SMOOTHMAIL_GOOGLE_CLIENT_ID`、`SMOOTHMAIL_GOOGLE_CLIENT_SECRET`、`SMOOTHMAIL_MICROSOFT_CLIENT_ID`も指定できます（空値可）。これらはCMake構成時にアプリの既定OAuthクライアントとして埋め込まれ、起動時の環境変数では変更しません。`.env`がないビルドでは`.env.example`の未設定値を使い、利用者がシステム設定で独自登録を指定する必要があります。ライセンス生成ではOAuth値を文面・メタデータに出力しません。必要なら文面生成用に`--env-file <専用ファイル>`を指定してください。実`.env`は同梱しません。`.env.example`のURLはレビュー例示用です。
+`KEY=value`形式で値全体の引用符は使用できます。パス区切りには`/`を使います。シェル実行・変数展開は行わず、未知キー・重複キー・不正値は拒否します。OAuth値は本体の既定設定へ埋め込みますが、通知・メタデータには出力しません。`.env`自体は同梱しません。Google Desktop用シークレットは成果物から秘匿できる情報とは扱いません。OAuthが空値の場合は利用者による独自登録が必要です。変更後は再構成・再ビルドします。
 
-Google Desktop用シークレットはネイティブアプリ登録の値であり、ビルド成果物から秘匿できる情報とは扱いません。PKCE・state・TLSの検証は引き続き必須です。設定変更後は再構成・再ビルドしてください。
+### 生成コマンド
 
-```bat
-python tools/generate_licenses.py --edition windows-x64 --evidence build/legal-review --source-review build/source-review --output build/windows-licenses-review
-```
-
-草案表示を除いた最終表記を確認する場合は、次も指定します。
-
-- `--final-review`
-- `--stage <対象Release配置>`
-- `--application-build <対象アプリ構築先>`
-- `--crt-bin <正規のx64 Release CRT>`
-- `--crt-verifier <構築済みsmoothmail_crt_verify.exe>`
-
-CRT検証補助はRelease配置時にCMakeで構築されます。パスは`<依存root>/build/tools/package/crt-verifier.txt`に記録されます。必要なら`cmake -DQt6_ROOT=<Qt SDK> -DDEPENDENCY_ROOT=<依存root> -P cmake/BuildDistributionTools.cmake`で構築できます。
-
-全配置ファイルのハッシュ・コンポーネント割当・ソース識別子とCRTの由来／版を検査します。このモードでも未承認の`manifest.review.json`を維持し、配布用入力へ自動昇格しません。
-
-生成物の`README.ja.md`から文面・版・URL・対応ソースをレビューします。生成文書の連続空白行は1行に整理し、第三者原文には整形を適用しません。本文・原文・英日文書をmanifestへ登録し、リンク先の自動収集に依存しない構成にします。必要なら`--qt-sbom-review <JSON>`で監査補助資料を添付できます。
-
-レビュー後は別ディレクトリに配布用`manifest.json`を用意します。形式は`schema: 1`と`components`を持ち、`review_only`を含まないものです。各コンポーネントの名称・版・対象ファイル・原文・ソース通知を登録し、全同梱DLLを一意に割り当てます。参照文書は空でないUTF-8テキストとします。
-
-名称・URL・版・構成・文面を変更した場合は再生成・再レビューしてください。配布処理には確認済みの資料を渡し、ZIPとダイアログへ同じ文書を収録します。開発経緯の`THIRD_PARTY_NOTICES.md`は生成済み通知の代用にしません。
-
-### 最終ZIPを生成する
+リポジトリルートの **x64 Native Tools Command Prompt for VS 2022** で実行します。
 
 ```bat
-python tools/package_windows.py --qt-root C:/Qt/6.12.0/msvc2022_64 --legal-dir C:/release-licenses --output dist/SmoothMail-windows-x64.zip
+python tools/build.py dist
 ```
 
-依存取得・Release構築、アプリ構築、DLL／プラグイン／CRT・通知の収集、個人情報・Debug混入・ライセンス対応の検査、ZIP化を行います。通知は`SmoothMail/licenses/`、本体は`SmoothMail/runtime/Smoothmail.exe`、全ファイルのハッシュは`SmoothMail/runtime-sha256.txt`へ配置します。`README.md`には対象本体ソースの`docs/usage.md`をそのまま収録します。既存ZIPは上書きしません。
+この26文字の単一コマンドは[Releaseビルド](build.md#リリースビルド)と同じpreset・処理を使います。依存取得・Release構築・DLL／プラグイン／CRT配置・原文／対応ソース収集・英日通知生成・通知埋込み再リンク・自動検査・ZIP化・実行環境の展開照合までを行います。手動でのツール追加導入、資料生成、承認manifest作成やZIP展開は不要です。
 
-`--legal-dir`の通常ディレクトリ内に空ではない通常ファイルの`manifest.json`がない場合は、依存取得前に停止します。保存先を削除した場合は、保管したソースZIP等から生成済み`licenses/`を復元してください。
+出力：
 
-主な追加指定：
+- `build/rel/artifacts/SmoothMail-windows-x64.zip`：本体・ランタイム・通知・利用案内。
+- `build/rel/artifacts/sources/`：本体と依存の対応ソース原本23アーカイブ、識別子・ハッシュの一覧、再構築案内。本体ソースにパッチ・構築入力・通知テンプレート・再構築／差替え手順を含みます。
+- `build/rel/artifacts/SHA256SUMS.txt`：ZIPと対応ソース資料のSHA256。
+- `build/rel/artifacts/AUDIT-REQUIRED.txt`：生成と公開承認が別である旨の注意。
+- `build/rel/run/`：ZIPと全ファイルが同一の、追加作業なく起動できる実行環境。
+- `build/rel/jobs/<識別子>/`：生成資料と検査証拠。`final-evidence/`は通知埋込み後のランタイムに対応します。作業用証拠はそのまま公開しません。
 
-| 引数 | 用途 |
-|---|---|
-| `--crt-bin` | 自動探索できない場合の`VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` |
-| `--dependency-root` | 依存の構築・保存先 |
-| `--application-source-dir` | 当リポジトリとは別の、確認済み本体ソース |
-| `--source-archives` | 提供済み依存アーカイブのディレクトリ |
-| `--source-commit` | アーカイブ展開した本体のソース識別子 |
-| `--asset-cache` | 検証済み外部ビルドツール取得物 |
-| `--download-curl` | 制限環境で使う[OpenSSL対応curl](build.md#windowsの制限付きサンドボックスでのhttps取得)の絶対パス |
+ZIPの`SmoothMail/`直下には`licenses/`、`runtime/`、`README.md`、`storage.md`、`launch.cmd`、`runtime-sha256.txt`を収録します。READMEとstorageは`docs/usage.md`・`docs/storage.md`と同じ内容です。通知はダイアログにも同一原文・文面を埋め込みます。テンプレートは`licenses/common/`と`licenses/editions/windows-x64/`で管理し、英語を正本、日本語を訳文とします。第三者原文は未改変で保持します。
 
-本体ソース・コミット・生成済み通知の対応を一致させてください。短い構築パスを推奨します。
+自動処理は原本ハッシュ、構成の不足・重複、対応ソース、CRTの署名・x64・版・原本一致、Debug混入、通知対応、既知の作業者パス等を検査します。構成・ハッシュ・パスの不一致では停止し、検査無効化やDLLの事後書換えは行いません。供給元パスの例外も`cmake/runtime-path-policy.json`の限定されたハッシュ・範囲だけです。再実行では新しいジョブへ生成し、前回成功出力を退避して保持します。
 
-CRTは通常／遅延importと推移依存から必要なRelease DLLだけを選択し、署名・x64・版・原本一致を検査します。署名確認はローカルの信頼情報を使い、オンライン失効確認の代用にはなりません。動的ロードする追加DLLやプラグインは機能試験でも確認します。
-
-入力やハッシュ・パスの不一致で停止した場合は原因を確認し、検査を無効化したりDLLを事後書換えしたりしないでください。供給元由来の情報は`cmake/runtime-path-policy.json`の全体ハッシュと許容範囲に一致するものだけを認め、作業者情報は範囲内でも拒否します。
-
-### 成果物を検証する
-
-1. 新しいフォルダへZIPを展開し、`runtime-sha256.txt`の全ファイルを照合する。
-2. PDB、Debug CRT、DB、ログ、資格情報、登録JSON、ビルドキャッシュ・補助ツールの非混入と通知の対応を確認する。
-3. 開発ツール・Qt SDKのないWindowsで、空白を含むパスと開発用PATHなしで`launch.cmd`を別の作業ディレクトリから起動する。`runtime/Smoothmail.exe`の直接起動も確認する。
-4. 許可されたテストアカウントで登録・再起動・更新・閲覧・送受信・下書き・添付・トレイ終了を確認する。
-5. 対応ソースからの再構築・改変DLL差替え、オフライン通知表示、版・コミット・同梱通知と埋込み文書の一致を確認する。
-
-[合成テスト](test.md)の成功だけで実サービス・実配布物の確認を代替しません。
-
-## 配布手順
-
-検証済みの同じ版のバイナリ・対応ソース一式・各SHA256・通知・再構築／差替え手順を、生成済み通知のURLと一致する同じページへ掲載します。公開後に取得できることを確認してください。
+`tools/generate_licenses.py`の既定動作は引き続きレビュー草案のみです。統合入口は`--final-review --distribution`相当の完全性検査を伴う生成を行い、配布用`manifest.json`を新規作成します。これは法的承認ではありません。草案の改名や検査回避による承認は行いません。従来の`tools/package_windows.py --legal-dir ...`は既存資料向けの低水準入口であり、新規cloneからの標準手順ではありません。
 
 ## ライセンス注意事項
 
-公開・正当な配布と、次の事項の実施は配布作業担当者の責務です。
+### 生成後・公開前に配布担当者が行う監査
 
-- 生成済み通知のURLと一致する同じページに、同じ版のバイナリ・対応ソース一式・各SHA256・通知・再構築／差替え手順を掲載し、公開後に取得を確認する。未履行の書面オファーや後日ソース公開を前提にバイナリだけを先行公開しない。
-- Qtはオープンソース条件を採用する。本体MIT、Qt／KDE等と内蔵第三者コードの条件を区別し、原文・著作権・必要な謝辞を保持する。
-- 変更済み依存の原本・パッチ・変更通知・構築入力を対応ソースへ含める。LGPL等の改変・差替え・必要なデバッグの権利を妨げず、必要なInstallation Informationも確認する。
-- 必要なMSVC Release CRTだけを未改変で同梱する。MSVC 2022の正当な利用、適用契約・REDIST対象の確認／遵守、CRTのセキュリティ更新を担う。
-- **ダウンロードした時点で同梱MSVC CRTの利用許諾条件に同意したとみなす旨を、ダウンロードページの利用者の目につく位置へ表示する。** 表示の実施と適用契約への適合性も配布者が確認する。
-- Microsoft CRTをMITやLGPLへ再ライセンスせず、CRTの条件を他のOSSの改変・差替え権へ一括適用しない。[公式REDIST一覧](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)、[VS 2022使用許諾条項](https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/)を確認する。
+1. 新しい展開先でハッシュ、全DLL・プラグインのコンポーネント割当、原文・著作権・謝辞・変更通知、英日文面、名称・版・URLを照合する。PDB、Debug CRT、DB、ログ、資格情報、登録JSON、キャッシュ、作業者の個人情報・PC内情報の非混入を確認する。
+2. Qt／KDEと内蔵第三者コードのライセンス条件を確認する。本体MITと配布物全体の条件は区別する。KIOCoreのGPL部分除外、KConfigCore限定、テスト等の非同梱が対象バイナリと一致するか確認する。
+3. 本体・Qt・依存すべての対応ソース、変更パッチ、構築入力、通知、アーカイブの版・ハッシュと実バイナリの対応を確認する。提供ソースからの再構築・ABI適合・改変DLL差替えを試験し、LGPL等の改変・差替え・必要なデバッグの権利と、該当するInstallation Informationの要否・充足を確認する。
+4. MSVC 2022の正当な利用、適用契約・REDIST対象・再配布権限を確認する。必要なRelease CRTのみを無改変で同梱し、原本一致・版・署名・セキュリティ更新を確認する。自動署名検査はローカル信頼情報を使い、オンライン失効確認を代替しない。
+5. Qt SDK・開発ツールのないWindowsで、空白を含むパス、開発用PATHなし、異なる作業ディレクトリから`launch.cmd`と`runtime/smoothmail.exe`を起動する。許可されたテストアカウントで登録・再起動・更新・閲覧・送受信・下書き・添付・トレイ終了を確認する。オフライン通知表示とZIP／埋込み通知の一致も確認する。
 
-自動検査は法的条件・配布権限や個人情報の完全非混入を保証しません。アプリ内表示や監査完了だけで、公開ページの表示・同意取得まで実施済みとは扱わないでください。
+[合成テスト](test.md)や自動検査だけでは、実サービス・実配布物の動作、法的条件、翻訳の完全性、再配布権限や個人情報の完全非混入を保証しません。不備があれば入力・ソースを修正して再生成・再監査します。生成後のZIPだけを手修正しません。
+
+### 公開時以外の注意
+
+- 原本・パッチ・対応ソース・通知・監査記録・公開した成果物を版ごとに保管し、ライセンス上必要な期間の提供・問い合わせに対応する。
+- 版・URL・依存・Qt SDK・CRT・文面の変更時は再生成・再監査する。CRT等のセキュリティ更新も配布担当者が管理する。
+- LGPL等の改変・差替え権を契約・利用条件で妨げない。Microsoft CRTの条件をOSSへ一括適用せず、CRTをMIT／LGPLへ再ライセンスしない。
+- [公式REDIST一覧](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)、[VS 2022使用許諾条項](https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/)と採用したQtのオープンソース条件を確認する。
+
+## 配布手順
+
+監査・動作確認を完了した同じ版について、次を`DISTRIBUTION_URL`と一致する**同じページ**へ掲載します。
+
+- バイナリZIPとそのSHA256。
+- `sources/`の全対応ソースアーカイブと識別子・SHA256一覧。
+- ライセンス通知一式（ZIP内`licenses/`）と、本体ソース内`docs/dev/build.md`・`docs/dev/distribution.md`の再構築／差替え案内。
+
+**ダウンロードした時点で同梱MSVC CRTの利用許諾条件に同意したとみなす旨を、ダウンロードページの利用者の目につく位置へ表示してください。** 表示の実施・適用契約への適合性は配布担当者が確認します。アプリ内表示で代替しません。
+
+公開後、バイナリ・全ソース・ハッシュ・通知を実際に取得できることを確認します。未履行の書面オファーや後日公開を前提にバイナリだけを先行公開しないでください。自動生成は公開操作・法的監査・同意取得を実施しません。

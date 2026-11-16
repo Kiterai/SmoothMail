@@ -3,52 +3,34 @@
 ## 準備・要件
 
 - Windows x64、Visual Studio 2022のMSVC C++ x64ツールとWindows SDK。
-- CMake 3.30以降、Git、Python 3.11以降をPATHへ登録。Pythonは配布・文書生成と依存ライブラリKI18n内で使用します。本体・依存のビルド入口はCMakeです。
-- MSVCと一致する既存Qt 6 SDK（依存構築には6.10以降）。Core／Gui／Widgets／Sql／Network／Xml／Svg、テストにはTest、配置にはwindeployqtが必要です。確認済み環境はQt 6.12.0 `msvc2022_64`です。
-- 固定ソースの取得先へのHTTPS接続と、依存の構築・保存に十分なディスク空き容量。
+- CMake 3.30以降、Git、Python 3.11以降をPATHへ登録。
+- MSVCと一致する既存Qt 6 SDK（依存構築には6.10以降）。Core／Gui／Widgets／Sql／Network／Xml／Svg、DebugにはTestとDebug DLL、配置にはwindeployqtが必要です。確認済み環境はQt 6.12.0 `msvc2022_64`です。
+- 固定ソース取得先へのHTTPS接続、依存の構築・保存に十分な空き容量。
 
-以下はリポジトリルートの **x64 Native Tools Command Prompt for VS 2022** で実行します。Qtのパスは環境に合わせて変更してください。他OSでの構築・動作は未検証です。
+リポジトリルートの **x64 Native Tools Command Prompt for VS 2022** で実行します。他OSは未検証です。Ninja・vcpkgとQt以外の依存は自動取得・構築し、既存Qt SDKは変更しません。取得元・版・ハッシュは`cmake/dependencies.json`等で固定し、TLS証明書と原本の検証を維持します。
 
-Ninja・vcpkgとQt以外の依存はスクリプトが取得・構築します。別のQtは取得せず、既存SDKも変更しません。取得元・版は `cmake/dependencies.json` で固定し、アーカイブのハッシュとTLS証明書を検証します。
+`.env.example`を参考に、UTF-8の`.env`を作成してください。`SMOOTHMAIL_QT_ROOT`にQt SDKのパスを指定し、名称・版・配布URLを設定します。Releaseでは実際のHTTPS配布URLが必要です。全項目は[配布手順](distribution.md#envの設定)を参照してください。パスは空白を含められますが、区切りには`/`を使い、変数展開は使いません。
 
-Qtやコンパイラを変更する場合は、新しい `-DDEPENDENCY_ROOT=C:/build/smoothmail-deps` と `-DAPPLICATION_BUILD=C:/build/smoothmail-app` を標準コマンドへ追加します。Windowsのパス長制限を避けるため短いパスを推奨します。既存ソース・取得物・パッチの不一致で停止した場合、強制上書きや検証の無効化はせず原因を確認してください。
+標準の依存保存先は`build/deps`です。Qt・コンパイラを変更する場合は、`.env`の`SMOOTHMAIL_DEPENDENCY_ROOT`と下記`-B`に新しい短いパスを指定してください。制限環境でCMakeのHTTPS取得がstatus 35になる場合は、`SMOOTHMAIL_DOWNLOAD_CURL`へGit for Windows等のOpenSSL対応curlの絶対パスを設定します。TLS／証明書／ハッシュ検証を無効化せず、Schannel専用版は指定しません。
 
-### Windowsの制限付きサンドボックスでのHTTPS取得
+`-B`と`--build`の引数で同じビルドディレクトリを明示します。Debug／Releaseは別ディレクトリにします。構築中のアプリは終了してください。再ビルドでも同じ2行を使えます。実行環境を毎回新しく生成し、前回の成功出力は`run-previous-*`／`artifacts-previous-*`として残します。中間結果は`jobs/`以下へ保持します。不要な旧出力の整理は作業者が行ってください。
 
-CMakeのHTTPS取得がstatus 35で失敗する制限環境では、**OpenSSL対応curlの絶対パス**を明示指定してください（Git for Windows等の既存ツール）。
+Debugはテストも構築しますが自動実行しません。Releaseは配布時と同じプライバシー対策・通知埋込みを行い、実行環境に加えZIP・対応ソース・ハッシュ一覧も生成します。ソースとの一致のため、Release構築前に追跡ファイルの変更をコミットしてください。生成成功は動作確認・法的監査の完了を意味しません。
 
-```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 "-DSMOOTHMAIL_DOWNLOAD_CURL=C:/path/to/Git/mingw64/bin/curl.exe" -P cmake/BuildWindows.cmake
-```
+成果物は`<ビルドディレクトリ>/run/`、本体の内部構築先は`app/`です。[実行](run.md)・[テスト](test.md)・[配布](distribution.md)を参照してください。
 
-指定時もHTTPS／TLS 1.2以上・証明書検証・固定ハッシュ照合を維持し、`.curlrc`は読みません。vcpkgへも設定を引き継ぎ、プロキシ変数は保持します。取得元・リダイレクト先への通信許可と構築先の書込み許可は別途必要です。更新済みのOpenSSL対応curlを使い、Schannel専用版は指定しないでください。未指定時はCMakeで取得し、失敗後の自動フォールバックは行いません。
+提供済み対応ソースから本体を再構築する場合は、SmoothMailを新しいフォルダへ展開し、従来の低水準入口`cmake/BuildWindows.cmake`へ`Qt6_ROOT`、`DEPENDENCY_ROOT`、`APPLICATION_BUILD`、`CMAKE_BUILD_TYPE=Release`、`SMOOTHMAIL_SOURCE_ARCHIVES`、`SMOOTHMAIL_SOURCE_COMMIT`を`-D`で渡します。原本アーカイブのSHA256と展開tree digestを検証し、パッチは別コピーへ適用します。配布版の通知も埋め込む場合は`SMOOTHMAIL_DISTRIBUTION=ON`と`SMOOTHMAIL_LEGAL_DIR=<展開した配布版のlicenses>`を追加します。Git管理情報を捏造したり、既存SDKや原本を書き換えたりしません。この再構築用入口は新規配布物作成の入口ではありません。
 
 ## デバッグビルド
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_BUILD_TYPE=Debug -P cmake/BuildWindows.cmake
+cmake --preset debug -B build/dbg
+cmake --build build/dbg
 ```
-
-依存を `build/deps/` に準備し、アプリを `build/windows/Debug/smoothmail.exe` へ構築します。テストも構築しますが、自動実行はしません。
-
-アプリだけを再ビルドする場合は`cmake --build build/windows/Debug --parallel 4`を実行します。
 
 ## リリースビルド
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_BUILD_TYPE=Release -P cmake/BuildWindows.cmake
-```
-
-アプリは `build/windows/Release/smoothmail.exe` です。DebugとReleaseの依存・成果物は分離されます。このEXEだけでは配布物になりません。[実行](run.md)・[配布](distribution.md)を参照してください。
-
-アプリだけを再ビルドする場合は`cmake --build build/windows/Release --parallel 4`を実行します。
-
-提供済みのソースアーカイブを使う場合は、SmoothMailだけを新しいソースフォルダへ展開し、Releaseコマンドへ `-DSMOOTHMAIL_SOURCE_ARCHIVES=C:/source-archives -DSMOOTHMAIL_SOURCE_COMMIT=<提供されたcommit>` と新しい依存／アプリ構築先を追加します。依存を手動で `build/deps/src` へ展開したり、Git管理情報を捏造したりしません。固定されたアーカイブSHA256と全ファイルのtree digestを検証し、パッチは別コピーへ適用します。
-
-外部ビルドツールの取得物を再利用するには `-DSMOOTHMAIL_ASSET_CACHE=C:/tool-downloads` を追加できます。工具・原本のハッシュ検証は維持します。Qt SDKの取得／変更は自動では行いません。Qt自体の対応ソース・ABI検証が必要な場合だけ、別の出力先で `cmake -DQt6_ROOT=... -DDEPENDENCY_ROOT=... -DSMOOTHMAIL_SOURCE_ARCHIVES=... -DQT_REBUILD_OUTPUT=... -P cmake/BuildQtSourceReview.cmake` を実行します。これは既存SDKの置換や配布承認ではありません。
-
-キャッシュなしの全Release依存取得を検証する場合は、まだ存在しない専用rootで実行します（アプリ・ZIPの検証は含みません）。
-
-```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DDEPENDENCY_ROOT=C:/build/smoothmail-clean-deps -P cmake/VerifyWindowsCleanDependencies.cmake
+cmake --preset release -B build/rel
+cmake --build build/rel
 ```

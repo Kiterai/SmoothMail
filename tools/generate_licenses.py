@@ -11,6 +11,10 @@ from stage_windows_release import crt_directory
 
 
 KEYS = {"SOFTWARE_NAME", "DISTRIBUTION_URL", "BUILD_VERSION"}
+BUILD_KEYS = {"SMOOTHMAIL_QT_ROOT", "SMOOTHMAIL_DEPENDENCY_ROOT",
+              "SMOOTHMAIL_CRT_BIN", "SMOOTHMAIL_DOWNLOAD_CURL",
+              "SMOOTHMAIL_SOURCE_ARCHIVES", "SMOOTHMAIL_SOURCE_COMMIT",
+              "SMOOTHMAIL_ASSET_CACHE"}
 OAUTH_KEYS = {"SMOOTHMAIL_GOOGLE_CLIENT_ID", "SMOOTHMAIL_GOOGLE_CLIENT_SECRET",
               "SMOOTHMAIL_MICROSOFT_CLIENT_ID"}
 PLACEHOLDER = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*)@")
@@ -20,7 +24,7 @@ ALLOWED = KEYS | {
     "REVIEW_BANNER_EN", "REVIEW_BANNER_JA"}
 
 
-def read_env(path):
+def read_env(path, include_build=False):
     if not path.is_file() or linked(path):
         raise ValueError("Specify an existing regular license env file; see .env.example")
     values = {}
@@ -36,7 +40,7 @@ def read_env(path):
         if not match:
             raise ValueError("Invalid license environment assignment")
         key, value = match.groups()
-        if key not in KEYS | OAUTH_KEYS or key in values:
+        if key not in KEYS | OAUTH_KEYS | BUILD_KEYS or key in values:
             raise ValueError("Unknown or duplicate license environment key")
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
@@ -50,7 +54,8 @@ def read_env(path):
                         values["DISTRIBUTION_URL"]):
         raise ValueError("License distribution URL must be a plain HTTPS URL without credentials")
     # OAuth registration data must never enter notices or their metadata.
-    return {key: values[key] for key in KEYS}
+    return {key: value for key, value in values.items()
+            if key in KEYS or (include_build and key in BUILD_KEYS)}
 
 
 def render(text, values, final=False):
@@ -110,6 +115,9 @@ def check_runtime(evidence, stage, manifest, crt, verifier):
 
 
 def generate(args):
+    distribution = getattr(args, "distribution", False)
+    if distribution and not args.final_review:
+        raise ValueError("Distribution assembly requires final runtime/source checks")
     new_output(args.output)
     values = read_env(args.env_file)
     if args.edition != "windows-x64":
@@ -120,6 +128,8 @@ def generate(args):
         raise ValueError("Final license review cannot use an example distribution URL")
     manifest = read_json(regular(args.evidence, "manifest.review.json"))
     sources = read_json(regular(args.source_review, "source-manifest.review.json"))
+    if sources.get("missing"):
+        raise ValueError("Corresponding source collection is incomplete")
     if manifest.get("review_only") is not True or (args.evidence / "manifest.json").exists():
         raise ValueError("Expected unapproved review evidence")
     if len(manifest["components"]) != 19 or len(sources["archives"]) != 23:
@@ -238,8 +248,15 @@ def generate(args):
         path = args.output / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(text.encode("utf-8"))
-    write_json(args.output / "manifest.review.json", manifest)
-    print("Legal draft assembled: 34 files / 19 components; no manifest.json or approval")
+    if distribution:
+        # Assembly is not approval. Review evidence remains separate; never
+        # promote a supplied draft merely by renaming its manifest.
+        write_json(args.output / "manifest.json",
+                   {"schema": 1, "components": manifest["components"]})
+        print("Distribution notices assembled; distributor audit still required")
+    else:
+        write_json(args.output / "manifest.review.json", manifest)
+        print("Legal draft assembled: 34 files / 19 components; no manifest.json or approval")
 
 
 def main():
@@ -249,6 +266,8 @@ def main():
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
     parser.add_argument("--edition", default="windows-x64")
     parser.add_argument("--final-review", action="store_true")
+    parser.add_argument("--distribution", action="store_true",
+                        help="Assemble distribution notices, not legal approval (requires --final-review)")
     for name in ("stage", "crt-bin", "application-build", "crt-verifier", "qt-sbom-review"):
         parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()

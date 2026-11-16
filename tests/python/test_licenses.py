@@ -105,13 +105,37 @@ class LicenseTests(unittest.TestCase):
             self.assertEqual((output / "originals/SmoothMail/original.txt").read_bytes(),
                              b"Original\r\n\r\n\r\nbytes\r\n")
             self.assertNotRegex((output / "README.md").read_text(encoding="utf-8"), licenses.PLACEHOLDER)
+            # Distribution assembly is a separate, checked operation, not a
+            # rename of a draft or an assertion of human legal approval.
+            args.output = root / "distribution"
+            args.distribution = True
+            with self.assertRaisesRegex(ValueError, "requires final"):
+                licenses.generate(args)
+            args.final_review = True
+            args.application_build = root / "app"
+            args.application_build.mkdir()
+            (args.application_build / "CMakeCache.txt").write_text("SMOOTHMAIL_SOURCE_COMMIT:STRING=abc123\n")
+            archives[0]["commit"] = "abc123"
+            write_json(source / "source-manifest.review.json",
+                       {"schema": 1, "review_only": True, "archives": archives, "missing": []})
+            args.stage = root / "runtime"
+            args.crt_bin = root / "crt"
+            args.crt_verifier = root / "verifier"
+            env.write_text("SOFTWARE_NAME=SmoothMail\nDISTRIBUTION_URL=https://downloads.company.test/mail\nBUILD_VERSION=1\n")
+            with patch.object(licenses, "check_runtime", return_value=("14.44.35211.0", {"review_only": True})):
+                licenses.generate(args)
+            self.assertEqual(set(read_json(args.output / "manifest.json")), {"schema", "components"})
+            self.assertFalse((args.output / "manifest.review.json").exists())
+            self.assertTrue(read_json(args.output / "evidence/manifest.review.json")["review_only"])
+            self.assertNotIn("Draft for review", (args.output / "README.md").read_text())
             with self.assertRaisesRegex(ValueError, "already exists"):
                 licenses.generate(args)
             # Source tampering fails before creating any output.
             args.output = root / "rejected"
             (source / archives[0]["file"]).write_bytes(b"tampered")
-            with self.assertRaisesRegex(ValueError, "differs"):
-                licenses.generate(args)
+            with patch.object(licenses, "check_runtime", return_value=("14.44.35211.0", {})):
+                with self.assertRaisesRegex(ValueError, "differs"):
+                    licenses.generate(args)
             self.assertFalse(args.output.exists())
 
 
