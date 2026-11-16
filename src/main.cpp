@@ -1,6 +1,7 @@
 #include "ui/mainwindow.h"
 #include "app/applicationcontroller.h"
 #include "core/diagnostics.h"
+#include "core/singleinstance.h"
 #include <QApplication>
 #include <QStandardPaths>
 #include <QMessageBox>
@@ -16,6 +17,14 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
     const auto dataPath = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (dataPath.isEmpty()) return 1;
+    smoothmail::SingleInstance instance(dataPath);
+    if (!instance.acquire()) {
+        if (instance.alreadyRunning())
+            QMessageBox::information(nullptr, QStringLiteral("SmoothMail"), QStringLiteral("SmoothMailはすでに起動しています。"));
+        else
+            QMessageBox::critical(nullptr, QStringLiteral("起動できません"), QStringLiteral("起動ロックを作成できません。保存先のアクセス権を確認してください。"));
+        return instance.alreadyRunning() ? 0 : 2;
+    }
     if (!smoothmail::diagnostics::start(dataPath + QStringLiteral("/diagnostics"))) {
         // Do not silently claim crash recording is enabled if the disk is unwritable.
         QMessageBox::critical(nullptr, QStringLiteral("診断ログを作成できません"), QStringLiteral("保存先のアクセス権と空き容量を確認してください。\n") + dataPath);

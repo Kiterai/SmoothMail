@@ -106,6 +106,11 @@ if(SMOOTHMAIL_BUILD_GUI_SMOKE)
 endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(tst_singleinstance tests/tst_singleinstance.cpp)
+    target_include_directories(tst_singleinstance PRIVATE src)
+    target_link_libraries(tst_singleinstance PRIVATE Qt6::Core Qt6::Test)
+    smoothmail_target_defaults(tst_singleinstance)
+    add_test(NAME singleinstance COMMAND tst_singleinstance)
     add_executable(tst_aboutdialog tests/tst_aboutdialog.cpp)
     qt_add_resources(tst_aboutdialog aboutdialog_test_notices
         PREFIX "/licenses/test" BASE "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/licenses"
