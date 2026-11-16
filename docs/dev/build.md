@@ -4,7 +4,7 @@
 
 - Windows x64、Visual Studio 2022のMSVC C++ x64ツールとWindows SDK。
 - CMake 3.30以降、Git、Python 3.11以降をPATHへ登録。
-- MSVCと一致する既存Qt 6 SDK（依存構築には6.10以降）。Core／Gui／Widgets／Sql／Network／Xml／Svg、DebugにはTestとDebug DLL、配置にはwindeployqtが必要です。確認済み環境はQt 6.12.0 `msvc2022_64`です。
+- Qt 6.12.0 `msvc2022_64` SDK。Core／Gui／Widgets／Sql／Network／Xml／Svg、DebugにはTestとDebug DLL、配置にはwindeployqtが必要です。Releaseの対応ソースと供給元DLLの限定ポリシーは、このSDKの構成に固定しています。他版を採用する場合はプロジェクト側でソース・構成・ポリシーを更新して検証する必要があり、ビルド作業者が検査を無効化して対応するものではありません。
 - 固定ソース取得先へのHTTPS接続、依存の構築・保存に十分な空き容量。
 
 リポジトリルートの **x64 Native Tools Command Prompt for VS 2022** で実行します。他OSは未検証です。Ninja・vcpkgとQt以外の依存は自動取得・構築し、既存Qt SDKは変更しません。取得元・版・ハッシュは`cmake/dependencies.json`等で固定し、TLS証明書と原本の検証を維持します。

@@ -53,3 +53,5 @@
 - 固定原本tarは保持し、パッチdigestをキーに別の構築用コピーを作る。反復利用時の設定digest照合により、変更された設定を上書きしない。変更通知・英日テンプレート・対応ソースのパッチ検査も追加した。
 - SASL用のパス許容エントリを削除し、以後は通常の厳格検査で扱う。Qt SDK向け限定ポリシーは変更しない。
 - 実SASL Release DLLを再構築し、例外なしの`--audit-stage`検査が成功。実DLLのPLAIN／LOGIN／XOAUTH2等のQt Testは7 passed、0 failed、0 skipped。原本保持・パッチ分離・再利用・改変拒否fixtureとPython44件の試験も成功した。
+- SASL fixture登録後の配布補助CTestは全14件成功。Release生成で固定したQtソース／供給元ポリシーと整合するよう、通常手順の対象SDKをQt 6.12.0 `msvc2022_64`と明記した。
+- `3529268`を検証用cloneへ反映し、前回出力や原本を削除せず、修正後のReleaseワークフローを再実行している。

@@ -13,7 +13,7 @@ Windows x64向けポータブルZIPと対応ソース一式を生成します。
 | `SOFTWARE_NAME` | ソフトウェア表示名（必須） |
 | `DISTRIBUTION_URL` | バイナリと対応ソースを提供する実際のHTTPSページ（必須、例示URL不可） |
 | `BUILD_VERSION` | 配布版のバージョン文字列（必須） |
-| `SMOOTHMAIL_QT_ROOT` | 既存MSVC Qt SDKのパス（必須） |
+| `SMOOTHMAIL_QT_ROOT` | [対象Qt SDK](build.md#準備要件)のパス（必須、Qt 6.12.0 `msvc2022_64`） |
 | `SMOOTHMAIL_DEPENDENCY_ROOT` | 依存保存先。空値なら`build/deps` |
 | `SMOOTHMAIL_CRT_BIN` | 正規の`VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT`。空値ならMSVC開発者環境から探索 |
 | `SMOOTHMAIL_DOWNLOAD_CURL` | 制限環境で使うOpenSSL対応curlの絶対パス。空値ならCMakeのHTTPS取得 |
