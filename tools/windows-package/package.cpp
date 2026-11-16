@@ -285,7 +285,9 @@ void audit(const QByteArray &data, const QString &name, const QStringList &roots
         }
     }
     auto inspected = data;
-    const auto approval = policy.constFind(name);
+    // Policies describe paths relative to the executable's runtime directory.
+    // Accept both the staging root and an extracted distribution root.
+    const auto approval = policy.constFind(name.startsWith("runtime/") ? name.mid(8) : name);
     if (approval != policy.cend()) {
         require(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex()
                     == approval->value("sha256").toString().toLatin1(),
@@ -469,6 +471,10 @@ void selfTest(const QString &artifact = {})
         {"ranges", QJsonArray{range}}};
     const PathPolicy reviewed{{"vendor.dll", approval}};
     audit(vendor, "vendor.dll", {}, reviewed);
+    audit(vendor, "runtime/vendor.dll", {}, reviewed);
+    rejects([&] { audit(vendor + "x", "runtime/vendor.dll", {}, reviewed); });
+    rejects([&] { audit(vendor, "runtime/vendor.dll", {"vendor-builder"}, reviewed); });
+    rejects([&] { audit(vendor, "other/vendor.dll", {}, reviewed); });
     rejects([&] { audit(vendor, "vendor.dll", {}); });
     rejects([&] { audit(vendor, "renamed.dll", {}, reviewed); });
     rejects([&] { audit(vendor + "x", "vendor.dll", {}, reviewed); });
