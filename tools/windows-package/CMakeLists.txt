@@ -24,6 +24,8 @@ add_test(NAME source_archive_guards COMMAND "${CMAKE_COMMAND}"
 add_test(NAME crt_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_guards.cmake")
 if(WIN32 AND DEFINED ENV{VCToolsRedistDir})
+    add_test(NAME crt_long_path_guards COMMAND "${CMAKE_COMMAND}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_long_path_guards.cmake")
     add_test(NAME crt_binary_guards COMMAND "${CMAKE_COMMAND}"
         "-DCRT_BIN=$ENV{VCToolsRedistDir}/x64/Microsoft.VC143.CRT"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_binary_guards.cmake")

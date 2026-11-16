@@ -86,9 +86,21 @@ function(smoothmail_prepare_crt_verifier output)
     file(SHA256 "${repository}/tools/windows-crt/verify.cpp" source_hash)
     file(SHA256 "${repository}/tools/windows-crt/CMakeLists.txt" cmake_hash)
     string(SHA256 key "${source_hash};${cmake_hash}")
-    set(binary "${repository}/build/tools/crt-verifier-${key}")
+    # A full SHA256 in the directory name can push MSVC's compiler probes
+    # beyond MAX_PATH when building from an extracted source bundle.
+    string(SUBSTRING "${key}" 0 16 short_key)
+    set(binary "${repository}/build/tools/crt-v2-${short_key}")
     file(MAKE_DIRECTORY "${repository}/build/tools")
     file(LOCK "${binary}.lock" GUARD FUNCTION TIMEOUT 300)
+    file(MAKE_DIRECTORY "${binary}")
+    set(key_file "${binary}/source-key.txt")
+    if(EXISTS "${key_file}")
+        file(READ "${key_file}" cached_key)
+        if(NOT cached_key STREQUAL key)
+            message(FATAL_ERROR "CRT verifier cache identity collision; refusing reuse.")
+        endif()
+    endif()
+    file(WRITE "${key_file}" "${key}")
     execute_process(COMMAND "${CMAKE_COMMAND}" -S "${repository}/tools/windows-crt"
         -B "${binary}" -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
         RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)

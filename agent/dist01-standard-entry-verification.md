@@ -57,3 +57,15 @@ MSVC開発者環境を設定する`build/dist01-run-final.cmd`から上記を実
 - Safe Shell execution ID: `04bf48a74b994284bf79a3e05a7c8b0c`。
 - 完全出力のjournal log ID: `06aa8fc2bb854e71b8ff350b7e68f11a`。stdout／stderrを別々に保存・参照する。
 - 後続検査: `build/dist01-verify-output.ps1`で全ZIPファイル／inventory、確認済み通知321参照、EXEのソース識別子、同梱文書と実コンパイル入力の一致を独立検証する。出力先は`build/dist01-full/verification.json`。終了コード0及び後続検査成功までDIST-01を完了扱いにしない。
+
+## 全依存構築後に検出したCRT検証器のパス長問題
+
+通常環境の上記実行は全依存のRelease構築とアプリのリンクまで成功したが、配置処理でCRT検証器を新規構築するときに終了コード1となった。展開済み製品ソースのroot長79文字に、検証器キャッシュ名内のSHA256全64文字とCMakeのTryCompile階層が加わり、コンパイラ試験のobjectディレクトリが238文字となって、MSVCのパス長制限を超えた。CMakeの警告とC1083／Invalid argumentを確認した。署名や原本照合の失敗ではなく、検証器を構築できなかったものである。
+
+現リポジトリの`WindowsCrt.cmake`はキャッシュ名を`crt-v2-<hash先頭16文字>`へ短縮した。フル64文字の識別子を`source-key.txt`へ保存し、短縮名が衝突した場合は再利用を拒否する。CRT署名・x64・版・原本一致の検査は省略しない。深い展開先での実MSVC構築と識別子衝突拒否の回帰を追加し、配布補助CTestは11対象すべて成功した（`build/dist01-crt-path-regression.log`）。
+
+確認済みの製品ソースやZIPを後から改変しないため、提供済みの旧版ソースは同じ検証済みtarから短い`build/d1/SmoothMail`（root長59文字）へ新規展開して標準入口を実行する。これにより既存の監査済みソース識別子・通知・アーカイブの対応を維持する。新しい短縮キャッシュ実装の回帰試験と、旧版の未改変配布ソースによる通し実行は別の検証として記録する。
+
+ソースroot変更の初回再実行はpackage helperのCMake cacheが旧rootを参照していたため停止した（`build/dist01-short-run.log`）。今回新規生成したcacheのうち旧rootを参照する3ディレクトリだけを確認し、削除せず`-previous-source`へ退避した（package、native-runtime-probe、cyrus-sasl-xoauth2）。依存の原本・インストール済みDLL・既存の利用者成果物は削除・上書きしていない。
+
+`build/dist01-run-short.cmd`による再実行を開始した。引数は上記標準コマンドの`-P`だけを`build/d1/SmoothMail/cmake/PackageWindows.cmake`へ変更したものである。新規構築済みの検証付き依存と取得cacheを利用し、標準入口の全ステージを再度通過させる。実行IDは`9479a3323e454172bbf270281ad312a8`、ログは`build/dist01-short-retry.log`。ZIPと後続検査の成功まではDIST-01は未完了である。
