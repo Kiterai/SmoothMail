@@ -183,12 +183,12 @@ void prepareLegal(const QString &stage, const QString &directory, const QString 
     auto names = legal.files.values();
     std::sort(names.begin(), names.end());
     for (const auto &name : names)
-        write(stage + "/license/" + name, read(directory + "/" + name));
-    write(stage + "/license/manifest.json", QJsonDocument(legal.manifest).toJson());
+        write(stage + "/licenses/" + name, read(directory + "/" + name));
+    write(stage + "/licenses/manifest.json", QJsonDocument(legal.manifest).toJson());
     // Recipient notices come from the generated manifest, not the source-tree
     // development history in THIRD_PARTY_NOTICES.md.
-    require(!QFileInfo::exists(stage + "/license/LICENSE"), "Application license path collision");
-    write(stage + "/license/LICENSE", read(repository + "/LICENSE"));
+    require(!QFileInfo::exists(stage + "/licenses/LICENSE"), "Application license path collision");
+    write(stage + "/licenses/LICENSE", read(repository + "/LICENSE"));
     write(stage + "/README.md", read(repository + "/docs/usage.md"));
     write(stage + "/launch.cmd",
           "@echo off\r\nstart \"\" /D \"%~dp0runtime\" \"%~dp0runtime\\Smoothmail.exe\" %*\r\n");
@@ -334,7 +334,7 @@ void u32(QByteArray &data, quint32 value)
 // Fail instead of truncating ZIP32 fields. No host path/name is recorded.
 QString distributionName(const QString &name)
 {
-    if (name.startsWith("license/") || name == "README.md" || name == "launch.cmd" || name == "runtime-sha256.txt") return name;
+    if (name.startsWith("licenses/") || name == "README.md" || name == "launch.cmd" || name == "runtime-sha256.txt") return name;
     if (name == "smoothmail.exe") return QStringLiteral("runtime/Smoothmail.exe");
     return QStringLiteral("runtime/") + name;
 }
@@ -535,9 +535,9 @@ void selfTest(const QString &artifact = {})
     prepareLegal(stage, legal, repository);
     archive(stage, temporary.path() + "/fixture.zip", {});
     const auto zip = read(temporary.path() + "/fixture.zip");
-    require(zip.contains("SmoothMail/runtime/Smoothmail.exe") && zip.contains("SmoothMail/license/license.txt")
+    require(zip.contains("SmoothMail/runtime/Smoothmail.exe") && zip.contains("SmoothMail/licenses/license.txt")
                 && zip.contains("SmoothMail/README.md") && zip.contains("SmoothMail/launch.cmd")
-                && !zip.contains("SmoothMail/smoothmail.exe") && !zip.contains("SmoothMail/licenses/")
+                && !zip.contains("SmoothMail/smoothmail.exe") && !zip.contains("SmoothMail/license/")
                 && !zip.contains("SmoothMail/legal/") && !zip.contains("SmoothMail/THIRD_PARTY_NOTICES.md"),
             "Missing ZIP entries");
     // Verify the first local header's fixed date, UTF-8 flag, and raw deflate data

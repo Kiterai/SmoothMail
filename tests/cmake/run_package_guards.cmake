@@ -25,15 +25,15 @@ endforeach()
 if(NOT EXISTS "${root}/extracted/SmoothMail/runtime/empty.txt")
     message(FATAL_ERROR "ZIP lost empty file.")
 endif()
-if(NOT EXISTS "${root}/extracted/SmoothMail/license/manifest.json"
-        OR NOT EXISTS "${root}/extracted/SmoothMail/license/license.txt"
-        OR NOT EXISTS "${root}/extracted/SmoothMail/license/LICENSE"
+if(NOT EXISTS "${root}/extracted/SmoothMail/licenses/manifest.json"
+        OR NOT EXISTS "${root}/extracted/SmoothMail/licenses/license.txt"
+        OR NOT EXISTS "${root}/extracted/SmoothMail/licenses/LICENSE"
         OR NOT EXISTS "${root}/extracted/SmoothMail/runtime/Smoothmail.exe"
         OR NOT EXISTS "${root}/extracted/SmoothMail/runtime/library.dll"
         OR EXISTS "${root}/extracted/SmoothMail/smoothmail.exe"
-        OR EXISTS "${root}/extracted/SmoothMail/licenses"
+        OR EXISTS "${root}/extracted/SmoothMail/license"
         OR EXISTS "${root}/extracted/SmoothMail/legal")
-    message(FATAL_ERROR "Distribution ZIP must separate license/ and runtime/.")
+    message(FATAL_ERROR "Distribution ZIP must separate licenses/ and runtime/.")
 endif()
 file(READ "${root}/extracted/SmoothMail/README.md" usage)
 if(NOT usage STREQUAL "# Fixture usage\n")

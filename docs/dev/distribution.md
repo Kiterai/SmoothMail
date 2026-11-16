@@ -64,7 +64,7 @@ cmake -DEDITION=windows-x64 -DEVIDENCE=build/legal-review -DSOURCE_REVIEW=build/
 cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-licenses -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
 ```
 
-依存取得・Release構築、アプリ構築、DLL／プラグイン／CRT・通知の収集、個人情報・Debug混入・ライセンス対応の検査、ZIP化を行います。通知は`SmoothMail/license/`、本体は`SmoothMail/runtime/Smoothmail.exe`、全ファイルのハッシュは`SmoothMail/runtime-sha256.txt`へ配置します。`README.md`には対象本体ソースの`docs/usage.md`をそのまま収録します。既存ZIPは上書きしません。
+依存取得・Release構築、アプリ構築、DLL／プラグイン／CRT・通知の収集、個人情報・Debug混入・ライセンス対応の検査、ZIP化を行います。通知は`SmoothMail/licenses/`、本体は`SmoothMail/runtime/Smoothmail.exe`、全ファイルのハッシュは`SmoothMail/runtime-sha256.txt`へ配置します。`README.md`には対象本体ソースの`docs/usage.md`をそのまま収録します。既存ZIPは上書きしません。
 
 `LEGAL_DIR`に通常ディレクトリと空ではない通常ファイルの`manifest.json`がない場合は、依存取得前に停止します。保存先を削除した場合は、保管したソースZIP等から生成済み`licenses/`を復元してください。
 
