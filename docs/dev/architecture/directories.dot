@@ -1,0 +1,26 @@
+digraph dependencies {
+rankdir=LR;
+graph [fontname="Arial"];
+node [shape=box, fontname="Arial", style=filled];
+edge [color="#64748b"];
+"src" [fillcolor="#dbeafe"];
+"src/app" [fillcolor="#dbeafe"];
+"src/core" [fillcolor="#dbeafe"];
+"src/mail" [fillcolor="#dbeafe"];
+"src/storage" [fillcolor="#dbeafe"];
+"src/ui" [fillcolor="#dbeafe"];
+"src" -> "src/app";
+"src" -> "src/core";
+"src" -> "src/ui";
+"src/app" -> "src/core";
+"src/app" -> "src/mail";
+"src/app" -> "src/storage";
+"src/app" -> "src/ui";
+"src/core" -> "src/mail";
+"src/mail" -> "src/core";
+"src/mail" -> "src/storage";
+"src/storage" -> "src/core";
+"src/storage" -> "src/mail";
+"src/ui" -> "src/core";
+"src/ui" -> "src/mail";
+}
