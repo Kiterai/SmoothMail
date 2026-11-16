@@ -1,6 +1,6 @@
 # Windows版の配布
 
-Windows x64向けのポータブルZIPを配布します。展開した`SmoothMail/launch.cmd`から起動します。本体・DLL・プラグインは`runtime/`へまとめます。以下はリポジトリルートのMSVC x64開発者コマンドプロンプトで実行してください。
+Windows x64向けのポータブルZIPを配布します。展開した`SmoothMail/launch.cmd`から起動します。本体・DLL・プラグインは`runtime/`へまとめます。`README.md`と`storage.md`はそれぞれ`docs/usage.md`・`docs/storage.md`をZIP直下に収録します。以下はリポジトリルートのMSVC x64開発者コマンドプロンプトで実行してください。
 
 ## 1. 入力を準備する
 
