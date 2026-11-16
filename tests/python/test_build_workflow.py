@@ -92,6 +92,21 @@ class BuildWorkflowTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "layout"):
                     build.extract_verified(archive, destination)
                 self.assertFalse(destination.exists())
+            archive = root / "collision.zip"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("SmoothMail/runtime/one.dll", b"one")
+                bundle.writestr("SmoothMail/runtime/ONE.dll", b"two")
+            with self.assertRaisesRegex(ValueError, "Duplicate"):
+                build.extract_verified(archive, root / "collision")
+
+    def test_tool_receipt_paths_are_utf8_even_on_non_utf8_windows_hosts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / "build/tools/package"
+            binary.mkdir(parents=True)
+            expected = root / "日本語の出力先/verifier.exe"
+            (binary / "crt-verifier.txt").write_text(str(expected), encoding="utf-8")
+            self.assertEqual(build.package_tools(root)[1], expected)
 
     def test_output_rotation_and_failed_promotion_restore_previous_success(self):
         with tempfile.TemporaryDirectory() as temporary:

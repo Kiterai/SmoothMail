@@ -113,7 +113,8 @@ def prepare(directory, job):
 
 def package_tools(dependencies):
     binary = dependencies / "build/tools/package"
-    return binary / "smoothmail_package.exe", Path((binary / "crt-verifier.txt").read_text())
+    return binary / "smoothmail_package.exe", Path(
+        (binary / "crt-verifier.txt").read_text(encoding="utf-8"))
 
 
 def finish(directory, job, configuration):
