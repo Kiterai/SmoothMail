@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.30)
+project(DebugRuntimeFixture LANGUAGES CXX)
+find_package(Qt6 REQUIRED COMPONENTS Core Sql Network)
+add_executable(smoothmail main.cpp)
+target_link_libraries(smoothmail PRIVATE Qt6::Core Qt6::Sql Qt6::Network)
+foreach(mechanism IN ITEMS PLAIN LOGIN XOAuth2)
+    add_library(sasl${mechanism} SHARED sasl.cpp)
+endforeach()

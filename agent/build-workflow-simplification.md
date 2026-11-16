@@ -36,3 +36,11 @@
 - 異なるDebug／Releaseの構築先から同じ依存rootへ同時に書き込まないよう、CMakeのプロセス寿命の排他ロックを依存rootにも設ける。
 - Debugランチャーは配置内のQt／SASL探索先を明示し、ホストの別SDK向け環境設定を引き継がない。専用fixtureでランタイム一式の配置とSDK原本非改変を確認した。
 - CMakeがUTF-8で書き出すCRT検証器のパス記録は、PythonでもUTF-8を明示して読む。Windowsの既定コードページへ依存しない。
+
+## Debug配置の実DLL試験
+
+- `tests/debug-runtime/`の小さなQtアプリと合成のSASL名DLLを、実SDK／MSVCのDebug設定で構築した。
+- 新Python配置処理がQtの推移DLL、明示プラグイン、Debug CRT／UCRTを収集できた。
+- SDK／依存のPATH・プラグイン環境を除去した子プロセスで、SQLiteのインメモリDBとTLSバックエンドのロードが成功した。ネットワーク、永続DB、資格情報ストアを使用しない。
+- この試験は`tests/cmake/run_debug_staging.cmake`で再実行でき、MSVC環境での配布補助CTestにも登録する。本体／実SASL／SDKなしOSの試験とは区別する。
+- 登録後の配布補助CTest全13件が成功した。

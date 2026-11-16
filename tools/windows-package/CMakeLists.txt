@@ -27,6 +27,10 @@ add_test(NAME source_archive_guards COMMAND "${CMAKE_COMMAND}"
 add_test(NAME crt_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_guards.cmake")
 if(WIN32 AND DEFINED ENV{VCToolsRedistDir})
+    get_filename_component(qt_sdk "${Qt6_DIR}/../../.." ABSOLUTE)
+    add_test(NAME debug_runtime_staging COMMAND "${CMAKE_COMMAND}"
+        "-DQt6_ROOT=${qt_sdk}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_debug_staging.cmake")
     add_test(NAME crt_long_path_guards COMMAND "${CMAKE_COMMAND}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_crt_long_path_guards.cmake")
     add_test(NAME crt_binary_guards COMMAND "${CMAKE_COMMAND}"

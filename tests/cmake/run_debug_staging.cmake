@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.30)
+if(NOT WIN32)
+    message(FATAL_ERROR "This test needs an MSVC x64 developer environment.")
+endif()
+find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
+get_filename_component(repository "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+string(RANDOM LENGTH 16 ALPHABET 0123456789abcdef nonce)
+set(root "${repository}/build/debug-staging-tests/${nonce}")
+function(checked)
+    execute_process(COMMAND ${ARGV} RESULT_VARIABLE result)
+    if(NOT result STREQUAL "0")
+        message(FATAL_ERROR "Debug staging integration failed (${result}).")
+    endif()
+endfunction()
+checked("${CMAKE_COMMAND}" -S "${repository}/tests/debug-runtime" -B "${root}/app"
+    -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug "-DQt6_ROOT=${Qt6_ROOT}")
+checked("${CMAKE_COMMAND}" --build "${root}/app")
+set(code "import sys\nfrom pathlib import Path\nsys.path.insert(0, r'${repository}/tools')\nfrom stage_windows_debug import stage\nroot=Path(r'${root}')\nstage(root/'app/smoothmail.exe', Path(r'${Qt6_ROOT}'), root/'empty-deps', root/'empty-native', root/'app', root/'run')")
+checked("${Python3_EXECUTABLE}" -c "${code}")
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env "PATH=$ENV{SystemRoot}/System32;$ENV{SystemRoot}"
+    "QT_PLUGIN_PATH=" "QT_QPA_PLATFORM_PLUGIN_PATH=" "${root}/run/smoothmail.exe"
+    COMMAND_ERROR_IS_FATAL ANY)
+message(STATUS "Debug runtime resolves SQLite/TLS with SDK/dependency directories absent from PATH.")

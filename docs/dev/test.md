@@ -95,6 +95,8 @@ cmake -P tests/cmake/run_package_entry_guards.cmake
 
 CRT実バイナリの試験はMSVC x64開発者環境で行います。原本は変更せず、合成コピーは`build/`以下へ作成します。
 
+Debug配置だけを実Qt／Debug CRTで検査する場合は、`cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -P tests/cmake/run_debug_staging.cmake`を実行します。小さなQtアプリとローダー用の合成DLLを構築し、SDKのPATHなしでSQLite／TLSプラグインをロードします。ネットワーク接続や永続DB・資格情報は使用せず、本体・SASL機構の機能試験を代替しません。
+
 WinFlexBisonの反復構築と原本保持を確認する場合は、`verify_winflex_source_isolation.cmake`に`Qt6_ROOT`、`DEPENDENCY_ROOT`、`SMOOTHMAIL_SOURCE_ARCHIVES`、`CMAKE_MAKE_PROGRAM`を指定します。固定ソースから実ツールを構築する試験です。
 
 ### 生成済みライセンス資料
