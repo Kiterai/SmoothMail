@@ -20,12 +20,43 @@
 #include <QScrollBar>
 #include <QMenu>
 #include <QTimer>
+#include <QStyledItemDelegate>
+#include <QPainter>
 
 class MainWindowTest final : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void badgeShapesAndColors()
+    {
+        using namespace smoothmail;
+        MainWindow window(false);
+        Account account; account.id = QStringLiteral("badges"); window.setAccounts({account});
+        MailRecord record{account.id, QStringLiteral("INBOX"), 10, 1};
+        record.important = true;
+        window.applySnapshot(account.id, record.folder, {{record.folder, u'/', {}, 0}}, {record}, {});
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+        const auto render = [view](int column, const QString &value) {
+            const auto index = view->model()->index(0, column);
+            view->model()->setData(index, value);
+            QImage image(32, 24, QImage::Format_ARGB32); image.fill(Qt::white);
+            QPainter painter(&image);
+            QStyleOptionViewItem option; option.rect = image.rect(); option.widget = view;
+            option.palette.setColor(QPalette::Base, Qt::white);
+            view->itemDelegateForColumn(column)->paint(&painter, option, index);
+            return image;
+        };
+        const auto star = render(0, QStringLiteral("★"));
+        QCOMPARE(star.pixelColor(15, 11), QColor(255, 200, 0));
+        const auto outline = render(0, QStringLiteral("☆"));
+        QCOMPARE(outline.pixelColor(15, 11), QColor(Qt::white));
+        const auto unread = render(1, QStringLiteral("●"));
+        QCOMPARE(unread.pixelColor(15, 11), QColor(Qt::black));
+        const auto read = render(1, QStringLiteral("○"));
+        QCOMPARE(read.pixelColor(15, 11), QColor(Qt::white));
+        QVERIFY(render(2, QStringLiteral("📎")) != render(2, {}));
+    }
     void paginationButtonsAndClampedInput()
     {
         using namespace smoothmail;

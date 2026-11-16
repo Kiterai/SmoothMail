@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QMenuBar>
 #include <QPainter>
+#include <QPainterPath>
 #include <QSplitter>
 #include "visiblesplitter.h"
 #include <QStandardItemModel>
@@ -42,6 +43,7 @@
 #include "core/diagnostics.h"
 #include <algorithm>
 #include <functional>
+#include <cmath>
 
 namespace smoothmail {
 namespace {
@@ -123,9 +125,38 @@ public:
         const auto *widget = option.widget;
         (widget ? widget->style() : QApplication::style())->drawControl(QStyle::CE_ItemViewItem, &background, painter, widget);
         painter->save();
-        auto font = option.font; font.setPixelSize(14); painter->setFont(font);
-        painter->setPen(option.palette.color(option.state & QStyle::State_Selected ? QPalette::HighlightedText : QPalette::Text));
-        painter->drawText(badgeRect(option.rect), Qt::AlignCenter, index.data(Qt::DisplayRole).toString());
+        painter->setRenderHint(QPainter::Antialiasing);
+        const auto rect = badgeRect(option.rect);
+        painter->translate(rect.topLeft());
+        painter->scale(rect.width() / 16.0, rect.height() / 16.0);
+        const auto value = index.data(Qt::DisplayRole).toString();
+        if (index.column() == 0) {
+            const bool important = value == QStringLiteral("★");
+            const QColor color = important ? QColor(255, 200, 0) : QColor(Qt::black);
+            painter->setPen(QPen(color, 1));
+            painter->setBrush(important ? QBrush(color) : Qt::NoBrush);
+            QPolygonF star;
+            for (int i = 0; i < 10; ++i) {
+                const double angle = (i * 36 - 90) * 3.141592653589793 / 180;
+                const double radius = i % 2 ? 3 : 7;
+                star << QPointF(8 + radius * std::cos(angle), 8 + radius * std::sin(angle));
+            }
+            painter->drawPolygon(star);
+        } else if (index.column() == 1) {
+            const bool unread = value == QStringLiteral("●");
+            painter->setPen(QPen(unread ? Qt::black : Qt::gray, 1));
+            painter->setBrush(unread ? QBrush(Qt::black) : Qt::NoBrush);
+            painter->drawEllipse(QRectF(4, 4, 8, 8));
+        } else if (!value.isEmpty()) {
+            painter->setPen(QPen(Qt::black, 1.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter->setBrush(Qt::NoBrush);
+            QPainterPath clip;
+            clip.moveTo(6, 6); clip.lineTo(6, 11);
+            clip.cubicTo(6, 14, 10, 14, 10, 11); clip.lineTo(10, 4);
+            clip.cubicTo(10, 0, 3, 0, 3, 4); clip.lineTo(3, 11);
+            clip.cubicTo(3, 17, 13, 17, 13, 11); clip.lineTo(13, 5);
+            painter->drawPath(clip);
+        }
         painter->restore();
     }
     bool editorEvent(QEvent *event, QAbstractItemModel *, const QStyleOptionViewItem &option, const QModelIndex &index) override
@@ -772,7 +803,7 @@ void MainWindow::rebuildMessages()
         const auto &record = m_visibleMessages.at(i);
         const auto &doc = record.document;
         const QStringList cells{record.important ? QStringLiteral("★") : QStringLiteral("☆"), record.seen ? QStringLiteral("○") : QStringLiteral("●"),
-            doc.attachments.isEmpty() ? QString{} : QStringLiteral("●"), doc.subject, doc.senderName, doc.senderAddress,
+            doc.attachments.isEmpty() ? QString{} : QStringLiteral("📎"), doc.subject, doc.senderName, doc.senderAddress,
             displayTime(doc.date)};
         QList<QStandardItem *> row;
         for (int c = 0; c < cells.size(); ++c) {
