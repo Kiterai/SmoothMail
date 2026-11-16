@@ -125,6 +125,7 @@ private:
     QLabel *m_pageRange = nullptr, *m_pageCount = nullptr;
     std::optional<MailRecord> m_loadedMessage;
     int m_pageSize = MailPageSize, m_edgeSelection = 0;
+    int m_pageSelection = -1;
     QTimer *m_poll = nullptr;
 };
 

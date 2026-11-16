@@ -595,6 +595,17 @@ void MainWindow::applyPage(const MailPage &page)
         if (!present) m_loadedMessage.reset();
     }
     rebuildMessages();
+    if (m_pageSelection >= 0 && m_messageModel->rowCount()) {
+        auto index = m_messageModel->index(0, 3);
+        for (int row = 0; row < m_pageSelection; ++row) {
+            const auto next = m_messageView->indexBelow(index);
+            if (!next.isValid()) break;
+            index = next;
+        }
+        m_messageView->setCurrentIndex(index);
+        m_messageView->scrollTo(index);
+    }
+    m_pageSelection = -1;
     if (m_edgeSelection && m_messageModel->rowCount()) {
         auto index = m_messageModel->index(m_edgeSelection > 0 ? 0 : m_messageModel->rowCount() - 1, 0);
         if (m_edgeSelection < 0) while (m_messageView->isExpanded(index) && m_messageModel->rowCount(index)) index = m_messageModel->index(m_messageModel->rowCount(index) - 1, 0, index);
@@ -643,6 +654,18 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 {
     if (object == m_messageView && event->type() == QEvent::KeyPress && m_pagedStorage) {
         const auto *key = static_cast<QKeyEvent *>(event); const auto current = m_messageView->currentIndex();
+        if (key->modifiers() == Qt::AltModifier && (key->key() == Qt::Key_Left || key->key() == Qt::Key_Right)) {
+            const int destination = m_page->value() + (key->key() == Qt::Key_Left ? -1 : 1);
+            if (destination >= m_page->minimum() && destination <= m_page->maximum()) {
+                m_pageSelection = -1;
+                if (current.isValid()) {
+                    m_pageSelection = 0;
+                    for (auto above = m_messageView->indexAbove(current); above.isValid(); above = m_messageView->indexAbove(above)) ++m_pageSelection;
+                }
+                m_page->setValue(destination);
+            }
+            return true;
+        }
         if (current.isValid() && key->modifiers() == Qt::NoModifier) {
             if (key->key() == Qt::Key_Up && !m_messageView->indexAbove(current).isValid() && m_page->value() > 1) { m_edgeSelection = -1; m_page->setValue(m_page->value() - 1); return true; }
             if (key->key() == Qt::Key_Down && !m_messageView->indexBelow(current).isValid() && m_page->value() < m_page->maximum()) { m_edgeSelection = 1; m_page->setValue(m_page->value() + 1); return true; }

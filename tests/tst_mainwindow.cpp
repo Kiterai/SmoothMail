@@ -29,6 +29,31 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void alternatePageNavigationKeepsPosition()
+    {
+        using namespace smoothmail;
+        MainWindow window(false); window.setPagedStorage(true);
+        Account account; account.id = QStringLiteral("alt-paging"); window.setAccounts({account});
+        QSignalSpy requests(&window, &MainWindow::pageRequested);
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {});
+        const auto deliver = [&](int count) {
+            MailPage result; result.query = qvariant_cast<MailQuery>(requests.last().first()); result.total = 203;
+            for (int i = 0; i < count; ++i) result.messages.append({account.id, QStringLiteral("INBOX"), 1, result.query.page * 100 + i});
+            window.applyPage(result);
+        };
+        deliver(100);
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
+        view->setCurrentIndex(view->model()->index(8, 3));
+        QTest::keyClick(view, Qt::Key_Right, Qt::AltModifier);
+        QCOMPARE(qvariant_cast<MailQuery>(requests.last().first()).page, 2);
+        deliver(100); QCOMPARE(view->currentIndex().row(), 8);
+        QTest::keyClick(view, Qt::Key_Right, Qt::AltModifier);
+        deliver(3); QCOMPARE(view->currentIndex().row(), 2);
+        const int before = requests.size();
+        QTest::keyClick(view, Qt::Key_Right, Qt::AltModifier); QCOMPARE(requests.size(), before);
+        QTest::keyClick(view, Qt::Key_Left, Qt::AltModifier);
+        deliver(100); QCOMPARE(view->currentIndex().row(), 2);
+    }
     void paginationButtonsAndClampedInput()
     {
         using namespace smoothmail;
