@@ -8,6 +8,8 @@ python -m unittest discover -s tests/python -v
 
 配布入口の事前検査、ランタイム依存解決、原本・テンプレート・生成manifest、依存図変換を検査します。バッチ処理はビルドから実行しません。MSVC CRTの署名検証と最終ZIPの検証には、以下のネイティブ試験も実行してください。
 
+クラス依存解析の試験には`python -m pip install -r tools/architecture-requirements.txt`で文書生成専用依存も導入してください。未導入の場合、その試験だけはスキップします。図・表の実生成手順は[構成資料](architecture.md#再生成)を参照してください。
+
 [Debugビルド](build.md)後、リポジトリルートのMSVC x64開発者コマンドプロンプトで実行します。以下は標準の依存rootを使う例です。別rootの場合はパスを読み替えてください。
 
 ## 通常の自動テスト

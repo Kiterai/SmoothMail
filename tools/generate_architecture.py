@@ -1,7 +1,7 @@
 """Generate architecture figures from CMake Graphviz and Doxygen XML.
 
 This is documentation tooling, never invoked by the application build.
-Only the Python standard library is required.
+Tree-sitter dependencies are used only by this documentation generator.
 """
 
 import argparse
@@ -12,6 +12,9 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import html
+
+from architecture_analysis import Analysis
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,17 +86,89 @@ def directory_graph(nodes, edges):
     return directories, dependencies
 
 
-def write_graph(path, nodes, edges):
+def paired_graph(nodes, edges):
+    project = {node for node in nodes if internal(node)}
+    def pair(name):
+        path = Path(name)
+        if path.suffix in (".h", ".cpp") and str(path.with_suffix(
+                ".cpp" if path.suffix == ".h" else ".h")).replace("\\", "/") in project:
+            return path.with_suffix("").as_posix()
+        return name
+    return ({pair(node) for node in project},
+            {(pair(source), pair(target)) for source, target in edges
+             if source in project and target in project and pair(source) != pair(target)})
+
+
+def write_graph(path, nodes, edges, groups=None, labels=None):
     lines = ["digraph dependencies {", 'rankdir=LR;',
              'graph [fontname="Arial"];', 'node [shape=box, fontname="Arial", style=filled];',
              'edge [color="#64748b"];']
-    for node in sorted(nodes):
-        color = INTERNAL if internal(node) else EXTERNAL
-        lines.append(f"{quote(node)} [fillcolor={quote(color)}];")
+    def vertex(node):
+        color = INTERNAL if groups is not None or internal(node) else EXTERNAL
+        return f"{quote(node)} [label={quote((labels or {}).get(node, node))}, fillcolor={quote(color)}];"
+    if groups is None:
+        lines.extend(vertex(node) for node in sorted(nodes))
+    else:
+        for index, directory in enumerate(sorted(set(groups.values()))):
+            lines.append(f"subgraph cluster_{index} {{")
+            lines.append(f"label={quote(directory)};")
+            lines.extend(vertex(node) for node in sorted(nodes) if groups[node] == directory)
+            lines.append("}")
     for source, target in sorted(edges):
         lines.append(f"{quote(source)} -> {quote(target)};")
     lines.append("}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def target_sources(build):
+    replies = build / ".cmake/api/v1/reply"
+    index = json.loads(max(replies.glob("index-*.json"), key=lambda path: path.stat().st_mtime_ns).read_text(encoding="utf-8"))
+    model_file = next(item["jsonFile"] for item in index["objects"] if item["kind"] == "codemodel")
+    model = json.loads((replies / model_file).read_text(encoding="utf-8"))
+    result = {}
+    for configuration in model["configurations"]:
+        for reference in configuration["targets"]:
+            name = reference["name"]
+            if not re.fullmatch(r"smoothmail(?:_[a-z_]+)?", name) or name in ("smoothmail_package", "smoothmail_qt_sbom_audit"):
+                continue
+            target = json.loads((replies / reference["jsonFile"]).read_text(encoding="utf-8"))
+            files = set()
+            for item in target.get("sources", []):
+                path = item["path"]
+                if not item.get("isGenerated") and internal(source_name(path)):
+                    files.add(source_name(path))
+            if files:
+                result.setdefault(name, set()).update(files)
+    if not result:
+        raise ValueError("CMake file API did not report application target sources")
+    return result
+
+
+def source_tables(targets, analysis):
+    def cell(value):
+        return html.escape(value).replace("|", "&#124;").replace("\n", " ")
+    lines = ["<!-- BEGIN GENERATED SOURCE TABLES -->", ""]
+    for target, sources in sorted(targets.items()):
+        lines.extend([f"### `{target}`", "", "| ソースファイル | 定義クラス | 定義グローバル関数 | includeヘッダ |",
+                      "|---|---|---|---|"])
+        for source in sorted(sources):
+            entries = analysis.files.get(source, {"classes": [], "functions": [], "includes": []})
+            columns = [sorted(entries[key]) for key in ("classes", "functions", "includes")]
+            for row in range(max(1, *(len(column) for column in columns))):
+                values = [cell(source) if row == 0 else ""]
+                values.extend(cell(column[row]) if row < len(column) else "" for column in columns)
+                lines.append("| " + " | ".join(values) + " |")
+        lines.append("")
+    lines.append("<!-- END GENERATED SOURCE TABLES -->")
+    return "\n".join(lines) + "\n"
+
+
+def update_document(path, tables):
+    content = path.read_text(encoding="utf-8")
+    pattern = r"<!-- BEGIN GENERATED SOURCE TABLES -->.*?<!-- END GENERATED SOURCE TABLES -->"
+    if len(re.findall(pattern, content, re.S)) != 1:
+        raise ValueError("Architecture document must contain exactly one generated source-table block")
+    path.write_bytes(re.sub(pattern, lambda match: tables.strip(), content, flags=re.S).encode("utf-8"))
 
 
 def color_targets(text):
@@ -110,12 +185,23 @@ def generate(args):
     build = args.build.resolve()
     if not (build / "CMakeCache.txt").is_file():
         raise ValueError("--build must be an already configured application build")
-    if args.output.exists():
+    if args.output.exists() or args.output.is_symlink():
         raise ValueError("--output must be a new directory; existing figures are never overwritten")
     dot = shutil.which(args.dot)
     doxygen = shutil.which(args.doxygen)
-    if not dot or not doxygen:
-        raise ValueError("Install Graphviz (dot) and Doxygen, or specify their executable paths")
+    tred = shutil.which(args.tred) if args.tred else shutil.which(str(Path(dot).with_name("tred" + Path(dot).suffix))) if dot else None
+    unflatten = shutil.which(args.unflatten) if args.unflatten else shutil.which(
+        str(Path(dot).with_name("unflatten" + Path(dot).suffix))) if dot else None
+    if not all((dot, doxygen, tred, unflatten)):
+        raise ValueError("Install Graphviz (dot, tred, unflatten) and Doxygen, or specify their executable paths")
+    if args.document:
+        # Validate markers before invoking generators, without writing anything.
+        content = args.document.read_text(encoding="utf-8")
+        if len(re.findall(r"<!-- BEGIN GENERATED SOURCE TABLES -->.*?<!-- END GENERATED SOURCE TABLES -->", content, re.S)) != 1:
+            raise ValueError("Architecture document must contain exactly one generated source-table block")
+    sources = {path.relative_to(ROOT).as_posix(): path.read_bytes()
+               for path in (ROOT / "src").rglob("*") if path.suffix in (".cpp", ".h")}
+    analysis = Analysis(sources)
     with tempfile.TemporaryDirectory(prefix="smoothmail-architecture-") as temporary:
         work = Path(temporary)
         # Configure in the supplied build without changing its test options.
@@ -123,18 +209,26 @@ def generate(args):
         options = build / "CMakeGraphVizOptions.cmake"
         if options.exists() or options.is_symlink():
             raise ValueError("Existing CMakeGraphVizOptions.cmake must not be overwritten")
-        options.write_text(
+        options_text = (
             'set(GRAPHVIZ_EXECUTABLES TRUE)\n'
             'set(GRAPHVIZ_CUSTOM_TARGETS FALSE)\n'
             'set(GRAPHVIZ_GENERATE_PER_TARGET FALSE)\n'
             'set(GRAPHVIZ_GENERATE_DEPENDERS FALSE)\n'
             'set(GRAPHVIZ_IGNORE_TARGETS "tst_.*;.*[Tt]est.*;.*probe.*;smoothmail_package;'
-            'smoothmail_qt_sbom_audit;portable.*;.*helper.*;Qt6::Test")\n',
-            encoding="utf-8")
+            'smoothmail_qt_sbom_audit;portable.*;.*helper.*;Qt6::Test")\n')
+        query = build / ".cmake/api/v1/query/client-smoothmail-docs/codemodel-v2"
+        query.parent.mkdir(parents=True, exist_ok=True)
+        query_created = not query.exists()
+        options.write_text(options_text, encoding="utf-8")
         try:
+            if query_created:
+                query.touch(exist_ok=False)
             run("cmake", f"--graphviz={work / 'targets.raw.dot'}", build)
         finally:
             options.unlink()
+            if query_created and query.exists():
+                query.unlink()
+        targets = target_sources(build)
         (work / "targets.dot").write_text(
             color_targets((work / "targets.raw.dot").read_text(encoding="utf-8")),
             encoding="utf-8")
@@ -146,18 +240,37 @@ def generate(args):
             'FILE_PATTERNS = *.cpp *.h\nRECURSIVE = YES\nEXTRACT_ALL = YES\n'
             'GENERATE_XML = YES\nGENERATE_HTML = NO\nGENERATE_LATEX = NO\n'
             'QUIET = YES\nWARNINGS = NO\nENABLE_PREPROCESSING = YES\n'
-            'SEARCH_INCLUDES = YES\nFULL_PATH_NAMES = YES\n',
+            'SEARCH_INCLUDES = YES\nFULL_PATH_NAMES = YES\n'
+            'EXTRACT_PRIVATE = YES\nEXTRACT_STATIC = YES\nEXTRACT_LOCAL_CLASSES = YES\n'
+            'SOURCE_BROWSER = YES\nREFERENCES_RELATION = YES\nREFERENCED_BY_RELATION = YES\n',
             encoding="utf-8")
         run(doxygen, config)
         nodes, edges = source_graph(work / "doxygen/xml")
-        write_graph(work / "files.dot", nodes, edges)
+        project_nodes, project_edges = paired_graph(nodes, edges)
+        write_graph(work / "files.raw.dot", project_nodes, project_edges,
+                    {node: Path(node).parent.as_posix() for node in project_nodes})
         write_graph(work / "directories.dot", *directory_graph(nodes, edges))
-        for name in ("targets", "files", "directories"):
+        analysis.add_doxygen(work / "doxygen/xml", source_name)
+        classes, class_edges = analysis.class_graph()
+        write_graph(work / "classes.raw.dot", classes, class_edges,
+                    {node: Path(analysis.classes[node]).parent.as_posix() for node in classes},
+                    {node: node.rsplit("::", 1)[-1] for node in classes})
+        for name in ("files", "classes"):
+            with (work / f"{name}.reduced.dot").open("wb") as output:
+                subprocess.run([tred, str(work / f"{name}.raw.dot")], stdout=output, check=True)
+            run(unflatten, "-l", "3", "-f", "-o", work / f"{name}.dot", work / f"{name}.reduced.dot")
+        tables = source_tables(targets, analysis)
+        for name in ("targets", "files", "directories", "classes"):
             run(dot, "-Tsvg", work / f"{name}.dot", "-o", work / f"{name}.svg")
         args.output.mkdir(parents=True)
-        for name in ("targets", "files", "directories"):
+        for name in ("targets", "files", "directories", "classes"):
             for extension in ("dot", "svg"):
                 shutil.copyfile(work / f"{name}.{extension}", args.output / f"{name}.{extension}")
+        (args.output / "tables.md").write_bytes(tables.encode("utf-8"))
+        if args.document:
+            update_document(args.document, tables)
+        if analysis.errors:
+            print("Tree-sitter syntax recovery used for: " + ", ".join(analysis.errors))
     print(f"Architecture figures: {args.output}")
 
 
@@ -167,6 +280,9 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dot", default="dot")
     parser.add_argument("--doxygen", default="doxygen")
+    parser.add_argument("--tred")
+    parser.add_argument("--unflatten")
+    parser.add_argument("--document", type=Path, help="Update only the marked generated tables in architecture.md")
     args = parser.parse_args()
     try:
         generate(args)

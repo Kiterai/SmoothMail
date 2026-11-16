@@ -1,0 +1,221 @@
+digraph dependencies {
+	graph [fontname=Arial,
+		rankdir=LR
+	];
+	node [fontname=Arial,
+		shape=box,
+		style=filled
+	];
+	edge [color="#64748b"];
+	subgraph cluster_0 {
+		graph [label="src/app"];
+		"smoothmail::ApplicationController"	[fillcolor="#dbeafe",
+			label=ApplicationController];
+		"smoothmail::ApplicationController::Active"	[fillcolor="#dbeafe",
+			label=Active];
+		"smoothmail::ApplicationController::Request"	[fillcolor="#dbeafe",
+			label=Request];
+		"smoothmail::OperationCommand"	[fillcolor="#dbeafe",
+			label=OperationCommand];
+	}
+	subgraph cluster_1 {
+		graph [label="src/core"];
+		"smoothmail::Account"	[fillcolor="#dbeafe",
+			label=Account];
+		"smoothmail::DownloadEntry"	[fillcolor="#dbeafe",
+			label=DownloadEntry];
+		"smoothmail::MailFolder"	[fillcolor="#dbeafe",
+			label=MailFolder];
+		"smoothmail::MailPage"	[fillcolor="#dbeafe",
+			label=MailPage];
+		"smoothmail::MailQuery"	[fillcolor="#dbeafe",
+			label=MailQuery];
+		"smoothmail::MailRecord"	[fillcolor="#dbeafe",
+			label=MailRecord];
+		"smoothmail::MessageAttachment"	[fillcolor="#dbeafe",
+			label=MessageAttachment];
+		"smoothmail::MessageDocument"	[fillcolor="#dbeafe",
+			label=MessageDocument];
+		"smoothmail::MessagePart"	[fillcolor="#dbeafe",
+			label=MessagePart];
+		"smoothmail::PendingFlag"	[fillcolor="#dbeafe",
+			label=PendingFlag];
+		"smoothmail::PendingFolder"	[fillcolor="#dbeafe",
+			label=PendingFolder];
+		"smoothmail::PendingMove"	[fillcolor="#dbeafe",
+			label=PendingMove];
+		"smoothmail::ReplyHeaders"	[fillcolor="#dbeafe",
+			label=ReplyHeaders];
+		"smoothmail::ServerSettings"	[fillcolor="#dbeafe",
+			label=ServerSettings];
+		"smoothmail::SystemSettings"	[fillcolor="#dbeafe",
+			label=SystemSettings];
+		"smoothmail::ThreadMessage"	[fillcolor="#dbeafe",
+			label=ThreadMessage];
+		"smoothmail::diagnostics::FolderValidationFailure"	[fillcolor="#dbeafe",
+			label=FolderValidationFailure];
+		"smoothmail::diagnostics::OperationScope"	[fillcolor="#dbeafe",
+			label=OperationScope];
+	}
+	subgraph cluster_2 {
+		graph [label="src/mail"];
+		"smoothmail::AttachmentResult"	[fillcolor="#dbeafe",
+			label=AttachmentResult];
+		"smoothmail::AuthenticationBroker"	[fillcolor="#dbeafe",
+			label=AuthenticationBroker];
+		"smoothmail::AuthenticationDecision"	[fillcolor="#dbeafe",
+			label=AuthenticationDecision];
+		"smoothmail::CancellationScope"	[fillcolor="#dbeafe",
+			label=CancellationScope];
+		"smoothmail::ComposeData"	[fillcolor="#dbeafe",
+			label=ComposeData];
+		"smoothmail::ComposedMessage"	[fillcolor="#dbeafe",
+			label=ComposedMessage];
+		"smoothmail::ListedFolder"	[fillcolor="#dbeafe",
+			label=ListedFolder];
+		"smoothmail::MailService"	[fillcolor="#dbeafe",
+			label=MailService];
+		"smoothmail::MessageParseResult"	[fillcolor="#dbeafe",
+			label=MessageParseResult];
+		"smoothmail::MimeParser"	[fillcolor="#dbeafe",
+			label=MimeParser];
+		"smoothmail::OAuthClient"	[fillcolor="#dbeafe",
+			label=OAuthClient];
+		"smoothmail::OAuthTokens"	[fillcolor="#dbeafe",
+			label=OAuthTokens];
+		"smoothmail::RejectCertificateErrors"	[fillcolor="#dbeafe",
+			label=RejectCertificateErrors];
+		"smoothmail::TransportSecurity"	[fillcolor="#dbeafe",
+			label=TransportSecurity];
+	}
+	subgraph cluster_3 {
+		graph [label="src/storage"];
+		"smoothmail::AccountRegistrar"	[fillcolor="#dbeafe",
+			label=AccountRegistrar];
+		"smoothmail::AccountRepository"	[fillcolor="#dbeafe",
+			label=AccountRepository];
+		"smoothmail::AccountRepository::State"	[fillcolor="#dbeafe",
+			label=State];
+		"smoothmail::AccountRepository::State::Sync"	[fillcolor="#dbeafe",
+			label=Sync];
+		"smoothmail::CredentialStore"	[fillcolor="#dbeafe",
+			label=CredentialStore];
+		"smoothmail::DownloadFileResult"	[fillcolor="#dbeafe",
+			label=DownloadFileResult];
+	}
+	subgraph cluster_4 {
+		graph [label="src/ui"];
+		"smoothmail::AboutDialog"	[fillcolor="#dbeafe",
+			label=AboutDialog];
+		"smoothmail::AccountDialog"	[fillcolor="#dbeafe",
+			label=AccountDialog];
+		"smoothmail::AccountDialog::ServerFields"	[fillcolor="#dbeafe",
+			label=ServerFields];
+		"smoothmail::BadgeDelegate"	[fillcolor="#dbeafe",
+			label=BadgeDelegate];
+		"smoothmail::ComposeDialog"	[fillcolor="#dbeafe",
+			label=ComposeDialog];
+		"smoothmail::ConnectionTestButton"	[fillcolor="#dbeafe",
+			label=ConnectionTestButton];
+		"smoothmail::DownloadHistoryDialog"	[fillcolor="#dbeafe",
+			label=DownloadHistoryDialog];
+		"smoothmail::FolderModel"	[fillcolor="#dbeafe",
+			label=FolderModel];
+		"smoothmail::LicenseBrowser"	[fillcolor="#dbeafe",
+			label=LicenseBrowser];
+		"smoothmail::MainWindow"	[fillcolor="#dbeafe",
+			label=MainWindow];
+		"smoothmail::MessageListModel"	[fillcolor="#dbeafe",
+			label=MessageListModel];
+		"smoothmail::MessageTreeView"	[fillcolor="#dbeafe",
+			label=MessageTreeView];
+		"smoothmail::MessageViewer"	[fillcolor="#dbeafe",
+			label=MessageViewer];
+		"smoothmail::PageNumberBox"	[fillcolor="#dbeafe",
+			label=PageNumberBox];
+		"smoothmail::SafeBodyView"	[fillcolor="#dbeafe",
+			label=SafeBodyView];
+		"smoothmail::SystemSettingsDialog"	[fillcolor="#dbeafe",
+			label=SystemSettingsDialog];
+		"smoothmail::VisibleSplitter"	[fillcolor="#dbeafe",
+			label=VisibleSplitter];
+		"smoothmail::VisibleSplitter::Handle"	[fillcolor="#dbeafe",
+			label=Handle];
+	}
+	"smoothmail::AboutDialog" -> "smoothmail::LicenseBrowser"	[minlen=1];
+	"smoothmail::Account" -> "smoothmail::ServerSettings";
+	"smoothmail::AccountDialog" -> "smoothmail::Account";
+	"smoothmail::AccountDialog" -> "smoothmail::AccountDialog::ServerFields"	[minlen=1];
+	"smoothmail::AccountDialog" -> "smoothmail::ConnectionTestButton"	[minlen=2];
+	"smoothmail::AccountDialog::ServerFields" -> "smoothmail::ServerSettings";
+	"smoothmail::AccountRegistrar" -> "smoothmail::AccountRepository";
+	"smoothmail::AccountRegistrar" -> "smoothmail::CredentialStore"	[minlen=1];
+	"smoothmail::AccountRepository" -> "smoothmail::Account";
+	"smoothmail::AccountRepository" -> "smoothmail::AccountRepository::State";
+	"smoothmail::AccountRepository" -> "smoothmail::DownloadEntry";
+	"smoothmail::AccountRepository" -> "smoothmail::DownloadFileResult"	[minlen=3];
+	"smoothmail::AccountRepository" -> "smoothmail::MailFolder";
+	"smoothmail::AccountRepository" -> "smoothmail::MailPage";
+	"smoothmail::AccountRepository" -> "smoothmail::MimeParser";
+	"smoothmail::AccountRepository" -> "smoothmail::PendingFlag"	[minlen=1];
+	"smoothmail::AccountRepository" -> "smoothmail::PendingFolder"	[minlen=2];
+	"smoothmail::AccountRepository" -> "smoothmail::PendingMove"	[minlen=3];
+	"smoothmail::AccountRepository" -> "smoothmail::diagnostics::FolderValidationFailure"	[minlen=1];
+	"smoothmail::AccountRepository" -> "smoothmail::diagnostics::OperationScope"	[minlen=2];
+	"smoothmail::AccountRepository::State" -> "smoothmail::AccountRepository::State::Sync"	[minlen=1];
+	"smoothmail::ApplicationController" -> "smoothmail::AccountDialog";
+	"smoothmail::ApplicationController" -> "smoothmail::ApplicationController::Active";
+	"smoothmail::ApplicationController" -> "smoothmail::AuthenticationBroker";
+	"smoothmail::ApplicationController" -> "smoothmail::ComposeDialog"	[minlen=2];
+	"smoothmail::ApplicationController" -> "smoothmail::DownloadHistoryDialog"	[minlen=3];
+	"smoothmail::ApplicationController" -> "smoothmail::MainWindow";
+	"smoothmail::ApplicationController" -> "smoothmail::OperationCommand"	[minlen=1];
+	"smoothmail::ApplicationController" -> "smoothmail::SystemSettingsDialog"	[minlen=1];
+	"smoothmail::ApplicationController::Active" -> "smoothmail::ApplicationController::Request";
+	"smoothmail::ApplicationController::Active" -> "smoothmail::MailService";
+	"smoothmail::AuthenticationBroker" -> "smoothmail::AccountRegistrar";
+	"smoothmail::AuthenticationBroker" -> "smoothmail::OAuthClient";
+	"smoothmail::ComposeData" -> "smoothmail::ReplyHeaders"	[minlen=1];
+	"smoothmail::ComposeDialog" -> "smoothmail::ComposeData";
+	"smoothmail::DownloadHistoryDialog" -> "smoothmail::DownloadEntry";
+	"smoothmail::FolderModel" -> "smoothmail::MailRecord";
+	"smoothmail::MailPage" -> "smoothmail::MailQuery"	[minlen=1];
+	"smoothmail::MailPage" -> "smoothmail::MailRecord";
+	"smoothmail::MailRecord" -> "smoothmail::MessageDocument";
+	"smoothmail::MailService" -> "smoothmail::AccountRepository";
+	"smoothmail::MailService" -> "smoothmail::AuthenticationDecision"	[minlen=1];
+	"smoothmail::MailService" -> "smoothmail::CancellationScope"	[minlen=2];
+	"smoothmail::MailService" -> "smoothmail::ComposeData";
+	"smoothmail::MailService" -> "smoothmail::ComposedMessage"	[minlen=3];
+	"smoothmail::MailService" -> "smoothmail::ListedFolder"	[minlen=1];
+	"smoothmail::MailService" -> "smoothmail::RejectCertificateErrors"	[minlen=2];
+	"smoothmail::MailService" -> "smoothmail::TransportSecurity"	[minlen=3];
+	"smoothmail::MainWindow" -> "smoothmail::AboutDialog"	[minlen=2];
+	"smoothmail::MainWindow" -> "smoothmail::Account";
+	"smoothmail::MainWindow" -> "smoothmail::BadgeDelegate"	[minlen=3];
+	"smoothmail::MainWindow" -> "smoothmail::FolderModel"	[minlen=1];
+	"smoothmail::MainWindow" -> "smoothmail::MailFolder";
+	"smoothmail::MainWindow" -> "smoothmail::MailPage";
+	"smoothmail::MainWindow" -> "smoothmail::MessageListModel"	[minlen=2];
+	"smoothmail::MainWindow" -> "smoothmail::MessageTreeView"	[minlen=3];
+	"smoothmail::MainWindow" -> "smoothmail::MessageViewer";
+	"smoothmail::MainWindow" -> "smoothmail::PageNumberBox"	[minlen=1];
+	"smoothmail::MainWindow" -> "smoothmail::SystemSettings";
+	"smoothmail::MainWindow" -> "smoothmail::ThreadMessage"	[minlen=1];
+	"smoothmail::MessageDocument" -> "smoothmail::MessageAttachment"	[minlen=1];
+	"smoothmail::MessageDocument" -> "smoothmail::MessagePart"	[minlen=2];
+	"smoothmail::MessageListModel" -> "smoothmail::MailRecord";
+	"smoothmail::MessageParseResult" -> "smoothmail::MessageDocument";
+	"smoothmail::MessageViewer" -> "smoothmail::MessageDocument";
+	"smoothmail::MessageViewer" -> "smoothmail::SafeBodyView"	[minlen=1];
+	"smoothmail::MessageViewer" -> "smoothmail::VisibleSplitter"	[minlen=2];
+	"smoothmail::MimeParser" -> "smoothmail::AttachmentResult"	[minlen=1];
+	"smoothmail::MimeParser" -> "smoothmail::MessageParseResult"	[minlen=2];
+	"smoothmail::OAuthClient" -> "smoothmail::ApplicationController::Request";
+	"smoothmail::OAuthClient" -> "smoothmail::OAuthTokens"	[minlen=1];
+	"smoothmail::PageNumberBox" -> "smoothmail::AccountRepository::State";
+	"smoothmail::PendingFlag" -> "smoothmail::MailRecord";
+	"smoothmail::PendingMove" -> "smoothmail::MailRecord";
+	"smoothmail::SystemSettingsDialog" -> "smoothmail::SystemSettings";
+	"smoothmail::VisibleSplitter" -> "smoothmail::VisibleSplitter::Handle"	[minlen=1];
+}
