@@ -48,8 +48,6 @@
 namespace smoothmail {
 namespace {
 
-class MessageTreeView final : public QTreeView
-{
 class PageNumberBox final : public QSpinBox
 {
 public:
@@ -72,6 +70,8 @@ public:
     }
 };
 
+class MessageTreeView final : public QTreeView
+{
 public:
     using QTreeView::QTreeView;
     void scrollTo(const QModelIndex &index, ScrollHint hint = EnsureVisible) override
@@ -561,9 +561,11 @@ void MainWindow::requestPage(bool reset)
     if (m_accountId.isEmpty() || m_folder.isEmpty()) {
         ++m_queryGeneration; m_filterProgress->hide(); m_loadedMessage.reset(); m_mailCache.clear();
         { const QSignalBlocker block(m_page); m_page->setRange(1, 1); m_page->setValue(1); m_page->setEnabled(false); }
+        updatePageButtons();
         m_pageRange->setText(QStringLiteral("0 - 0 / 0件")); m_pageCount->setText(QStringLiteral("/ 1")); rebuildMessages(); return;
     }
     if (reset) { const QSignalBlocker block(m_page); m_page->setValue(1); }
+    updatePageButtons();
     MailQuery query; query.accountId = m_accountId; query.folder = m_folder; query.text = m_filterText;
     query.page = m_page->value(); query.sortColumn = m_sortColumn; query.order = m_sortOrder;
     query.importantOnly = m_importantOnly->isChecked(); query.unreadOnly = m_unreadOnly->isChecked(); query.generation = ++m_queryGeneration;
@@ -579,6 +581,7 @@ void MainWindow::applyPage(const MailPage &page)
     if (!page.error.isEmpty()) { if (!m_loadedMessage) findChild<MessageViewer *>()->showFailure(); statusBar()->showMessage(QStringLiteral("検索に失敗しました: ") + page.error); return; }
     const auto pages = qMax<qint64>(1, (page.total + page.query.pageSize - 1) / page.query.pageSize);
     { const QSignalBlocker block(m_page); m_page->setRange(1, int(pages)); m_page->setValue(page.query.page); m_page->setEnabled(pages > 1); }
+    updatePageButtons();
     m_pageCount->setText(QStringLiteral("/ %1").arg(pages));
     const auto start = page.total ? qint64(page.query.page - 1) * page.query.pageSize + 1 : 0;
     m_pageRange->setText(QStringLiteral("%1 - %2 / %3件").arg(start).arg(page.total ? start + page.messages.size() - 1 : 0).arg(page.total));
@@ -592,17 +595,20 @@ void MainWindow::applyPage(const MailPage &page)
         if (!present) m_loadedMessage.reset();
     }
     rebuildMessages();
-        updatePageButtons();
     if (m_edgeSelection && m_messageModel->rowCount()) {
         auto index = m_messageModel->index(m_edgeSelection > 0 ? 0 : m_messageModel->rowCount() - 1, 0);
         if (m_edgeSelection < 0) while (m_messageView->isExpanded(index) && m_messageModel->rowCount(index)) index = m_messageModel->index(m_messageModel->rowCount(index) - 1, 0, index);
-    updatePageButtons();
         m_messageView->setCurrentIndex(index.siblingAtColumn(3)); m_messageView->scrollTo(index);
     }
     m_edgeSelection = 0;
     if (page.query.revealUid > 0 && m_revealUid > 0) {
         m_revealUid = 0; statusBar()->showMessage(QStringLiteral("元メッセージが見つからないか、UIDVALIDITYが変更されています。"));
     }
+}
+void MainWindow::updatePageButtons()
+{
+    m_previousPage->setEnabled(m_page->value() > m_page->minimum());
+    m_nextPage->setEnabled(m_page->value() < m_page->maximum());
 }
 void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &error)
 {
@@ -612,7 +618,6 @@ void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &
     if (!error.isEmpty()) { m_loadedMessage.reset(); findChild<MessageViewer *>()->showFailure(); findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(false); statusBar()->showMessage(error); return; }
     m_loadedMessage = message;
     // A body request may have started before a local flag edit.
-    updatePageButtons();
     m_loadedMessage->seen = selected->seen; m_loadedMessage->important = selected->important;
     findChild<MessageViewer *>()->displayMessage(message.document);
     findChild<QAction *>(QStringLiteral("replyAction"))->setEnabled(true);
@@ -636,11 +641,6 @@ QChar MainWindow::folderSeparator(const QString &id, const QString &name) const
 bool MainWindow::eventFilter(QObject *object, QEvent *event)
 {
     if (object == m_messageView && event->type() == QEvent::KeyPress && m_pagedStorage) {
-void MainWindow::updatePageButtons()
-{
-    m_previousPage->setEnabled(m_page->value() > m_page->minimum());
-    m_nextPage->setEnabled(m_page->value() < m_page->maximum());
-}
         const auto *key = static_cast<QKeyEvent *>(event); const auto current = m_messageView->currentIndex();
         if (current.isValid() && key->modifiers() == Qt::NoModifier) {
             if (key->key() == Qt::Key_Up && !m_messageView->indexAbove(current).isValid() && m_page->value() > 1) { m_edgeSelection = -1; m_page->setValue(m_page->value() - 1); return true; }
