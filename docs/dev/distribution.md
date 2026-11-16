@@ -2,7 +2,9 @@
 
 Windows x64向けのポータブルZIPを配布します。展開した`SmoothMail/launch.cmd`から起動します。本体・DLL・プラグインは`runtime/`へまとめます。`README.md`と`storage.md`はそれぞれ`docs/usage.md`・`docs/storage.md`をZIP直下に収録します。以下はリポジトリルートのMSVC x64開発者コマンドプロンプトで実行してください。
 
-## 1. 入力を準備する
+## 最終配布物の生成・検証
+
+### 入力を準備する
 
 [ビルド要件](build.md)に加え、次を用意します。
 
@@ -21,7 +23,7 @@ python tools/collect_sources.py --output build/source-review
 cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 ```
 
-依存rootを変更した場合は収集にも`--dependency-root <依存root>`を指定します。提供済み原本から収集する場合は`--source-archives <アーカイブ置場>`を指定し、固定ハッシュを照合します。ソース収集はHEADを使うため、配布対象の変更は先にコミットしてください。[提供アーカイブからの再構築](build.md#再ビルド別環境)も確認します。
+依存rootを変更した場合は収集にも`--dependency-root <依存root>`を指定します。提供済み原本から収集する場合は`--source-archives <アーカイブ置場>`を指定し、固定ハッシュを照合します。ソース収集はHEADを使うため、配布対象の変更は先にコミットしてください。[提供アーカイブからの再構築](build.md#リリースビルド)も確認します。
 
 収集結果はレビュー用です。原文・著作権・変更差分・再構築／DLL差替え・バイナリとの対応を確認してください。`review_only`資料は改名しても配布入力として拒否されます。
 
@@ -61,7 +63,7 @@ CRT検証補助はRelease配置時にCMakeで構築されます。パスは`<依
 
 名称・URL・版・構成・文面を変更した場合は再生成・再レビューしてください。配布処理には確認済みの資料を渡し、ZIPとダイアログへ同じ文書を収録します。開発経緯の`THIRD_PARTY_NOTICES.md`は生成済み通知の代用にしません。
 
-## 2. 最終ZIPを生成する
+### 最終ZIPを生成する
 
 ```bat
 python tools/package_windows.py --qt-root C:/Qt/6.12.0/msvc2022_64 --legal-dir C:/release-licenses --output dist/SmoothMail-windows-x64.zip
@@ -89,7 +91,7 @@ CRTは通常／遅延importと推移依存から必要なRelease DLLだけを選
 
 入力やハッシュ・パスの不一致で停止した場合は原因を確認し、検査を無効化したりDLLを事後書換えしたりしないでください。供給元由来の情報は`cmake/runtime-path-policy.json`の全体ハッシュと許容範囲に一致するものだけを認め、作業者情報は範囲内でも拒否します。
 
-## 3. 成果物を検証する
+### 成果物を検証する
 
 1. 新しいフォルダへZIPを展開し、`runtime-sha256.txt`の全ファイルを照合する。
 2. PDB、Debug CRT、DB、ログ、資格情報、登録JSON、ビルドキャッシュ・補助ツールの非混入と通知の対応を確認する。
@@ -99,7 +101,11 @@ CRTは通常／遅延importと推移依存から必要なRelease DLLだけを選
 
 [合成テスト](test.md)の成功だけで実サービス・実配布物の確認を代替しません。
 
-## 4. 公開・ライセンス上の注意
+## 配布手順
+
+検証済みの同じ版のバイナリ・対応ソース一式・各SHA256・通知・再構築／差替え手順を、生成済み通知のURLと一致する同じページへ掲載します。公開後に取得できることを確認してください。
+
+## ライセンス注意事項
 
 公開・正当な配布と、次の事項の実施は配布作業担当者の責務です。
 

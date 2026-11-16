@@ -11,6 +11,8 @@
 
 Ninja・vcpkgとQt以外の依存はスクリプトが取得・構築します。別のQtは取得せず、既存SDKも変更しません。取得元・版は `cmake/dependencies.json` で固定し、アーカイブのハッシュとTLS証明書を検証します。
 
+Qtやコンパイラを変更する場合は、新しい `-DDEPENDENCY_ROOT=C:/build/smoothmail-deps` と `-DAPPLICATION_BUILD=C:/build/smoothmail-app` を標準コマンドへ追加します。Windowsのパス長制限を避けるため短いパスを推奨します。既存ソース・取得物・パッチの不一致で停止した場合、強制上書きや検証の無効化はせず原因を確認してください。
+
 ### Windowsの制限付きサンドボックスでのHTTPS取得
 
 CMakeのHTTPS取得がstatus 35で失敗する制限環境では、**OpenSSL対応curlの絶対パス**を明示指定してください（Git for Windows等の既存ツール）。
@@ -29,6 +31,8 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_BUILD_TYPE=Debug -P cmake/Buil
 
 依存を `build/deps/` に準備し、アプリを `build/windows/Debug/smoothmail.exe` へ構築します。テストも構築しますが、自動実行はしません。
 
+アプリだけを再ビルドする場合は`cmake --build build/windows/Debug --parallel 4`を実行します。
+
 ## リリースビルド
 
 ```bat
@@ -37,16 +41,7 @@ cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DCMAKE_BUILD_TYPE=Release -P cmake/Bu
 
 アプリは `build/windows/Release/smoothmail.exe` です。DebugとReleaseの依存・成果物は分離されます。このEXEだけでは配布物になりません。[実行](run.md)・[配布](distribution.md)を参照してください。
 
-## 再ビルド・別環境
-
-アプリだけを再ビルドする場合：
-
-```bat
-cmake --build build/windows/Debug --parallel 4
-cmake --build build/windows/Release --parallel 4
-```
-
-Qtやコンパイラを変更する場合は、新しい `-DDEPENDENCY_ROOT=C:/build/smoothmail-deps` と `-DAPPLICATION_BUILD=C:/build/smoothmail-app` を標準コマンドへ追加します。Windowsのパス長制限を避けるため短いパスを推奨します。既存ソース・取得物・パッチの不一致で停止した場合、強制上書きや検証の無効化はせず原因を確認してください。
+アプリだけを再ビルドする場合は`cmake --build build/windows/Release --parallel 4`を実行します。
 
 提供済みのソースアーカイブを使う場合は、SmoothMailだけを新しいソースフォルダへ展開し、Releaseコマンドへ `-DSMOOTHMAIL_SOURCE_ARCHIVES=C:/source-archives -DSMOOTHMAIL_SOURCE_COMMIT=<提供されたcommit>` と新しい依存／アプリ構築先を追加します。依存を手動で `build/deps/src` へ展開したり、Git管理情報を捏造したりしません。固定されたアーカイブSHA256と全ファイルのtree digestを検証し、パッチは別コピーへ適用します。
 
