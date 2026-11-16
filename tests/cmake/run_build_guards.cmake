@@ -115,6 +115,7 @@ foreach(case IN ITEMS matching artifact qt patch configuration commit executable
     endif()
 endforeach()
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 foreach(case IN ITEMS runtime-release existing missing release-debug release-existing)
     set(work "${root}/stage-${case}")
     file(MAKE_DIRECTORY "${work}")
@@ -136,10 +137,16 @@ foreach(case IN ITEMS runtime-release existing missing release-debug release-exi
             set(configuration Release)
         endif()
     endif()
-    run(fail "${CMAKE_COMMAND}" "-DAPP=${app}" "-DQT_BIN=${work}" "-DDEPENDENCY_BIN=${work}"
-        "-DNATIVE_BIN=${work}" "-DSASL_DIR=${work}" "-DCRT_BIN=${work}"
-        "-DDESTINATION=${destination}" "-DCONFIGURATION=${configuration}"
-        -P "${repository}/cmake/${script}.cmake")
+    if(case MATCHES "^release-")
+        run(fail "${Python3_EXECUTABLE}" "${repository}/tools/stage_windows_release.py"
+            "--app=${app}" "--qt-bin=${work}" "--dependency-bin=${work}"
+            "--native-bin=${work}" "--sasl-dir=${work}" "--crt-bin=${work}" "--destination=${destination}")
+    else()
+        run(fail "${CMAKE_COMMAND}" "-DAPP=${app}" "-DQT_BIN=${work}" "-DDEPENDENCY_BIN=${work}"
+            "-DNATIVE_BIN=${work}" "-DSASL_DIR=${work}" "-DCRT_BIN=${work}"
+            "-DDESTINATION=${destination}" "-DCONFIGURATION=${configuration}"
+            -P "${repository}/cmake/${script}.cmake")
+    endif()
     if(case MATCHES "existing")
         file(READ "${work}/user-work.txt" contents)
         if(NOT contents STREQUAL keep)

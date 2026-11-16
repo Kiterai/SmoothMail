@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 get_filename_component(repository "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 string(RANDOM LENGTH 16 ALPHABET 0123456789abcdef nonce)
 set(root "${repository}/build/package-entry-tests/${nonce}")
 file(MAKE_DIRECTORY "${root}")
@@ -30,11 +31,9 @@ foreach(case IN LISTS cases)
     else()
         set(legal "${root}/${case}")
     endif()
-    execute_process(COMMAND "${CMAKE_COMMAND}" "-DQt6_ROOT=${root}/no-qt"
-        "-DLEGAL_DIR=${legal}" "-DCRT_BIN=${root}/no-crt" "-DOUTPUT=${output}"
-        "-DDEPENDENCY_ROOT=${root}/deps-${case}"
-        "-DAPPLICATION_SOURCE_DIR=${application}"
-        -P "${repository}/cmake/PackageWindows.cmake"
+    execute_process(COMMAND "${Python3_EXECUTABLE}" "${repository}/tools/package_windows.py"
+        "--qt-root=${root}/no-qt" "--legal-dir=${legal}" "--crt-bin=${root}/no-crt" "--output=${output}"
+        "--dependency-root=${root}/deps-${case}" "--application-source-dir=${application}"
         RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
     if(result STREQUAL "0" OR NOT "${out}\n${err}" MATCHES "${expected}")
         message(FATAL_ERROR "Package entry failed to reject ${case} at the expected preflight: ${out}\n${err}")

@@ -20,7 +20,7 @@ build\run-debug\start-smoothmail.cmd
 Release CRTの場所は環境に合わせて変更してください。`VCToolsRedistDir` 配下の **x64／Microsoft.VC143.CRT** を使い、Debug用の `debug_nonredist` は使いません。
 
 ```bat
-cmake -DAPP="%CD%/build/windows/Release/smoothmail.exe" -DQT_BIN=C:/Qt/6.12.0/msvc2022_64/bin -DDEPENDENCY_BIN="%CD%/build/deps/install/Release/bin" -DNATIVE_BIN="%CD%/build/deps/native/gnu-runtime-v1/x64-windows/bin" -DSASL_DIR="%CD%/build/deps/install/Release/bin/sasl2" -DCRT_BIN="%VCToolsRedistDir%x64/Microsoft.VC143.CRT" -DDESTINATION="%CD%/build/run-release" -DCONFIGURATION=Release -P cmake/StageWindowsRelease.cmake
+python tools/stage_windows_release.py --app build/windows/Release/smoothmail.exe --qt-bin C:/Qt/6.12.0/msvc2022_64/bin --dependency-bin build/deps/install/Release/bin --native-bin build/deps/native/gnu-runtime-v1/x64-windows/bin --sasl-dir build/deps/install/Release/bin/sasl2 --crt-bin "%VCToolsRedistDir%x64/Microsoft.VC143.CRT" --destination build/run-release
 build\run-release\smoothmail.exe
 ```
 

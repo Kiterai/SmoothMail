@@ -3,7 +3,7 @@
 ## 準備・要件
 
 - Windows x64、Visual Studio 2022のMSVC C++ x64ツールとWindows SDK。
-- CMake 3.30以降、Git、PythonをPATHへ登録。Pythonは依存ライブラリKI18nから間接利用します。
+- CMake 3.30以降、Git、Python 3.11以降をPATHへ登録。Pythonは配布・文書生成と依存ライブラリKI18n内で使用します。本体・依存のビルド入口はCMakeです。
 - MSVCと一致する既存Qt 6 SDK（依存構築には6.10以降）。Core／Gui／Widgets／Sql／Network／Xml／Svg、テストにはTest、配置にはwindeployqtが必要です。確認済み環境はQt 6.12.0 `msvc2022_64`です。
 - 固定ソースの取得先へのHTTPS接続と、依存の構築・保存に十分なディスク空き容量。
 

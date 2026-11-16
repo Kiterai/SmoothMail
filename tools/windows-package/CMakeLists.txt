@@ -13,6 +13,9 @@ if(MSVC)
     target_compile_options(smoothmail_qt_sbom_audit PRIVATE /utf-8)
 endif()
 enable_testing()
+find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
+add_test(NAME python_batches COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+    -s "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/python" -v)
 add_test(NAME license_template_guards COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/cmake/run_license_template_guards.cmake")
 add_test(NAME license_final_review_guards COMMAND "${CMAKE_COMMAND}"

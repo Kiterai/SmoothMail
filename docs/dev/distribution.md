@@ -15,13 +15,13 @@ Windows x64向けのポータブルZIPを配布します。展開した`SmoothMa
 依存を構築し、[Release配置](run.md#リリースビルド実行)を作成した後に実行します。各出力先は新しいディレクトリにしてください。
 
 ```bat
-cmake -P cmake/FetchQtLegalSources.cmake
-cmake -DSTAGE=build/run-release -DOUTPUT=build/legal-review -P cmake/PrepareWindowsLegalReview.cmake
-cmake -DOUTPUT=build/source-review -P cmake/PrepareWindowsSourceReview.cmake
+python tools/collect_sources.py --fetch-qt --output build/deps/qt-license-sources
+python tools/collect_legal.py --stage build/run-release --output build/legal-review
+python tools/collect_sources.py --output build/source-review
 cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 ```
 
-依存rootを変更した場合は収集にも`-DDEPENDENCY_ROOT=...`を指定します。ソース収集はHEADを使うため、配布対象の変更は先にコミットしてください。[提供アーカイブからの再構築](build.md#再ビルド別環境)も確認します。
+依存rootを変更した場合は収集にも`--dependency-root <依存root>`を指定します。提供済み原本から収集する場合は`--source-archives <アーカイブ置場>`を指定し、固定ハッシュを照合します。ソース収集はHEADを使うため、配布対象の変更は先にコミットしてください。[提供アーカイブからの再構築](build.md#再ビルド別環境)も確認します。
 
 収集結果はレビュー用です。原文・著作権・変更差分・再構築／DLL差替え・バイナリとの対応を確認してください。`review_only`資料は改名しても配布入力として拒否されます。
 
@@ -37,22 +37,25 @@ cmake -DREVIEW=build/source-review -P tests/cmake/verify_source_review.cmake
 | `DISTRIBUTION_URL` | バイナリと対応ソースを提供するHTTPSページ |
 | `BUILD_VERSION` | 対象ビルドの版情報 |
 
-`KEY=value`形式で、値全体の引用符は使用できます。シェル実行・変数展開は行いません。空値・未知キー・不正URL等は拒否します。アプリ資格情報用の設定と兼用せず、必要なら`-DENV_FILE=<専用ファイル>`を指定してください。実`.env`は同梱しません。`.env.example`のURLはレビュー例示用です。
+`KEY=value`形式で、値全体の引用符は使用できます。シェル実行・変数展開は行いません。空値・未知キー・不正URL等は拒否します。アプリ資格情報用の設定と兼用せず、必要なら`--env-file <専用ファイル>`を指定してください。実`.env`は同梱しません。`.env.example`のURLはレビュー例示用です。
 
 ```bat
-cmake -DEDITION=windows-x64 -DEVIDENCE=build/legal-review -DSOURCE_REVIEW=build/source-review -DOUTPUT=build/windows-licenses-review -P cmake/PrepareWindowsLegalDraft.cmake
+python tools/generate_licenses.py --edition windows-x64 --evidence build/legal-review --source-review build/source-review --output build/windows-licenses-review
 ```
 
 草案表示を除いた最終表記を確認する場合は、次も指定します。
 
-- `-DLICENSE_FINAL_REVIEW=ON`
-- `-DSTAGE=<対象Release配置>`
-- `-DAPPLICATION_BUILD=<対象アプリ構築先>`
-- `-DCRT_BIN=<正規のx64 Release CRT>`
+- `--final-review`
+- `--stage <対象Release配置>`
+- `--application-build <対象アプリ構築先>`
+- `--crt-bin <正規のx64 Release CRT>`
+- `--crt-verifier <構築済みsmoothmail_crt_verify.exe>`
+
+CRT検証補助はRelease配置時にCMakeで構築されます。パスは`<依存root>/build/tools/package/crt-verifier.txt`に記録されます。必要なら`cmake -DQt6_ROOT=<Qt SDK> -DDEPENDENCY_ROOT=<依存root> -P cmake/BuildDistributionTools.cmake`で構築できます。
 
 全配置ファイルのハッシュ・コンポーネント割当・ソース識別子とCRTの由来／版を検査します。このモードでも未承認の`manifest.review.json`を維持し、配布用入力へ自動昇格しません。
 
-生成物の`README.ja.md`から文面・版・URL・対応ソースをレビューします。生成文書の連続空白行は1行に整理し、第三者原文には整形を適用しません。本文・原文・英日文書をmanifestへ登録し、リンク先の自動収集に依存しない構成にします。必要なら`-DQT_SBOM_REVIEW=<JSON>`で監査補助資料を添付できます。
+生成物の`README.ja.md`から文面・版・URL・対応ソースをレビューします。生成文書の連続空白行は1行に整理し、第三者原文には整形を適用しません。本文・原文・英日文書をmanifestへ登録し、リンク先の自動収集に依存しない構成にします。必要なら`--qt-sbom-review <JSON>`で監査補助資料を添付できます。
 
 レビュー後は別ディレクトリに配布用`manifest.json`を用意します。形式は`schema: 1`と`components`を持ち、`review_only`を含まないものです。各コンポーネントの名称・版・対象ファイル・原文・ソース通知を登録し、全同梱DLLを一意に割り当てます。参照文書は空でないUTF-8テキストとします。
 
@@ -61,23 +64,24 @@ cmake -DEDITION=windows-x64 -DEVIDENCE=build/legal-review -DSOURCE_REVIEW=build/
 ## 2. 最終ZIPを生成する
 
 ```bat
-cmake -DQt6_ROOT=C:/Qt/6.12.0/msvc2022_64 -DLEGAL_DIR=C:/release-licenses -DOUTPUT=dist/SmoothMail-windows-x64.zip -P cmake/PackageWindows.cmake
+python tools/package_windows.py --qt-root C:/Qt/6.12.0/msvc2022_64 --legal-dir C:/release-licenses --output dist/SmoothMail-windows-x64.zip
 ```
 
 依存取得・Release構築、アプリ構築、DLL／プラグイン／CRT・通知の収集、個人情報・Debug混入・ライセンス対応の検査、ZIP化を行います。通知は`SmoothMail/licenses/`、本体は`SmoothMail/runtime/Smoothmail.exe`、全ファイルのハッシュは`SmoothMail/runtime-sha256.txt`へ配置します。`README.md`には対象本体ソースの`docs/usage.md`をそのまま収録します。既存ZIPは上書きしません。
 
-`LEGAL_DIR`に通常ディレクトリと空ではない通常ファイルの`manifest.json`がない場合は、依存取得前に停止します。保存先を削除した場合は、保管したソースZIP等から生成済み`licenses/`を復元してください。
+`--legal-dir`の通常ディレクトリ内に空ではない通常ファイルの`manifest.json`がない場合は、依存取得前に停止します。保存先を削除した場合は、保管したソースZIP等から生成済み`licenses/`を復元してください。
 
 主な追加指定：
 
 | 引数 | 用途 |
 |---|---|
-| `CRT_BIN` | 自動探索できない場合の`VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` |
-| `DEPENDENCY_ROOT` | 依存の構築・保存先 |
-| `APPLICATION_SOURCE_DIR` | 当リポジトリとは別の、確認済み本体ソース |
-| `SMOOTHMAIL_SOURCE_ARCHIVES` | 提供済み依存アーカイブのディレクトリ |
-| `SMOOTHMAIL_SOURCE_COMMIT` | アーカイブ展開した本体のソース識別子 |
-| `SMOOTHMAIL_DOWNLOAD_CURL` | 制限環境で使う[OpenSSL対応curl](build.md#windowsの制限付きサンドボックスでのhttps取得)の絶対パス |
+| `--crt-bin` | 自動探索できない場合の`VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT` |
+| `--dependency-root` | 依存の構築・保存先 |
+| `--application-source-dir` | 当リポジトリとは別の、確認済み本体ソース |
+| `--source-archives` | 提供済み依存アーカイブのディレクトリ |
+| `--source-commit` | アーカイブ展開した本体のソース識別子 |
+| `--asset-cache` | 検証済み外部ビルドツール取得物 |
+| `--download-curl` | 制限環境で使う[OpenSSL対応curl](build.md#windowsの制限付きサンドボックスでのhttps取得)の絶対パス |
 
 本体ソース・コミット・生成済み通知の対応を一致させてください。短い構築パスを推奨します。
 
