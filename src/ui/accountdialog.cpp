@@ -92,10 +92,9 @@ AccountDialog::ServerFields AccountDialog::createServer(const QString &name, int
     connect(fields.encryption, &QComboBox::currentIndexChanged, this, &AccountDialog::invalidateTest);
     connect(fields.encryption, &QComboBox::currentIndexChanged, this, [fields, name] {
         const auto mode = static_cast<EncryptionMode>(fields.encryption->currentData().toInt());
-        // These IMAP values follow spec/ui.md, including its nonstandard TLS mapping.
         fields.port->setValue(name == QStringLiteral("SMTP")
             ? (mode == EncryptionMode::None ? 25 : mode == EncryptionMode::ImplicitTls ? 465 : 587)
-            : (mode == EncryptionMode::StartTls ? 993 : 143));
+            : (mode == EncryptionMode::ImplicitTls ? 993 : 143));
     });
     m_serverLayout->addWidget(box);
     return fields;

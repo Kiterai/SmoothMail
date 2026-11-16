@@ -46,7 +46,7 @@ private slots:
                 encryption->setCurrentIndex(encryption->findData(int(mode)));
                 QCOMPARE(port->value(), prefix == QStringLiteral("SMTP")
                     ? (mode == EncryptionMode::None ? 25 : mode == EncryptionMode::StartTls ? 587 : 465)
-                    : (mode == EncryptionMode::StartTls ? 993 : 143));
+                    : (mode == EncryptionMode::ImplicitTls ? 993 : 143));
                 port->setValue(1234);
                 QCOMPARE(port->value(), 1234);
             }
