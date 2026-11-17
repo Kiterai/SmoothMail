@@ -90,7 +90,7 @@ private slots:
             if (line.contains(" LIST ")) ++lists;
         }
         QCOMPARE(statuses, kind == 1 ? 0 : kind == 2 ? 1 : 2);
-        QCOMPARE(lists, kind == 3 ? 2 : 1);
+        QCOMPARE(lists, kind == 3 ? 3 : kind == 0 ? 1 : 2);
         for (const auto &folder : folders) {
             MailQuery query; query.accountId = account.id; query.folder = folder.name;
             cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
@@ -124,6 +124,9 @@ private slots:
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(result.takeFirst().at(4).toString().isEmpty());
         QCOMPARE(server.fullFetchCount, count);
+        int capabilityQueries = 0;
+        for (const auto &line : server.commands) if (line.contains(" CAPABILITY")) ++capabilityQueries;
+        QCOMPARE(capabilityQueries, 1); // No LIST-STATUS probe for a single folder.
         cache.loadMessage({account.id, QStringLiteral("INBOX"), 10, 2}); QTRY_COMPARE(results.size(), 1);
         const auto originalRaw = qvariant_cast<MailRecord>(results.takeFirst().first()).document.rawSource;
         server.headerFetchCount = server.flagsFetchCount = server.fullFetchCount = 0;

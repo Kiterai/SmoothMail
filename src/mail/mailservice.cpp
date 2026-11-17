@@ -293,11 +293,6 @@ void MailService::synchronize(const Account &account, const QString &secret, con
         if (error.isEmpty()) error = testImap(account.imap, secret, [&](KIMAP::Session &session) -> QString {
             diagnostics::event("sync-list");
             bool listStatusEnabled = false;
-            if (cache && !singleFolder && mode != SyncMode::SelectedFolder) {
-                KIMAP::CapabilitiesJob capabilities(&session);
-                const auto error = runJob(capabilities); if (!error.isEmpty()) return error;
-                listStatusEnabled = capabilities.capabilities().contains(QStringLiteral("LIST-STATUS"));
-            }
             QHash<QString, qint64> listedUnread;
             std::function<QString()> listFolders;
             listFolders = [&]() -> QString {
@@ -380,6 +375,15 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             qint64 folderThrough = 0, folderAfter = 0;
             if (cache) { const auto error = cache->folderRevision(account.id, folderThrough); if (!error.isEmpty()) return error; }
             auto jobError = listFolders(); if (!jobError.isEmpty()) return jobError;
+            // Don't add a capability round trip to a one-folder incremental
+            // sync. For multiple folders the additional LIST is amortized by
+            // avoiding an individual STATUS round trip for every mailbox.
+            if (cache && !singleFolder && mode != SyncMode::SelectedFolder && folders.size() > 1) {
+                KIMAP::CapabilitiesJob capabilities(&session);
+                jobError = runJob(capabilities); if (!jobError.isEmpty()) return jobError;
+                listStatusEnabled = capabilities.capabilities().contains(QStringLiteral("LIST-STATUS"));
+                if (listStatusEnabled) { jobError = listFolders(); if (!jobError.isEmpty()) return jobError; }
+            }
             const auto containsFolder = [&](const QString &name) { for (const auto &folder : folders) if (folder.name == name) return true; return false; };
             QList<PendingFolder> operations;
             if (cache && !singleFolder) { jobError = cache->pendingFolders(account.id, folderAfter, folderThrough, operations); if (!jobError.isEmpty()) return jobError; }
@@ -761,7 +765,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     if (interrupted()) return QStringLiteral("中断しました。");
                     ingestionCount = pending.size();
                     const auto operation = diagnostics::currentOperation();
-                    ingestion = std::async(std::launch::async,
+                    ingestion = std::async(candidates <= MailPageSize ? std::launch::deferred : std::launch::async,
                         [this, cache, accountId = account.id, folder = selected, validity, operation,
                          headers = pending, sources = std::move(sources)]() -> QString {
                             const diagnostics::OperationScope scope(operation);

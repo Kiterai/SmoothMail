@@ -22,4 +22,7 @@ for name in {row["database"] for row in rows}:
             values = db.execute(f"SELECT folder,COUNT(*),COUNT(DISTINCT uid),MIN(uid),MAX(uid) FROM {table} GROUP BY folder").fetchall()
             assert len(values) == row["populated_folders"]
             assert all(value[1:] == (row["messages"], row["messages"], 1, row["messages"]) for value in values), values
+        for uid, raw in db.execute("SELECT uid,raw FROM cache_messages"):
+            assert f"Subject: synthetic {uid}\r\n".encode() in raw
+            assert f"Message-ID: <{uid}@example.test>\r\n".encode() in raw
 print(f"Validated {len(rows)} syncs and 9 databases, every populated folder")
