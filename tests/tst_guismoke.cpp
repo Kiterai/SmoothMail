@@ -79,6 +79,14 @@ class GuiSmokeTest final : public QObject
     }
     static void contextAction(QTreeView *view, const QModelIndex &index, const QString &text)
     {
+        QVERIFY(index.isValid());
+        // A matched model index may live under the collapsed "Folders" group.
+        // An empty visualRect otherwise sends the context click to another row.
+        for (auto parent = index.parent(); parent.isValid(); parent = parent.parent())
+            view->expand(parent);
+        view->scrollTo(index);
+        const auto position = view->visualRect(index).center();
+        QCOMPARE(view->indexAt(position), index);
         QTimer::singleShot(100, view, [text] {
             auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
             if (!menu) return;
@@ -87,7 +95,6 @@ class GuiSmokeTest final : public QObject
             }
             menu->close();
         });
-        const auto position = view->visualRect(index).center();
         // QTest's synthetic mouse events do not ask Windows to generate the
         // separate WM_CONTEXTMENU event; send that Qt event explicitly.
         QContextMenuEvent event(QContextMenuEvent::Mouse, position, view->viewport()->mapToGlobal(position));
