@@ -1,5 +1,5 @@
 #include "accountrepository.h"
-#include "mail/mimeparser.h"
+#include "mime/mimeparser.h"
 #include "downloadfile.h"
 #include "core/diagnostics.h"
 

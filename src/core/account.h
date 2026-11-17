@@ -1,8 +1,9 @@
 #pragma once
 
-#include "mail/connectionpolicy.h"
+#include "connectionsettings.h"
 #include <QJsonObject>
 #include <QMetaType>
+#include <QString>
 
 namespace smoothmail {
 

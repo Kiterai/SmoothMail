@@ -1,12 +1,10 @@
 #pragma once
 
+#include "core/connectionsettings.h"
 #include <QString>
 #include <QStringList>
 
 namespace smoothmail {
-
-enum class EncryptionMode { None, ImplicitTls, StartTls };
-enum class AuthenticationMode { Plain, Login, OAuth2 };
 
 struct TransportSecurity
 {

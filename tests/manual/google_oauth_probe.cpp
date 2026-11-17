@@ -1,6 +1,6 @@
 #include "core/account.h"
 #include "mail/mailservice.h"
-#include "mail/oauthclient.h"
+#include "oauth/oauthclient.h"
 #include "google_credential_probe.h"
 
 #include <QCommandLineParser>

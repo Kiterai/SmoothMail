@@ -1,6 +1,6 @@
 #pragma once
 #include "core/account.h"
-#include "oauthclient.h"
+#include "oauth/oauthclient.h"
 #include <QHash>
 #include <functional>
 #include <QPointer>

@@ -1,5 +1,6 @@
 #include "mailservice.h"
-#include "mimeparser.h"
+#include "mime/mimeparser.h"
+#include "connectionpolicy.h"
 #include "core/diagnostics.h"
 #include "storage/accountrepository.h"
 

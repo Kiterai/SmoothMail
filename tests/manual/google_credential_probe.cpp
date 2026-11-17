@@ -1,7 +1,7 @@
 #include "google_credential_probe.h"
 #include "mail/authenticationbroker.h"
 #include "mail/mailservice.h"
-#include "mail/oauthclient.h"
+#include "oauth/oauthclient.h"
 #include "storage/accountregistrar.h"
 
 #include <QDir>

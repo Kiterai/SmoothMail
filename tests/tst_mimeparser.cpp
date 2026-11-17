@@ -1,4 +1,4 @@
-#include "mail/mimeparser.h"
+#include "mime/mimeparser.h"
 
 #include <QtTest>
 

@@ -48,6 +48,8 @@ digraph dependencies {
 			label=ReplyHeaders];
 		"smoothmail::ServerSettings"	[fillcolor="#dbeafe",
 			label=ServerSettings];
+		"smoothmail::SingleInstance"	[fillcolor="#dbeafe",
+			label=SingleInstance];
 		"smoothmail::SystemSettings"	[fillcolor="#dbeafe",
 			label=SystemSettings];
 		"smoothmail::ThreadMessage"	[fillcolor="#dbeafe",
@@ -59,36 +61,42 @@ digraph dependencies {
 	}
 	subgraph cluster_2 {
 		graph [label="src/mail"];
-		"smoothmail::AttachmentResult"	[fillcolor="#dbeafe",
-			label=AttachmentResult];
 		"smoothmail::AuthenticationBroker"	[fillcolor="#dbeafe",
 			label=AuthenticationBroker];
 		"smoothmail::AuthenticationDecision"	[fillcolor="#dbeafe",
 			label=AuthenticationDecision];
 		"smoothmail::CancellationScope"	[fillcolor="#dbeafe",
 			label=CancellationScope];
-		"smoothmail::ComposeData"	[fillcolor="#dbeafe",
-			label=ComposeData];
-		"smoothmail::ComposedMessage"	[fillcolor="#dbeafe",
-			label=ComposedMessage];
 		"smoothmail::ListedFolder"	[fillcolor="#dbeafe",
 			label=ListedFolder];
 		"smoothmail::MailService"	[fillcolor="#dbeafe",
 			label=MailService];
-		"smoothmail::MessageParseResult"	[fillcolor="#dbeafe",
-			label=MessageParseResult];
-		"smoothmail::MimeParser"	[fillcolor="#dbeafe",
-			label=MimeParser];
-		"smoothmail::OAuthClient"	[fillcolor="#dbeafe",
-			label=OAuthClient];
-		"smoothmail::OAuthTokens"	[fillcolor="#dbeafe",
-			label=OAuthTokens];
 		"smoothmail::RejectCertificateErrors"	[fillcolor="#dbeafe",
 			label=RejectCertificateErrors];
 		"smoothmail::TransportSecurity"	[fillcolor="#dbeafe",
 			label=TransportSecurity];
 	}
 	subgraph cluster_3 {
+		graph [label="src/mime"];
+		"smoothmail::AttachmentResult"	[fillcolor="#dbeafe",
+			label=AttachmentResult];
+		"smoothmail::ComposeData"	[fillcolor="#dbeafe",
+			label=ComposeData];
+		"smoothmail::ComposedMessage"	[fillcolor="#dbeafe",
+			label=ComposedMessage];
+		"smoothmail::MessageParseResult"	[fillcolor="#dbeafe",
+			label=MessageParseResult];
+		"smoothmail::MimeParser"	[fillcolor="#dbeafe",
+			label=MimeParser];
+	}
+	subgraph cluster_4 {
+		graph [label="src/oauth"];
+		"smoothmail::OAuthClient"	[fillcolor="#dbeafe",
+			label=OAuthClient];
+		"smoothmail::OAuthTokens"	[fillcolor="#dbeafe",
+			label=OAuthTokens];
+	}
+	subgraph cluster_5 {
 		graph [label="src/storage"];
 		"smoothmail::AccountRegistrar"	[fillcolor="#dbeafe",
 			label=AccountRegistrar];
@@ -103,7 +111,7 @@ digraph dependencies {
 		"smoothmail::DownloadFileResult"	[fillcolor="#dbeafe",
 			label=DownloadFileResult];
 	}
-	subgraph cluster_4 {
+	subgraph cluster_6 {
 		graph [label="src/ui"];
 		"smoothmail::AboutDialog"	[fillcolor="#dbeafe",
 			label=AboutDialog];
@@ -160,17 +168,18 @@ digraph dependencies {
 	"smoothmail::MessageDocument" -> "smoothmail::MessagePart"	[minlen=2];
 	"smoothmail::PendingFlag" -> "smoothmail::MailRecord";
 	"smoothmail::PendingMove" -> "smoothmail::MailRecord";
+	"smoothmail::AuthenticationBroker" -> "smoothmail::SystemSettings";
 	"smoothmail::AuthenticationBroker" -> "smoothmail::OAuthClient";
 	"smoothmail::AuthenticationBroker" -> "smoothmail::AccountRegistrar";
-	"smoothmail::ComposeData" -> "smoothmail::ReplyHeaders"	[minlen=1];
 	"smoothmail::MailService" -> "smoothmail::AuthenticationDecision"	[minlen=1];
 	"smoothmail::MailService" -> "smoothmail::CancellationScope"	[minlen=2];
+	"smoothmail::MailService" -> "smoothmail::ListedFolder"	[minlen=3];
+	"smoothmail::MailService" -> "smoothmail::RejectCertificateErrors"	[minlen=1];
+	"smoothmail::MailService" -> "smoothmail::TransportSecurity"	[minlen=2];
 	"smoothmail::MailService" -> "smoothmail::ComposeData";
 	"smoothmail::MailService" -> "smoothmail::ComposedMessage"	[minlen=3];
-	"smoothmail::MailService" -> "smoothmail::ListedFolder"	[minlen=1];
-	"smoothmail::MailService" -> "smoothmail::RejectCertificateErrors"	[minlen=2];
-	"smoothmail::MailService" -> "smoothmail::TransportSecurity"	[minlen=3];
 	"smoothmail::MailService" -> "smoothmail::AccountRepository";
+	"smoothmail::ComposeData" -> "smoothmail::ReplyHeaders"	[minlen=1];
 	"smoothmail::MessageParseResult" -> "smoothmail::MessageDocument";
 	"smoothmail::MimeParser" -> "smoothmail::AttachmentResult"	[minlen=1];
 	"smoothmail::MimeParser" -> "smoothmail::MessageParseResult"	[minlen=2];

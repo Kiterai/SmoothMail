@@ -1,7 +1,7 @@
 #include "accountregistrar.h"
 #include <QPointer>
 #include <QUuid>
-#include "mail/oauthclient.h"
+#include "oauth/oauthclient.h"
 
 namespace smoothmail {
 AccountRegistrar::AccountRegistrar(AccountRepository *repository, CredentialStore *credentials, QObject *parent)

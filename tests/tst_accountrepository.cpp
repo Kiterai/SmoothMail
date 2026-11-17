@@ -4,7 +4,7 @@
 #include <QSignalSpy>
 #include <QUuid>
 #include <QtTest>
-#include "mail/mimeparser.h"
+#include "mime/mimeparser.h"
 #include "storage/downloadfile.h"
 #include <QSqlDatabase>
 #include <QSqlQuery>

@@ -7,7 +7,7 @@
 #include "ui/systemsettingsdialog.h"
 #include <QSettings>
 #include "storage/accountregistrar.h"
-#include "mail/mimeparser.h"
+#include "mime/mimeparser.h"
 #include "mail/mailservice.h"
 #include <algorithm>
 #include <QElapsedTimer>

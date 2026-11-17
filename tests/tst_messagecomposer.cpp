@@ -1,5 +1,5 @@
-#include "mail/messagecomposer.h"
-#include "mail/mimeparser.h"
+#include "mime/messagecomposer.h"
+#include "mime/mimeparser.h"
 #include <QtTest>
 using namespace smoothmail;
 class MessageComposerTest final : public QObject

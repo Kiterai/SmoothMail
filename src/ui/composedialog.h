@@ -1,5 +1,5 @@
 #pragma once
-#include "mail/messagecomposer.h"
+#include "mime/messagecomposer.h"
 #include <QDialog>
 class QLineEdit;
 class QPlainTextEdit;

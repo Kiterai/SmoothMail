@@ -21,6 +21,8 @@ digraph dependencies {
 		graph [label="src/core"];
 		"src/core/account"	[fillcolor="#dbeafe",
 			label="src/core/account"];
+		"src/core/connectionsettings.h"	[fillcolor="#dbeafe",
+			label="src/core/connectionsettings.h"];
 		"src/core/diagnostics"	[fillcolor="#dbeafe",
 			label="src/core/diagnostics"];
 		"src/core/displaytime.h"	[fillcolor="#dbeafe",
@@ -33,12 +35,16 @@ digraph dependencies {
 			label="src/core/mailrecord.h"];
 		"src/core/messagedocument.h"	[fillcolor="#dbeafe",
 			label="src/core/messagedocument.h"];
+		"src/core/oauthconfiguration.h"	[fillcolor="#dbeafe",
+			label="src/core/oauthconfiguration.h"];
 		"src/core/pendingflag.h"	[fillcolor="#dbeafe",
 			label="src/core/pendingflag.h"];
 		"src/core/pendingfolder.h"	[fillcolor="#dbeafe",
 			label="src/core/pendingfolder.h"];
 		"src/core/pendingmove.h"	[fillcolor="#dbeafe",
 			label="src/core/pendingmove.h"];
+		"src/core/singleinstance.h"	[fillcolor="#dbeafe",
+			label="src/core/singleinstance.h"];
 		"src/core/systemsettings.h"	[fillcolor="#dbeafe",
 			label="src/core/systemsettings.h"];
 		"src/core/threading"	[fillcolor="#dbeafe",
@@ -52,14 +58,20 @@ digraph dependencies {
 			label="src/mail/connectionpolicy"];
 		"src/mail/mailservice"	[fillcolor="#dbeafe",
 			label="src/mail/mailservice"];
-		"src/mail/messagecomposer"	[fillcolor="#dbeafe",
-			label="src/mail/messagecomposer"];
-		"src/mail/mimeparser"	[fillcolor="#dbeafe",
-			label="src/mail/mimeparser"];
-		"src/mail/oauthclient"	[fillcolor="#dbeafe",
-			label="src/mail/oauthclient"];
 	}
 	subgraph cluster_4 {
+		graph [label="src/mime"];
+		"src/mime/messagecomposer"	[fillcolor="#dbeafe",
+			label="src/mime/messagecomposer"];
+		"src/mime/mimeparser"	[fillcolor="#dbeafe",
+			label="src/mime/mimeparser"];
+	}
+	subgraph cluster_5 {
+		graph [label="src/oauth"];
+		"src/oauth/oauthclient"	[fillcolor="#dbeafe",
+			label="src/oauth/oauthclient"];
+	}
+	subgraph cluster_6 {
 		graph [label="src/storage"];
 		"src/storage/accountregistrar"	[fillcolor="#dbeafe",
 			label="src/storage/accountregistrar"];
@@ -70,7 +82,7 @@ digraph dependencies {
 		"src/storage/downloadfile"	[fillcolor="#dbeafe",
 			label="src/storage/downloadfile"];
 	}
-	subgraph cluster_5 {
+	subgraph cluster_7 {
 		graph [label="src/ui"];
 		"src/ui/aboutdialog"	[fillcolor="#dbeafe",
 			label="src/ui/aboutdialog"];
@@ -93,26 +105,31 @@ digraph dependencies {
 		"src/ui/visiblesplitter.h"	[fillcolor="#dbeafe",
 			label="src/ui/visiblesplitter.h"];
 	}
-	"src/main.cpp" -> "src/app/applicationcontroller"	[minlen=1];
-	"src/app/applicationcontroller" -> "src/mail/authenticationbroker"	[minlen=1];
+	"src/main.cpp" -> "src/app/applicationcontroller";
+	"src/main.cpp" -> "src/core/singleinstance.h"	[minlen=1];
+	"src/app/applicationcontroller" -> "src/mail/authenticationbroker";
 	"src/app/applicationcontroller" -> "src/mail/mailservice";
-	"src/app/applicationcontroller" -> "src/ui/accountdialog"	[minlen=2];
-	"src/app/applicationcontroller" -> "src/ui/composedialog"	[minlen=3];
+	"src/app/applicationcontroller" -> "src/ui/accountdialog"	[minlen=1];
+	"src/app/applicationcontroller" -> "src/ui/composedialog"	[minlen=2];
 	"src/app/applicationcontroller" -> "src/ui/downloadhistorydialog";
 	"src/app/applicationcontroller" -> "src/ui/mainwindow";
-	"src/app/applicationcontroller" -> "src/ui/systemsettingsdialog"	[minlen=1];
-	"src/core/account" -> "src/mail/connectionpolicy"	[minlen=1];
+	"src/app/applicationcontroller" -> "src/ui/systemsettingsdialog"	[minlen=3];
+	"src/core/account" -> "src/core/connectionsettings.h";
 	"src/core/mailpage.h" -> "src/core/mailrecord.h";
 	"src/core/mailrecord.h" -> "src/core/messagedocument.h";
+	"src/core/oauthconfiguration.h" -> "src/core/systemsettings.h";
 	"src/core/pendingflag.h" -> "src/core/mailrecord.h";
 	"src/core/pendingmove.h" -> "src/core/mailrecord.h";
+	"src/mail/authenticationbroker" -> "src/core/oauthconfiguration.h"	[minlen=1];
 	"src/mail/authenticationbroker" -> "src/storage/accountregistrar";
-	"src/mail/mailservice" -> "src/mail/messagecomposer";
+	"src/mail/connectionpolicy" -> "src/core/connectionsettings.h";
+	"src/mail/mailservice" -> "src/mail/connectionpolicy"	[minlen=1];
+	"src/mail/mailservice" -> "src/mime/messagecomposer";
 	"src/mail/mailservice" -> "src/storage/accountrepository";
-	"src/mail/messagecomposer" -> "src/core/threading";
-	"src/mail/messagecomposer" -> "src/mail/mimeparser";
-	"src/mail/mimeparser" -> "src/core/messagedocument.h";
-	"src/storage/accountregistrar" -> "src/mail/oauthclient"	[minlen=1];
+	"src/mime/messagecomposer" -> "src/core/threading";
+	"src/mime/messagecomposer" -> "src/mime/mimeparser";
+	"src/mime/mimeparser" -> "src/core/messagedocument.h";
+	"src/storage/accountregistrar" -> "src/oauth/oauthclient"	[minlen=1];
 	"src/storage/accountregistrar" -> "src/storage/accountrepository";
 	"src/storage/accountregistrar" -> "src/storage/credentialstore"	[minlen=2];
 	"src/storage/accountrepository" -> "src/core/account";
@@ -122,10 +139,10 @@ digraph dependencies {
 	"src/storage/accountrepository" -> "src/core/pendingflag.h"	[minlen=1];
 	"src/storage/accountrepository" -> "src/core/pendingfolder.h"	[minlen=2];
 	"src/storage/accountrepository" -> "src/core/pendingmove.h"	[minlen=3];
-	"src/storage/accountrepository" -> "src/mail/mimeparser";
+	"src/storage/accountrepository" -> "src/mime/mimeparser";
 	"src/storage/accountrepository" -> "src/storage/downloadfile"	[minlen=1];
 	"src/ui/accountdialog" -> "src/core/account";
-	"src/ui/composedialog" -> "src/mail/messagecomposer";
+	"src/ui/composedialog" -> "src/mime/messagecomposer";
 	"src/ui/downloadhistorydialog" -> "src/core/displaytime.h";
 	"src/ui/downloadhistorydialog" -> "src/core/downloadentry.h";
 	"src/ui/foldermodel" -> "src/core/mailrecord.h";

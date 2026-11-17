@@ -59,18 +59,18 @@ smoothmail_add_library(smoothmail_connection_policy STATIC src/mail/connectionpo
 smoothmail_include_directories(smoothmail_connection_policy PUBLIC src)
 smoothmail_link_libraries(smoothmail_connection_policy PUBLIC Qt6::Core)
 smoothmail_target_defaults(smoothmail_connection_policy)
-smoothmail_add_library(smoothmail_oauth STATIC src/mail/oauthclient.cpp src/mail/oauthclient.h)
+smoothmail_add_library(smoothmail_oauth STATIC src/oauth/oauthclient.cpp src/oauth/oauthclient.h)
 smoothmail_include_directories(smoothmail_oauth PUBLIC src)
 smoothmail_link_libraries(smoothmail_oauth PUBLIC Qt6::Core Qt6::Network)
 smoothmail_target_defaults(smoothmail_oauth)
-smoothmail_add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h
+smoothmail_add_library(smoothmail_storage STATIC src/core/account.cpp src/core/account.h src/core/connectionsettings.h
     src/storage/accountrepository.cpp src/storage/accountrepository.h
     src/storage/accountregistrar.cpp src/storage/accountregistrar.h
     src/storage/credentialstore.cpp src/storage/credentialstore.h)
 smoothmail_add_sources(smoothmail_storage PRIVATE src/storage/downloadfile.cpp src/storage/downloadfile.h)
 smoothmail_include_directories(smoothmail_storage PUBLIC src)
 smoothmail_include_directories(smoothmail_storage PUBLIC "${PROJECT_BINARY_DIR}/generated")
-smoothmail_link_libraries(smoothmail_storage PUBLIC smoothmail_connection_policy smoothmail_diagnostics Qt6::Core
+smoothmail_link_libraries(smoothmail_storage PUBLIC smoothmail_diagnostics Qt6::Core
     PRIVATE Qt6::Sql Qt6Keychain::Qt6Keychain smoothmail_mime smoothmail_oauth)
 smoothmail_target_defaults(smoothmail_storage)
 smoothmail_add_library(smoothmail_auth STATIC src/mail/authenticationbroker.cpp src/mail/authenticationbroker.h)
@@ -84,11 +84,11 @@ smoothmail_target_defaults(smoothmail_threading)
 smoothmail_add_library(smoothmail_transport STATIC src/mail/mailservice.cpp src/mail/mailservice.h)
 smoothmail_include_directories(smoothmail_transport PUBLIC src)
 smoothmail_link_libraries(smoothmail_transport PUBLIC smoothmail_storage
-    PRIVATE KPim6::IMAP KPim6::SMTP KF6::I18n Sasl2::Sasl2 smoothmail_mime)
+    PRIVATE KPim6::IMAP KPim6::SMTP KF6::I18n Sasl2::Sasl2 smoothmail_mime smoothmail_connection_policy)
 smoothmail_target_defaults(smoothmail_transport)
 if(SMOOTHMAIL_BUILD_MIME)
-    smoothmail_add_library(smoothmail_mime STATIC src/mail/mimeparser.cpp src/mail/mimeparser.h
-        src/mail/messagecomposer.cpp src/mail/messagecomposer.h)
+    smoothmail_add_library(smoothmail_mime STATIC src/mime/mimeparser.cpp src/mime/mimeparser.h
+        src/mime/messagecomposer.cpp src/mime/messagecomposer.h)
     smoothmail_include_directories(smoothmail_mime PUBLIC src)
     smoothmail_link_libraries(smoothmail_mime PUBLIC Qt6::Core PRIVATE KF6::Mime smoothmail_threading)
     smoothmail_target_defaults(smoothmail_mime)

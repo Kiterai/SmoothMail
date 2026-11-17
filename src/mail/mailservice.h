@@ -1,7 +1,7 @@
 #pragma once
 #include "core/account.h"
 #include "core/mailrecord.h"
-#include "messagecomposer.h"
+#include "mime/messagecomposer.h"
 #include <QObject>
 #include <QThread>
 #include <atomic>

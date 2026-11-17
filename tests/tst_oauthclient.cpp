@@ -1,4 +1,4 @@
-#include "mail/oauthclient.h"
+#include "oauth/oauthclient.h"
 #include "mail/authenticationbroker.h"
 #include "storage/credentialstore.h"
 #include "storage/accountregistrar.h"
