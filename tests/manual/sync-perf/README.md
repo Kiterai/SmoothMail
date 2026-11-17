@@ -67,3 +67,14 @@ python tests/manual/sync-perf/summarize.py build/sync-perf/share/output/with-dia
 
 `validate.py`は基礎計測の120結果、本文取得件数、24 DBのquick_check・件数・UID・索引を読み取り専用で検査する。
 集計は各条件3回の中央値と最小／最大。ON→OFFの固定順なので、差をすべてログ負荷とは断定しない。
+
+## 最適化の段階比較
+
+`run-optimization-guest.ps1 -Phase <新しい名前> [-Baseline]`は、上と同じ共有配置から
+repository／transport／mailtransport／GUI統合試験を実行し、成功した場合だけ120同期を計測する。
+`-Baseline`時は共有runtimeに別途置いた旧`sync_perf_before.exe`も先に実行する。
+段階ごとに新しいguestローカルフォルダ／DBを使用する。複数の計測を同時実行しない。
+
+`run-window-guest.ps1`は計測用コピーのFLAGS窓を100/250/500/1000へ切り替えて比較する。
+各45同期、既定1000。`SMOOTHMAIL_PERF_FLAG_WINDOW`による切替は`instrument.py`が
+コピーへ挿入するもので、製品ソース／通常EXEには存在しない。

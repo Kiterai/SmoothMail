@@ -37,7 +37,7 @@ public:
         : QObject(parent), m_protocol(protocol), m_mechanisms(mechanisms)
     {
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
-            m_pausedHeaders.clear();
+            m_pausedMetadata.clear();
             m_socket = qobject_cast<QSslSocket *>(m_server.nextPendingConnection());
             m_socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
             m_socket->setLocalCertificate(certificate);
@@ -109,17 +109,19 @@ public:
     QMap<qint64, QList<QByteArray>> messageFlags;
     bool rejectFlagChanges = false;
     int fullFetchCount = 0;
+    int headerFetchCount = 0, flagsFetchCount = 0, maximumFlagsWindow = 0;
+    qint64 omitFlagUid = -1;
     int maximumHeaderWindow = 0;
     qint64 uidValidity = 10;
     QMap<qint64, QByteArray> messages;
     QMap<QByteArray, QMap<qint64, QByteArray>> folderMessages;
     QMap<QByteArray, QMap<qint64, QList<QByteArray>>> folderFlags;
     bool ignoreFlagWrites = false;
-    bool pauseHeaders = false;
+    bool pauseMetadata = false;
     bool supportMove = true, omitMoveMapping = false;
     QMap<QByteArray, qint64> uidNextFloor;
-    int pausedHeaderCount() const { return m_pausedHeaders.size(); }
-    void resumeHeaders() { pauseHeaders = false; const auto pending = m_pausedHeaders; m_pausedHeaders.clear(); for (const auto &line : pending) if (m_socket && m_socket->isOpen()) handle(line); }
+    int pausedMetadataCount() const { return m_pausedMetadata.size(); }
+    void resumeMetadata() { pauseMetadata = false; const auto pending = m_pausedMetadata; m_pausedMetadata.clear(); for (const auto &line : pending) if (m_socket && m_socket->isOpen()) handle(line); }
     bool provideDraftFolder = false;
     QList<QByteArray> deliveredMessages;
     QList<QByteArray> savedDrafts;
@@ -137,7 +139,7 @@ public:
 
 private:
     QByteArray m_selected = "INBOX";
-    QList<QByteArray> m_pausedHeaders;
+    QList<QByteArray> m_pausedMetadata;
     QMap<qint64, QByteArray> &selectedMessages() { return m_selected == "INBOX" ? messages : folderMessages[m_selected]; }
     QMap<qint64, QList<QByteArray>> &selectedFlags() { return m_selected == "INBOX" ? messageFlags : folderFlags[m_selected]; }
     static bool includesUid(const QByteArray &set, qint64 uid)
@@ -316,8 +318,8 @@ private:
             }
             write(m_tag + " OK store completed");
         } else if (provideMailbox && (command == "FETCH" || (command == "UID" && fields.value(commandIndex + 1) == "FETCH"))) {
-            if (pauseHeaders && line.contains("HEADER")) { m_pausedHeaders.append(line); return; }
             const bool flagsOnly = !line.contains("BODY") && !line.contains("RFC822");
+            if (pauseMetadata && (line.contains("HEADER") || flagsOnly)) { m_pausedMetadata.append(line); return; }
             if (disconnectOnBodyFetch && !line.contains("HEADER") && !flagsOnly) { m_socket->disconnectFromHost(); return; }
             const bool uidBased = command == "UID";
             const auto requested = fields.value(commandIndex + (uidBased ? 2 : 1));
@@ -332,6 +334,7 @@ private:
             }
             if (line.contains("HEADER")) maximumHeaderWindow = qMax(maximumHeaderWindow, int(qMin<qint64>(100000, last - first + 1)));
             int sequence = 0;
+            int returnedFlags = 0;
             const auto &data = selectedMessages();
             auto begin = uidBased && !requested.contains(',') && range.size() == 1 ? data.constFind(first) : data.cbegin();
             for (auto item = begin; item != data.cend(); ++item) {
@@ -343,10 +346,13 @@ private:
                 }
                 if (!included) continue;
                 if (flagsOnly) {
+                    if (item.key() == omitFlagUid) continue;
+                    ++flagsFetchCount; ++returnedFlags;
                     write("* " + QByteArray::number(sequence) + " FETCH (UID " + QByteArray::number(item.key()) + " FLAGS (" + selectedFlags().value(item.key()).join(' ') + "))");
                     continue;
                 }
                 const bool headersOnly = line.contains("HEADER");
+                if (headersOnly) ++headerFetchCount;
                 if (!headersOnly) ++fullFetchCount;
                 const auto raw = headersOnly ? item.value().left(item.value().indexOf("\r\n\r\n") + 4) : item.value();
                 write("* " + QByteArray::number(sequence) + " FETCH (UID " + QByteArray::number(item.key())
@@ -355,6 +361,7 @@ private:
                 m_socket->write(raw);
                 write(")");
             }
+            maximumFlagsWindow = qMax(maximumFlagsWindow, returnedFlags);
             write(m_tag + " OK fetch completed");
         } else if (m_protocol == Protocol::Smtp && command == "MAIL") {
             write("250 sender accepted");

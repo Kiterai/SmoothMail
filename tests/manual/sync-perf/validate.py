@@ -11,6 +11,16 @@ assert len(rows) == 120 and all(row["ok"] for row in rows)
 for row in rows:
     expected = row["messages"] if row["phase"] == "initial" else 10 if row["phase"] == "add10-recent" else 0
     assert row["body_messages"] == expected, row
+    if "header_messages" in row:
+        expected_headers = row["messages"] if row["phase"] in ("initial", "unchanged-all") else 10 if row["phase"] == "add10-recent" else 0
+        assert row["header_messages"] == expected_headers, row
+        if row["phase"] in ("initial", "unchanged-all"):
+            expected_flags = 0
+        elif row["scenario"] == "historical-5000":
+            expected_flags = 11 if row["phase"] in ("add10-recent", "unchanged-selected") else 1
+        else:
+            expected_flags = row["messages"]
+        assert row["flags_messages"] == expected_flags, row
 databases = list(directory.glob("*.sqlite"))
 assert len(databases) == 24, len(databases)
 counts = collections.Counter()

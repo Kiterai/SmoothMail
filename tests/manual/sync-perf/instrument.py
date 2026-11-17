@@ -25,6 +25,10 @@ text = path.read_text(encoding="utf-8")
 needle = "QString runJob(KJob &job)\n{"
 assert text.count(needle) == 1
 text = text.replace(needle, needle + "\n    perf::Scope perfJob(job.metaObject()->className());")
+window = "constexpr qint64 flagWindow = 1000;"
+assert text.count(window) == 1
+text = text.replace(window, 'const int perfWindow = qEnvironmentVariableIntValue("SMOOTHMAIL_PERF_FLAG_WINDOW");\n'
+    '                const qint64 flagWindow = perfWindow > 0 ? qBound(100, perfWindow, 1000) : 1000;')
 path.write_text(text, encoding="utf-8")
 path = instrument("storage/accountrepository.cpp", [
     ("AccountRepository::" + name, "db." + name) for name in

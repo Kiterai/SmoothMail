@@ -524,8 +524,13 @@ QString AccountRepository::recentBoundary(const QString &id, const QString &fold
     QMetaObject::invokeMethod(m_worker, [&, this] {
         error = m_state->error; if (!error.isEmpty()) return;
         QSqlQuery query(m_state->db);
-        query.prepare(QStringLiteral("SELECT MAX(json_extract(meta,'$.date')),MIN(uidvalidity),MAX(uidvalidity) FROM cache_index WHERE account=? AND folder=?"));
-        query.addBindValue(id); query.addBindValue(folder);
+        // Separate endpoint probes use the date expression index and the
+        // identity primary key, instead of decoding every cached JSON row.
+        query.prepare(QStringLiteral("SELECT "
+            "(SELECT json_extract(meta,'$.date') FROM cache_index WHERE account=? AND folder=? ORDER BY json_extract(meta,'$.date') DESC LIMIT 1),"
+            "(SELECT uidvalidity FROM cache_index WHERE account=? AND folder=? ORDER BY uidvalidity LIMIT 1),"
+            "(SELECT uidvalidity FROM cache_index WHERE account=? AND folder=? ORDER BY uidvalidity DESC LIMIT 1)"));
+        for (int i = 0; i < 3; ++i) { query.addBindValue(id); query.addBindValue(folder); }
         if (!query.exec()) { error = query.lastError().text(); return; }
         if (query.next() && !query.value(0).isNull() && query.value(1).toLongLong() == validity && query.value(2).toLongLong() == validity)
             boundary = QDateTime::fromMSecsSinceEpoch(query.value(0).toLongLong(), QTimeZone::UTC).addSecs(-3600);

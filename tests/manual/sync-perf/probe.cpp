@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
         if (!inserted || !insertError.isEmpty()) { ++failures; return; }
         MailService service(QCoreApplication::applicationDirPath() + "/sasl2");
         auto run = [&](QString phase, MailService::SyncMode mode, QString folder = {}) {
-            server.commands.clear(); server.fullFetchCount = 0; perf::reset();
+            server.commands.clear(); server.fullFetchCount = server.headerFetchCount = server.flagsFetchCount = 0; perf::reset();
             QEventLoop loop; bool done = false; QString error;
             auto connection = QObject::connect(&service, &MailService::synchronized, &loop,
                 [&](const QString &, const QString &, const QList<MailFolder> &, const QList<MailRecord> &, const QString &e) {
@@ -91,7 +91,8 @@ int main(int argc, char **argv) {
                 const auto fields = line.split(' ');
                 QString key = QString::fromLatin1(fields.value(1));
                 if (key == "UID") key += " " + QString::fromLatin1(fields.value(2));
-                if (key.contains("FETCH")) key += line.contains("HEADER") ? " header" : " body";
+                if (key.contains("FETCH")) key += line.contains("HEADER") ? " header"
+                    : line.contains("BODY") || line.contains("RFC822") ? " body" : " flags";
                 commands[key] = commands[key].toInt() + 1;
             }
             bool ok = done && error.isEmpty();
@@ -121,6 +122,7 @@ int main(int argc, char **argv) {
                 {"bytes_per_message", bytes}, {"folders", folders}, {"delay_ms", delay}, {"diagnostics", logEnabled},
                 {"wall_ms", elapsed}, {"cpu_ms", cpuElapsed}, {"ok", ok}, {"error", error},
                 {"page_ms", pageMs}, {"render_ms", renderMs}, {"tls", tls},
+                {"header_messages", server.headerFetchCount}, {"flags_messages", server.flagsFetchCount},
                 {"body_messages", server.fullFetchCount}, {"commands", commands}, {"timings", timings}});
             if (!ok) ++failures;
             return ok;
@@ -133,6 +135,12 @@ int main(int argc, char **argv) {
         run("unchanged-selected", MailService::SyncMode::SelectedRecent, "INBOX");
     };
     for (int repeat = 1; repeat <= 3; ++repeat) {
+        if (args.contains("--window-only")) {
+            scenario("small-1000", 1000, 2048, 1, 0, false, repeat);
+            scenario("small-5000", 5000, 2048, 1, 0, false, repeat);
+            scenario("delay20-1000", 1000, 2048, 1, 20, false, repeat);
+            continue;
+        }
         if (args.contains("--deep-only")) {
             scenario("small-5000", 5000, 2048, 1, 0, false, repeat);
             scenario("large-1000", 1000, 65536, 1, 0, false, repeat);

@@ -491,7 +491,8 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             if (boundary.isValid()) {
                 KIMAP::SearchJob search(&session); search.setUidBased(true);
                 // SENTSINCE ignores timezone offsets. Include the preceding day
-                // and apply the exact instant after receiving bounded headers.
+                // and apply the exact instant using immutable cached Dates or
+                // bounded headers for UIDs that have not been cached yet.
                 search.setTerm(KIMAP::Term(KIMAP::Term::SentSince, boundary.date().addDays(-1)));
                 jobError = runJob(search); if (!jobError.isEmpty()) return jobError;
                 recentUids = search.results();
@@ -516,35 +517,64 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             if (boundary.isValid()) {
                 if (!planned.open()) return QStringLiteral("差分取得の一時ファイルを作成できません。");
                 qint64 needed = 0;
-                for (qint64 first = 0; first < recentUids.size(); first += MailPageSize) {
+                // Flags are tiny metadata, not MIME bodies. Larger bounded
+                // windows avoid one round trip per 100 unchanged headers.
+                constexpr qint64 flagWindow = 1000;
+                for (qint64 first = 0; first < recentUids.size(); first += flagWindow) {
                     if (interrupted()) return QStringLiteral("中断しました。");
-                    QMap<qint64, KIMAP::Message> headers;
+                    const auto requested = recentUids.mid(first, flagWindow);
+                    const QSet<qint64> requestedSet(requested.cbegin(), requested.cend());
+                    QMap<qint64, KIMAP::Message> flags;
                     KIMAP::FetchJob job(&session); job.setUidBased(true);
-                    KIMAP::ImapSet ids;
-                    for (qint64 i = first; i < qMin<qint64>(recentUids.size(), first + MailPageSize); ++i) ids.add(recentUids.at(i));
+                    KIMAP::ImapSet ids; ids.add(requested);
                     job.setSequenceSet(ids);
-                    KIMAP::FetchJob::FetchScope scope; scope.mode = KIMAP::FetchJob::FetchScope::Headers; job.setScope(scope);
+                    KIMAP::FetchJob::FetchScope scope; scope.mode = KIMAP::FetchJob::FetchScope::Flags; job.setScope(scope);
                     connect(&job, &KIMAP::FetchJob::messagesAvailable, &job, [&](const QMap<qint64, KIMAP::Message> &items) {
-                        for (const auto &header : items) if (header.uid > 0) headers.insert(header.uid, header);
+                        for (const auto &item : items) if (requestedSet.contains(item.uid)) flags.insert(item.uid, item);
                     });
                     jobError = runJob(job); if (!jobError.isEmpty()) return jobError;
-                    if (headers.size() != qMin<qint64>(MailPageSize, recentUids.size() - first))
+                    if (flags.size() != requested.size())
                         return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+                    QList<qint64> missing;
                     QList<AccountRepository::SyncFlags> reusable;
-                    for (const auto &header : headers) {
-                        if (interrupted()) return QStringLiteral("中断しました。");
-                        if (header.message && header.message->date()->dateTime().isValid()
-                            && header.message->date()->dateTime() < boundary) continue;
-                        if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
-                        reusable.append({header.uid, header.flags.contains("\\Seen"), header.flags.contains("\\Flagged")});
+                    const auto reuse = [&]() -> QString {
+                        QSet<qint64> reused;
+                        const auto error = cache->reuseMessages(reusable, reused, account.id);
+                        if (!error.isEmpty()) return error;
+                        for (const auto &candidate : reusable) if (!reused.contains(candidate.uid)) missing.append(candidate.uid);
+                        reusable.clear();
+                        return {};
+                    };
+                    for (const auto &item : flags) {
+                        reusable.append({item.uid, item.flags.contains("\\Seen"), item.flags.contains("\\Flagged")});
+                        if (reusable.size() == MailPageSize) {
+                            if (interrupted()) return QStringLiteral("中断しました。");
+                            jobError = reuse(); if (!jobError.isEmpty()) return jobError;
+                        }
                     }
-                    QSet<qint64> reused;
-                    jobError = cache->reuseMessages(reusable, reused, account.id); if (!jobError.isEmpty()) return jobError;
-                    for (const auto &candidate : reusable) {
-                        if (reused.contains(candidate.uid)) continue;
-                        const auto &header = headers[candidate.uid];
-                        plan << header.uid << header.size << header.flags;
-                        ++needed;
+                    if (!reusable.isEmpty()) { jobError = reuse(); if (!jobError.isEmpty()) return jobError; }
+                    // Existing UIDs need neither headers nor MIME parsing. New
+                    // candidates still get Date/size checks before any body.
+                    for (qsizetype offset = 0; offset < missing.size(); offset += MailPageSize) {
+                        if (interrupted()) return QStringLiteral("中断しました。");
+                        const auto unknown = missing.mid(offset, MailPageSize);
+                        const QSet<qint64> unknownSet(unknown.cbegin(), unknown.cend());
+                        QMap<qint64, KIMAP::Message> headers;
+                        KIMAP::FetchJob headerJob(&session); headerJob.setUidBased(true);
+                        KIMAP::ImapSet headerIds; headerIds.add(unknown); headerJob.setSequenceSet(headerIds);
+                        KIMAP::FetchJob::FetchScope headerScope; headerScope.mode = KIMAP::FetchJob::FetchScope::Headers; headerJob.setScope(headerScope);
+                        connect(&headerJob, &KIMAP::FetchJob::messagesAvailable, &headerJob, [&](const QMap<qint64, KIMAP::Message> &items) {
+                            for (const auto &header : items) if (unknownSet.contains(header.uid)) headers.insert(header.uid, header);
+                        });
+                        jobError = runJob(headerJob); if (!jobError.isEmpty()) return jobError;
+                        if (headers.size() != unknown.size()) return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+                        for (const auto &header : headers) {
+                            if (header.message && header.message->date()->dateTime().isValid()
+                                && header.message->date()->dateTime() < boundary) continue;
+                            if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
+                            plan << header.uid << header.size << header.flags;
+                            ++needed;
+                        }
                     }
                 }
                 if (plan.status() != QDataStream::Ok || !planned.seek(0)) return QStringLiteral("差分取得の一時ファイルを読み書きできません。");
@@ -593,7 +623,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 if (pending.isEmpty()) return {};
                 diagnostics::event("sync-fetch-batch", pending.size());
                 QMap<qint64, QByteArray> sources; QString transferError;
-                KIMAP::ImapSet ids; for (auto it = pending.cbegin(); it != pending.cend(); ++it) ids.add(it.key());
+                KIMAP::ImapSet ids; ids.add(pending.keys());
                 KIMAP::FetchJob fetch(&session); fetch.setUidBased(true); fetch.setSequenceSet(ids);
                 KIMAP::FetchJob::FetchScope scope; scope.mode = KIMAP::FetchJob::FetchScope::Full; fetch.setScope(scope);
                 qint64 receivedBytes = 0;
