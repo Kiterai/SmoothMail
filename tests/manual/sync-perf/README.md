@@ -82,3 +82,13 @@ repository／transport／mailtransport／GUI統合試験を実行し、成功し
 コピーへ挿入するもので、製品ソース／通常EXEには存在しない。
 この比較時だけ大候補向けの2本のフラグ検索を無効化し、FLAGS経路を強制する。
 通常の基礎／詳細計測は、256件を超える候補にNOT SEEN／FLAGGED検索を使用する。
+
+## 大量取得の比較
+
+`--bulk-only`は20,000通×2KiB、2,000通×64KiB、20フォルダそれぞれ500通×2KiBを
+応答待ち20msで各3反復する。旧30フォルダ条件と異なり、全フォルダに本文がある。
+`--list-status`でサーバーのLIST-STATUS対応を有効化できる。
+`run-bulk-guest.ps1 -Phase <未使用名> [-ListStatus]`で実行し、
+`validate-bulk.py <回収先>`で45同期・9DBの各フォルダのUIDと件数を検証する。
+`run-bulk-validation.ps1 -Phase <未使用名>`は全回帰・従来120同期に成功後、
+LIST-STATUS非対応/対応の順に大量取得を測定する。GUI試験中にguestへ入力しないこと。

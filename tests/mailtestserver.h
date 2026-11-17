@@ -122,6 +122,8 @@ public:
     bool ignoreFlagWrites = false;
     bool pauseMetadata = false;
     bool supportMove = true, omitMoveMapping = false;
+    bool supportListStatus = false, rejectListStatus = false;
+    QByteArray omitListStatusFolder;
     QMap<QByteArray, qint64> uidNextFloor;
     int pausedMetadataCount() const { return m_pausedMetadata.size(); }
     void resumeMetadata() { pauseMetadata = false; const auto pending = m_pausedMetadata; m_pausedMetadata.clear(); for (const auto &line : pending) if (m_socket && m_socket->isOpen()) handle(line); }
@@ -196,6 +198,7 @@ private:
         if (command == "CAPABILITY") {
             QByteArray capabilities("* CAPABILITY IMAP4rev1");
             if (supportMove) capabilities += " MOVE UIDPLUS";
+            if (supportListStatus) capabilities += " LIST-EXTENDED LIST-STATUS";
             if (tlsMode == TlsMode::StartTls && !m_socket->isEncrypted()) capabilities += " STARTTLS";
             for (const auto &mechanism : advertisedMechanisms()) {
                 capabilities += " AUTH=" + mechanism.toLatin1();
@@ -241,12 +244,23 @@ private:
                 write(m_protocol == Protocol::Imap ? imapEmptyChallenge : QByteArray("334 "));
             }
         } else if (provideMailbox && command == "LIST") {
+            const bool extended = line.contains("RETURN (STATUS");
+            if (extended && rejectListStatus) { write(m_tag + " NO rejected LIST STATUS"); return; }
+            const auto status = [&](const QByteArray &name) {
+                if (!extended || name == omitListStatusFolder) return;
+                const auto &data = name == "INBOX" ? messages : folderMessages[name];
+                const auto &flags = name == "INBOX" ? messageFlags : folderFlags[name];
+                qint64 unseen = 0;
+                for (auto it = data.cbegin(); it != data.cend(); ++it) if (!flags.value(it.key()).contains("\\Seen")) ++unseen;
+                write("* STATUS \"" + name + "\" (UNSEEN " + QByteArray::number(unseen) + ')');
+            };
             if (!listResponses.isEmpty()) { for (const auto &response : listResponses) write(response); }
             else {
                 write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
+                status("INBOX");
                 if (duplicateInboxListing) write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
                 if (provideDraftFolder) write("* LIST (\\Drafts) \"/\" \"Drafts\"");
-                for (const auto &name : extraFolders) write("* LIST () \"/\" \"" + name + '"');
+                for (const auto &name : extraFolders) { write("* LIST () \"/\" \"" + name + '"'); status(name); }
             }
             const auto completeList = [socket = QPointer<QSslSocket>(m_socket), tag = m_tag, tail = listTailResponses] {
                 if (!socket || !socket->isOpen()) return;

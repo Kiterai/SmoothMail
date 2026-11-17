@@ -35,6 +35,7 @@
 #include <QSslSocket>
 #include <functional>
 #include <algorithm>
+#include <future>
 extern "C" {
 #include <sasl/sasl.h>
 }
@@ -239,6 +240,7 @@ MailService::MailService(QString plugins, QObject *parent)
 
 MailService::~MailService()
 {
+    m_cancelSync = true; // Also wake the bounded ingestion consumer.
     m_thread.requestInterruption();
     m_thread.quit();
     m_thread.wait();
@@ -290,14 +292,37 @@ void MailService::synchronize(const Account &account, const QString &secret, con
         }
         if (error.isEmpty()) error = testImap(account.imap, secret, [&](KIMAP::Session &session) -> QString {
             diagnostics::event("sync-list");
-            const auto listFolders = [&]() -> QString {
+            bool listStatusEnabled = false;
+            if (cache && !singleFolder && mode != SyncMode::SelectedFolder) {
+                KIMAP::CapabilitiesJob capabilities(&session);
+                const auto error = runJob(capabilities); if (!error.isEmpty()) return error;
+                listStatusEnabled = capabilities.capabilities().contains(QStringLiteral("LIST-STATUS"));
+            }
+            QHash<QString, qint64> listedUnread;
+            std::function<QString()> listFolders;
+            listFolders = [&]() -> QString {
             folders.clear();
+            listedUnread.clear();
             struct ListedFolder { qsizetype position; qint64 firstResponse; };
             QHash<QString, ListedFolder> listed;
             qint64 rawCount = 0, duplicates = 0, firstDuplicate = 0, duplicateOf = 0;
             QString listError;
             KIMAP::ListJob listing(&session);
             listing.setOption(KIMAP::ListJob::IncludeUnsubscribed);
+            if (listStatusEnabled) {
+                listing.setListExtendedEnabled(true);
+                KIMAP::ListReturnOptions::Status status; status.unseen = true;
+                listing.setReturnOptions(status);
+                connect(&listing, &KIMAP::ListJob::mailBoxesStatusReceived, &listing,
+                    [&](const QList<KIMAP::MailBoxDescriptor> &boxes, const QList<QList<QByteArray>> &,
+                        const QList<std::optional<KIMAP::ListJob::MailboxStatus>> &statuses) {
+                        for (qsizetype i = 0; i < qMin(boxes.size(), statuses.size()); ++i) {
+                            if (!statuses[i]) continue;
+                            for (const auto &item : *statuses[i])
+                                if (item.first == "UNSEEN" && item.second >= 0) listedUnread.insert(boxes[i].name, item.second);
+                        }
+                    });
+            }
             connect(&listing, &KIMAP::ListJob::mailBoxesReceived, &listing,
                 [&](const QList<KIMAP::MailBoxDescriptor> &boxes, const QList<QList<QByteArray>> &flags) {
                     diagnostics::event("sync-list-batch", boxes.size());
@@ -327,7 +352,16 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     }
                 });
             auto jobError = runJob(listing);
-            if (!jobError.isEmpty()) return jobError;
+            if (!jobError.isEmpty()) {
+                if (listStatusEnabled && listing.error()
+                    && (session.state() == KIMAP::Session::Authenticated || session.state() == KIMAP::Session::Selected)
+                    && !interrupted()) {
+                    listStatusEnabled = false;
+                    return listFolders(); // One plain LIST retry; never publish the rejected partial list.
+                }
+                return jobError;
+            }
+            if (!listing.errorText().isEmpty()) return QStringLiteral("フォルダ一覧の応答が不正です。");
             diagnostics::event("sync-list-raw-total", rawCount);
             if (duplicates) {
                 diagnostics::event("sync-list-duplicates-merged", duplicates);
@@ -413,6 +447,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 if (noSelect) continue;
                 selectable.append(folder.name);
                 if (singleFolder && folder.name != selected) continue;
+                if (listedUnread.contains(folder.name)) { folder.unread = listedUnread.value(folder.name); continue; }
                 diagnostics::event("sync-status");
                 KIMAP::StatusJob status(&session);
                 status.setMailBox(folder.name);
@@ -511,8 +546,21 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 jobError = cache->beginSync(account.id, selected, validity, boundary, diagnostics::currentOperation());
                 if (!jobError.isEmpty()) return jobError;
             }
-            qint64 retainedBytes = 0, batchBytes = 0, completed = 0;
-            QList<MailRecord> batch;
+            qint64 retainedBytes = 0, completed = 0;
+            // One consumer only: receive the next bounded batch while MIME
+            // extraction and the private DB worker stage the previous one.
+            // A future joins before any exit can abort this folder's staging.
+            std::future<QString> ingestion;
+            qint64 ingestionCount = 0;
+            const auto drain = [&]() -> QString {
+                if (!ingestion.valid()) return {};
+                QString result;
+                try { result = ingestion.get(); }
+                catch (...) { return QStringLiteral("メールの解析・保存処理に失敗しました。"); }
+                if (result.isEmpty()) completed += ingestionCount;
+                ingestionCount = 0;
+                return result;
+            };
             qint64 candidates = boundary.isValid() ? recentUids.size() : total;
             // Resolve exact-date exclusions and cached bodies before publishing
             // a differential total. Spool only metadata to keep memory bounded.
@@ -640,12 +688,15 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             }
             const qint64 progressTotal = boundary.isValid() ? candidates : total;
             emit syncProgress(account.id, selected, 0, progressTotal);
-            for (qint64 first = 1; first <= candidates; first += MailPageSize) {
+            // Header metadata and UI/DB pages have different cost models.
+            // Bound metadata to 1000 messages, bodies independently to 8 MiB.
+            constexpr qint64 headerWindow = 1000;
+            for (qint64 first = 1; first <= candidates; first += headerWindow) {
             if (interrupted()) return QStringLiteral("中断しました。");
             diagnostics::event("sync-header-batch", first);
             QMap<qint64, KIMAP::Message> headers;
             if (boundary.isValid()) {
-                for (qint64 i = first; i <= qMin(candidates, first + MailPageSize - 1); ++i) {
+                for (qint64 i = first; i <= qMin(candidates, first + headerWindow - 1); ++i) {
                     KIMAP::Message header;
                     plan >> header.uid >> header.size >> header.flags;
                     headers.insert(header.uid, header);
@@ -654,7 +705,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             } else {
             KIMAP::FetchJob headerJob(&session);
             headerJob.setUidBased(false);
-            headerJob.setSequenceSet(KIMAP::ImapSet(first, qMin(total, first + MailPageSize - 1)));
+            headerJob.setSequenceSet(KIMAP::ImapSet(first, qMin(total, first + headerWindow - 1)));
             KIMAP::FetchJob::FetchScope headerScope;
             headerScope.mode = KIMAP::FetchJob::FetchScope::Headers;
             headerJob.setScope(headerScope);
@@ -664,16 +715,24 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 });
             jobError = runJob(headerJob);
             if (!jobError.isEmpty()) return jobError;
-            if (headers.size() != qMin<qint64>(MailPageSize, candidates - first + 1)) return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+            if (headers.size() != qMin<qint64>(headerWindow, candidates - first + 1)) return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
             }
             QSet<qint64> reused;
             if (cache && !boundary.isValid()) {
                 QList<AccountRepository::SyncFlags> reusable;
+                const auto reuse = [&]() -> QString {
+                    QSet<qint64> found;
+                    const auto error = cache->reuseMessages(reusable, found, account.id);
+                    reused.unite(found); reusable.clear();
+                    return error;
+                };
                 for (const auto &header : headers) {
+                    if (interrupted()) return QStringLiteral("中断しました。");
                     if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
                     reusable.append({header.uid, header.flags.contains("\\Seen"), header.flags.contains("\\Flagged")});
+                    if (reusable.size() == MailPageSize) { jobError = reuse(); if (!jobError.isEmpty()) return jobError; }
                 }
-                jobError = cache->reuseMessages(reusable, reused, account.id); if (!jobError.isEmpty()) return jobError;
+                if (!reusable.isEmpty()) { jobError = reuse(); if (!jobError.isEmpty()) return jobError; }
             }
             QMap<qint64, KIMAP::Message> pending;
             qint64 pendingBytes = 0;
@@ -697,6 +756,40 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 auto result = runJob(fetch); if (!result.isEmpty()) return result;
                 if (!transferError.isEmpty()) return transferError;
                 if (sources.size() != pending.size()) return QStringLiteral("同期中にメールが削除されました。再試行してください。");
+                if (cache) {
+                    result = drain(); if (!result.isEmpty()) return result;
+                    if (interrupted()) return QStringLiteral("中断しました。");
+                    ingestionCount = pending.size();
+                    const auto operation = diagnostics::currentOperation();
+                    ingestion = std::async(std::launch::async,
+                        [this, cache, accountId = account.id, folder = selected, validity, operation,
+                         headers = pending, sources = std::move(sources)]() -> QString {
+                            const diagnostics::OperationScope scope(operation);
+                            const CancellationScope cancellation(&m_cancelSync);
+                            QList<MailRecord> batch;
+                            qint64 bytes = 0;
+                            for (auto it = sources.cbegin(); it != sources.cend(); ++it) {
+                                if (interrupted()) return QStringLiteral("中断しました。");
+                                diagnostics::event("sync-mime", it.value().size());
+                                auto parsed = MimeParser::parse(it.value());
+                                if (!parsed.ok()) return parsed.error;
+                                const auto &header = headers[it.key()];
+                                batch.append({accountId, folder, validity, header.uid,
+                                    header.flags.contains("\\Seen"), header.flags.contains("\\Flagged"), std::move(parsed.message)});
+                                bytes += it.value().size();
+                                if (batch.size() >= MailPageSize || bytes >= 8 * 1024 * 1024) {
+                                    const auto error = cache->stageMessages(batch, accountId);
+                                    if (!error.isEmpty()) return error;
+                                    batch.clear(); bytes = 0;
+                                }
+                            }
+                            if (interrupted()) return QStringLiteral("中断しました。");
+                            return batch.isEmpty() ? QString{} : cache->stageMessages(batch, accountId);
+                        });
+                    pending.clear(); pendingBytes = 0;
+                    emit syncProgress(account.id, selected, completed, progressTotal);
+                    return {};
+                }
                 for (auto it = sources.cbegin(); it != sources.cend(); ++it) {
                     if (interrupted()) return QStringLiteral("中断しました。");
                     const auto &raw = it.value(); retainedBytes += raw.size();
@@ -705,13 +798,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     const auto parsed = MimeParser::parse(raw); if (!parsed.ok()) return parsed.error;
                     const auto &header = pending[it.key()];
                     MailRecord record{account.id, selected, validity, header.uid, header.flags.contains("\\Seen"), header.flags.contains("\\Flagged"), parsed.message};
-                    if (cache) {
-                        batch.append(record); batchBytes += raw.size();
-                        if (batch.size() >= MailPageSize || batchBytes >= 8 * 1024 * 1024) {
-                            result = cache->stageMessages(batch, account.id); batch.clear(); batchBytes = 0;
-                            if (!result.isEmpty()) return result;
-                        }
-                    } else records.append(record);
+                    records.append(record);
                     ++completed;
                 }
                 emit syncProgress(account.id, selected, completed, progressTotal);
@@ -728,15 +815,13 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     jobError = fetchPending(); if (!jobError.isEmpty()) return jobError;
                 }
                 pending.insert(header.uid, header); pendingBytes += qMax<qint64>(1, header.size);
-                if (header.size <= 0 || pendingBytes >= 8 * 1024 * 1024) { jobError = fetchPending(); if (!jobError.isEmpty()) return jobError; }
+                if (header.size <= 0 || pendingBytes >= 8 * 1024 * 1024 || pending.size() >= headerWindow) { jobError = fetchPending(); if (!jobError.isEmpty()) return jobError; }
             }
             jobError = fetchPending(); if (!jobError.isEmpty()) return jobError;
-            if (cache && !batch.isEmpty()) {
-                jobError = cache->stageMessages(batch, account.id); batch.clear(); batchBytes = 0;
-                if (!jobError.isEmpty()) return jobError;
-            }
             emit syncProgress(account.id, selected, completed, progressTotal);
             }
+            jobError = drain(); if (!jobError.isEmpty()) return jobError;
+            emit syncProgress(account.id, selected, completed, progressTotal);
             // Sequence windows can shift on EXPUNGE. Never publish a mixed
             // snapshot: re-check mailbox identity/count/high-water mark.
             KIMAP::SelectJob verify(&session); verify.setMailBox(selected); verify.setOpenReadOnly(true);

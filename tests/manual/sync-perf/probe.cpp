@@ -49,6 +49,7 @@ int main(int argc, char **argv) {
     auto scenario = [&](QString name, int count, int bytes, int folders, int delay, bool old, int repeat, bool tls = false) {
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
         server.provideMailbox = true; server.commandDelayMs = delay;
+        server.supportListStatus = args.contains("--list-status");
         if (tls) {
             QFile cert(":/test/tls-cert.pem"), key(":/test/tls-key.pem");
             if (!cert.open(QIODevice::ReadOnly) || !key.open(QIODevice::ReadOnly)) { ++failures; return; }
@@ -59,7 +60,12 @@ int main(int argc, char **argv) {
             config.addCaCertificate(server.certificate); QSslConfiguration::setDefaultConfiguration(config);
         }
         for (int i = 1; i <= count; ++i) server.messages[i] = message(i, bytes, old && i < count);
-        for (int i = 1; i < folders; ++i) server.extraFolders.insert("Folder-" + QByteArray::number(i));
+        const bool bulk = args.contains("--bulk-only");
+        for (int i = 1; i < folders; ++i) {
+            const auto name = "Folder-" + QByteArray::number(i);
+            server.extraFolders.insert(name);
+            if (bulk) for (int uid = 1; uid <= count; ++uid) server.folderMessages[name][uid] = message(uid, bytes);
+        }
         if (!server.listen()) { ++failures; return; }
         const auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
         Account account{id, "perf@example.test", {"127.0.0.1", 465, "test"},
@@ -124,7 +130,8 @@ int main(int argc, char **argv) {
                 {"page_ms", pageMs}, {"render_ms", renderMs}, {"tls", tls},
                 {"header_messages", server.headerFetchCount}, {"flags_messages", server.flagsFetchCount},
                 {"flag_searches", qMax(0, commands.value("UID SEARCH").toInt() - 1)},
-                {"body_messages", server.fullFetchCount}, {"commands", commands}, {"timings", timings}});
+                {"body_messages", server.fullFetchCount}, {"commands", commands}, {"timings", timings},
+                {"database", id + ".sqlite"}, {"populated_folders", bulk ? folders : 1}});
             if (!ok) ++failures;
             return ok;
         };
@@ -132,10 +139,18 @@ int main(int argc, char **argv) {
         if (!run("unchanged-all", MailService::SyncMode::All)) return;
         if (!run("unchanged-recent", MailService::SyncMode::Recent)) return;
         for (int i = count + 1; i <= count + 10; ++i) server.messages[i] = message(i, bytes);
+        if (bulk) for (auto &folder : server.folderMessages)
+            for (int i = count + 1; i <= count + 10; ++i) folder[i] = message(i, bytes);
         if (!run("add10-recent", MailService::SyncMode::Recent)) return;
         run("unchanged-selected", MailService::SyncMode::SelectedRecent, "INBOX");
     };
     for (int repeat = 1; repeat <= 3; ++repeat) {
+        if (args.contains("--bulk-only")) {
+            scenario("huge-20000", 20000, 2048, 1, 20, false, repeat);
+            scenario("huge-large-2000", 2000, 65536, 1, 20, false, repeat);
+            scenario("medium-20x500", 500, 2048, 20, 20, false, repeat);
+            continue;
+        }
         if (args.contains("--window-only")) {
             scenario("small-1000", 1000, 2048, 1, 0, false, repeat);
             scenario("small-5000", 5000, 2048, 1, 0, false, repeat);
