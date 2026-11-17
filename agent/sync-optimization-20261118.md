@@ -159,3 +159,16 @@
   `output/release-{startup,modules,exe-sha256}.json`へ回収し、このSandboxも終了成功。
 - 実メール、実サービス認証、最終配布の法的監査を完了したという意味ではない。
   配布物の`AUDIT-REQUIRED.txt`は維持する。
+
+## 通常配置への反映（利用者による終了確認後）
+
+- 利用者の「終了しました。通常配置に反映してください。」を受け、Smoothmailプロセスが
+  検出されないこと、新旧実行先が通常のディレクトリであることを確認した。
+- 検証済み`build/sync-opt/run`を一旦通常配置と同じ親へコピーし、
+  manifestの360ファイルおよび全361ファイルの完全なinventoryを照合してから置換した。
+  配置後も同じ照合に成功。本体hashは上記`e5faa55c…120d`でapp EXEと一致する。
+- 旧版一式は`build/rel/run-previous-sync-opt-20261118-041947-1dc4feee`へ退避。
+  アプリの強制終了、ユーザーDB・設定・OS資格情報の操作は行っていない。
+- 現在の通常起動先 **`build/rel/run/launch.cmd`は高速化版**。
+  上記の「通常のrunは旧版のまま」はアクセス拒否時点の記録であり、この反映で解消した。
+- 証跡は`build/sync-opt/normal-deployment.json`。配置のみで、ホスト上ではアプリを起動していない。
