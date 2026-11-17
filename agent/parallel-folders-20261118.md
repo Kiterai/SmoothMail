@@ -107,3 +107,29 @@
 - 本体は非配布用Release検証ビルド`build/sync-opt/app/smoothmail.exe`。
   この作業では新しい標準Release ZIPの生成・通常配置`build/rel/run`の更新は行っていない。
   実メール・ホスト資格情報・ユーザーGit global設定・ACLには手を加えていない。
+
+## 利用者指示による通常配置への反映
+
+- 「通常配置に反映してください。」を受け、Smoothmailプロセスが検出されないことを確認。
+  `cmake --preset release -B build/rel`、標準Release workflowを実行し、終了コード0。
+  既存の限定パス用`build/sync-opt/trusted-git.config`は子プロセスだけへ指定した。
+- `SMOOTHMAIL_DISTRIBUTION=ON`、対応ソースmanifestと構築cacheのcommitは
+  `82e2c6558dbbfd9dd5a6bed5f6209fec1361f5b1`。
+  ZIP検証・通知/対応ソース生成・通常run公開まで成功した。
+- 起動先は **`build/rel/run/launch.cmd`**。
+  同梱manifestの360ファイルをSHA256照合し、本体が`build/rel/app/smoothmail.exe`と一致。
+  別検証用コピーとも全361ファイルのinventoryが一致した。
+- 新Release本体SHA256:
+  `4bd210ef5547d703375e590e3013aa76a9c3bb43516bbd62a58051ba5dc54a92`。
+  旧版は`build/rel/run-previous-93aa692df0574024b471b5207d39784b`へ退避。
+  退避本体が反映前の
+  `a0a4133e1c1c18b43925079ce9ab73a9d9762d17d64e007fecb53da5964ff5f8`
+  と一致することも確認した。
+- 証跡は`build/folder-opt/{release-deployment.log,normal-deployment.json}`。
+  メールDB・設定・資格情報は操作せず、ホスト上ではアプリを起動していない。
+- 追加のクリーン起動確認用Sandbox
+  `f9e58945-293a-473a-9740-34374931101d`では、入力操作が検証scriptの開始に至らず、
+  起動確認結果が生成されなかった。この追加確認は未完了であり、正常起動と数えない。
+  このSandboxは終了成功。上記の294テスト/180同期と配置後ファイル照合の結果は維持する。
+- この反映で、上記「通常配置は更新していない」という実装検証時点の状態を解消した。
+  `AUDIT-REQUIRED.txt`は維持し、一般配布の法的監査を完了したとは扱わない。
