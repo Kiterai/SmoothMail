@@ -129,3 +129,33 @@
 - 検証中に用いたSandboxはネットワーク無効の
   `f93beb5d-841d-4ced-84e8-e4169f05390a`。
   実アカウント／ホストのOS資格情報／実メールにはアクセスしていない。
+
+## Release生成・起動先
+
+- 製品ソースの最終コミットは`be90d05276d55f46f7c37d1ecca4cc9a8356fe7e`。
+  標準Release構築で本体・通知・対応ソース・ZIP・検証済み展開物を生成。
+  `SMOOTHMAIL_DISTRIBUTION=ON`、source manifestのSmoothMail commitも同じ値を確認。
+- Safe Shellの別ユーザー実行により既存依存Gitの所有者検査で停止したため、
+  `build/sync-opt/trusted-git.config`をこのビルドの子プロセスだけに指定した。
+  元のユーザーglobal設定をincludeし、固定manifestのソース、該当するパッチコピー、
+  固定Qt対応ソース2件の**具体的なパスだけ**をsafe.directoryに加えた。
+  ユーザーのglobal Git設定、所有者、ACLは変更せず、SHA／汚染検査も維持した。
+- ZIP検証後の通常配置`build/rel/run`→`run-previous-*`がWinError 5で拒否され、
+  標準ワークフロー全体の終了コードは2。原因を使用中と断定せず、既存プロセスの
+  停止・権限変更・無理な上書きは行っていない。
+  最新`build/rel/artifacts`の生成は完了しているが、通常のrunは旧版のまま。
+- 検証済み展開物`build/rel/jobs/4ecd0a8219a06aef/unpacked/SmoothMail`を
+  新規の`build/sync-opt/run`へコピー。起動は**`build/sync-opt/run/launch.cmd`**。
+  同梱manifestの360ファイルのSHA256と本体app EXEとの一致を再確認した。
+- 新Release EXE SHA256:
+  `e5faa55ca1d9f649d312c98ca7a8a6843d8251bfea79378a5224bdc4fbba120d`。
+  旧`build/rel/run/runtime/Smoothmail.exe`は
+  `0d8b6b6b82f3cedef4aaecfb7d9a0f900922ec6fa06ca43301a64c7348f6469d`のまま。
+- 検証用8GiB Sandboxは回収後に終了成功。
+  別の新規4GiB・外部通信無効Sandbox
+  `5fa73695-ced0-47b8-94bc-8d9bdc66392c`で新Release一式だけを起動。
+  ネイティブ空状態の正常表示、qsqliteロード、本体hash一致、
+  ロードモジュール104件がguest配置先／Windows配下のみであることを確認。
+  `output/release-{startup,modules,exe-sha256}.json`へ回収し、このSandboxも終了成功。
+- 実メール、実サービス認証、最終配布の法的監査を完了したという意味ではない。
+  配布物の`AUDIT-REQUIRED.txt`は維持する。
