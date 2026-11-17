@@ -49,3 +49,37 @@
   Gmailの名前固有の処理ではなく、属性の含意を扱わなかった不具合と確認できた。
 - 起動中のSmoothmailプロセスを検出した。強制終了、実メール/認証情報/ホストDBへの操作は行わない。
   検証後の修正版は別Release配置に生成し、通常配置へは終了確認後に反映する。
+
+## 最終検証
+
+- 修正コミット`6c710d1700f11716c5b4120a361470a0a017dc6a`。
+  `build/gmail-fix/share/output/final/tests`の全17EXEで
+  **303 passed / 0 failed / 0 skipped**。
+- transport61（Gmail形式4ケースと重複NonExistent3ケースを含む）、
+  repository32、mainwindow52、native GUI統合10、その他148。
+  rootが表示に残ること、子の本文を取得できること、rootへのSTATUS/SELECT/EXAMINEを
+  送らないこと、キャッシュからrootを初期選択しないことを確認した。
+- 従来120同期も全成功。24DBのquick_check、UID/件数、ヘッダ/本文取得件数を照合成功。
+  並列/TLS/取消/途中失敗/保留フラグ/3秒周期表示の既存回帰も成功。
+- ホスト非通信CTest14対象成功、Python52件成功（既存条件の8 skip）。
+  旧版での期待した3失敗やホスト通信timeoutを、修正版の成功件数に含めていない。
+- 通信/GUI試験Sandbox `fc33d9e0-4948-4e34-8d1b-c16151af9fe1`は回収後に終了成功。
+
+## 修正版Releaseと配置状態
+
+- アプリ起動中の通常配置を無理に置き換えず、標準Release workflowを
+  `build/gmail-fix/release`へ実行。終了コード0、ZIP/通知/対応ソース/検証済み展開物を生成した。
+  `SMOOTHMAIL_DISTRIBUTION=ON`。構築と対応ソースmanifestのcommitは上記6c710d1と一致。
+- 起動先: **`build/gmail-fix/release/run/launch.cmd`**。
+  manifestの360ファイルのSHA256と、app EXE/配置EXEの一致を確認した。
+  本体SHA256は
+  `2db5862ccaeb37d98a777e9006e30a2dd42990fa8361347140176778f7e6549e`。
+- 外部通信無効の新規Sandbox `30c32a46-4a60-40e4-be6a-b01ca3f4764a`で
+  このRelease一式をguestへコピーし、空状態のネイティブ画面とqsqliteロードを確認。
+  ロードモジュール104件はguest配置先/Windows配下のみ、本体hashも一致した。
+  `build/gmail-fix/share/output/release-{startup,modules,exe-sha256}.json`へ回収後に終了成功。
+- 起動中の通常アプリは停止していない。`build/rel/run`の本体hashは反映前の
+  `4bd210ef5547d703375e590e3013aa76a9c3bb43516bbd62a58051ba5dc54a92`で不変。
+  通常配置への反映は利用者による終了確認待ち。
+- 実Gmail認証・実メールへの接続は行っていない。実サービスでの再確認は利用者の試用が必要。
+  DBや設定のリセット、SDK/ACL/Git global設定の変更も行っていない。
