@@ -30,3 +30,12 @@
 - mainwindow個別ログ`build/directory-refactor/folder-ui-results.txt`: **51 passed / 0 failed / 0 skipped**（init/cleanupを含む）。offscreen固有のフォント等の警告あり。実ネイティブGUIの外観確認とは区別する。
 - Python: 52件中44成功、任意依存不足の8件skip。
 - 実サービス・ユーザDB・ホストの資格情報は操作していない。通常起動先`build/rel/run`の再生成・上書きは行っていない。
+
+## 通常Release配置への反映
+
+- 利用者の追加依頼を受け、標準の`cmake --preset release -B build/rel`と`cmake --build build/rel`を実行し、終了コード0で完了した。上記の通常起動先未更新はこの反映で解消した。
+- 対応ソースのコミットは`ee92a4087658f86410a6ab674c4941e4877b01a9`。子プロセスのみ既存の`build/sync-opt/trusted-git.config`を利用し、global設定やACLは変更していない。
+- 起動先は`build/rel/run/launch.cmd`。旧配置は`build/rel/run-previous-dd32c00179404ca29e8a28387a32331f`へ標準処理で退避された。
+- 配置済みEXEと`build/rel/app/smoothmail.exe`のSHA256一致、ZIP内全361ファイルと配置済み全ファイルのinventory・SHA256一致、artifactsのSHA256SUMS全件一致を独立確認した。
+- 本体SHA256: `ba731f820a1c1497f4a6f7c3111a597e06fd4fc8ca95c49f17c08f82ae2fb656`。
+- 証跡: `build/rel/folder-deployment-verification.json`。ホスト上でのアプリ起動・実メール操作は行っていない。配布物の法的承認を意味せず、AUDIT-REQUIREDは維持する。
