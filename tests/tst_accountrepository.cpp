@@ -26,6 +26,40 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void isolatesConcurrentStagesWithinOneAccount()
+    {
+        AccountRepository repository(QStringLiteral(":memory:"));
+        const auto account = makeAccount(QStringLiteral("parallel@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), pages(&repository, &AccountRepository::pageLoaded);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const QString inbox = QStringLiteral("INBOX"), archive = QStringLiteral("Archive");
+        const QList<MailFolder> folders{{inbox, u'/', {}, 1}, {archive, u'/', {}, 1}};
+        const auto first = MailRecord{account.id, inbox, 10, 1, false, false, MimeParser::parse("Subject: first\r\n\r\nfirst").message};
+        const auto second = MailRecord{account.id, archive, 20, 1, true, true, MimeParser::parse("Subject: second\r\n\r\nsecond").message};
+        QVERIFY(repository.beginSync(account.id, inbox, 10, {}, 0, "stage-a").isEmpty());
+        QVERIFY(repository.beginSync(account.id, archive, 20, {}, 0, "stage-b").isEmpty());
+        QVERIFY(repository.stageMessages({first}, "stage-a").isEmpty());
+        QVERIFY(repository.stageMessages({second}, "stage-b").isEmpty());
+        QVERIFY(!repository.stageMessages({first}, "stage-b").isEmpty());
+        QVERIFY(repository.commitSync(folders, 1, false, "stage-a").isEmpty()); repository.abortSync("stage-a");
+        QVERIFY(repository.commitSync(folders, 1, true, "stage-b").isEmpty()); repository.abortSync("stage-b");
+        QVERIFY(repository.beginSync(account.id, inbox, 10, {}, 0, "stage-c").isEmpty());
+        QVERIFY(repository.beginSync(account.id, archive, 20, {}, 0, "stage-d").isEmpty());
+        QSet<qint64> found;
+        QVERIFY(repository.reuseMessages({{1, true, false}}, found, "stage-c").isEmpty()); QCOMPARE(found.size(), 1);
+        QVERIFY(repository.reuseMessages({{1, false, false}}, found, "stage-d").isEmpty()); QCOMPARE(found.size(), 1);
+        repository.abortSync("stage-c");
+        QVERIFY(repository.commitSync(folders, 1, true, "stage-d").isEmpty()); repository.abortSync("stage-d");
+        for (const auto &folder : {inbox, archive}) {
+            MailQuery query; query.accountId = account.id; query.folder = folder;
+            repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+            const auto page = qvariant_cast<MailPage>(pages.takeFirst().first());
+            QVERIFY(page.error.isEmpty()); QCOMPARE(page.total, 1);
+            const auto &record = page.messages.first();
+            QCOMPARE(record.document.subject, folder == inbox ? QStringLiteral("first") : QStringLiteral("second"));
+            QVERIFY(!record.seen); QVERIFY(!record.important);
+        }
+    }
     void addsUnreadIndexToExistingVersionFiveWithoutChangingMessages()
     {
         QTemporaryDir directory; QVERIFY(directory.isValid());

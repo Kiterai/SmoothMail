@@ -60,9 +60,12 @@ public:
     void cancelPendingReads() { ++m_pageRequest; ++m_bodyRequest; }
     // Called by the mail worker only, never the GUI. Blocking calls provide
     // backpressure: at most one bounded batch is awaiting SQLite at a time.
-    // Parallel callers must pass accountId on every staging/publication call.
+    // Parallel callers must pass their own stageKey on every stage operation.
     // The empty default is retained for legacy, single-session consumers.
-    QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {}, quint64 operation = 0);
+    // A nonempty stageKey isolates concurrent folders of the same account.
+    // Pass that key, rather than accountId, on every subsequent stage call.
+    QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {}, quint64 operation = 0,
+                      const QString &stageKey = {});
     QString stageMessages(const QList<MailRecord> &messages, const QString &accountId = {});
     struct SyncFlags { qint64 uid; bool seen = false, important = false; };
     QString reuseMessages(const QList<SyncFlags> &messages, QSet<qint64> &found, const QString &accountId = {});

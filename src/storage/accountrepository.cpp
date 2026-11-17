@@ -653,7 +653,7 @@ QString AccountRepository::finishFolder(const PendingFolder &op, bool preserveMe
         if (!error.isEmpty()) db.rollback();
     }, Qt::BlockingQueuedConnection); return error;
 }
-QString AccountRepository::beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary, quint64 operation)
+QString AccountRepository::beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary, quint64 operation, const QString &stageKey)
 {
     QString error;
     QMetaObject::invokeMethod(m_worker, [&, this] {
@@ -671,14 +671,15 @@ QString AccountRepository::beginSync(const QString &id, const QString &folder, q
               QStringLiteral("CREATE TEMP TABLE IF NOT EXISTS sync_reused (account TEXT NOT NULL,uid INTEGER NOT NULL,flags INTEGER NOT NULL,PRIMARY KEY(account,uid))")}) {
             error = sql(db, statement); if (!error.isEmpty()) return;
         }
+        const auto key = stageKey.isEmpty() ? id : stageKey;
         for (const auto &table : {QStringLiteral("sync_messages"), QStringLiteral("sync_index"), QStringLiteral("sync_reused")}) {
-            error = sql(db, QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=?"), {id});
+            error = sql(db, QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=?"), {key});
             if (!error.isEmpty()) return;
         }
-        m_state->legacySyncId = id;
+        if (stageKey.isEmpty()) m_state->legacySyncId = key;
         // No selectable mailbox is represented by an empty (not SQL NULL)
         // folder. folder_state.folder is intentionally NOT NULL.
-        m_state->syncs.insert(id, sync);
+        m_state->syncs.insert(key, sync);
         // Only downloaded bodies are staged. Existing rows remain published
         // until the folder transaction applies deletions and changed flags.
     }, Qt::BlockingQueuedConnection);
@@ -712,9 +713,10 @@ QString AccountRepository::stageMessages(const QList<MailRecord> &messages, cons
                 || record.uid <= 0 || record.document.rawSource.isEmpty() || record.document.rawSource.size() > MimeParser::MaxRawBytes) {
                 error = QStringLiteral("同期バッチの識別情報が不正です。"); break;
             }
-            if (!execute(body, {record.accountId, record.folder, record.uidValidity, record.uid,
+            auto values = indexValues(record); values[0] = id;
+            if (!execute(body, {id, record.folder, record.uidValidity, record.uid,
                     (record.seen ? 1 : 0) | (record.important ? 2 : 0), record.document.rawSource})
-                || !execute(index, indexValues(record)) || !execute(reused, {sync.syncId, record.uid})) break;
+                || !execute(index, values) || !execute(reused, {id, record.uid})) break;
         }
         if (error.isEmpty() && !db.commit()) error = db.lastError().text();
         if (!error.isEmpty()) db.rollback();
@@ -774,10 +776,10 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
 {
     QString error;
     QMetaObject::invokeMethod(m_worker, [&, this] {
-        const auto id = accountId.isEmpty() ? m_state->legacySyncId : accountId;
-        if (!m_state->syncs.contains(id)) { error = QStringLiteral("同期セッションがありません。"); return; }
-        const auto sync = m_state->syncs.value(id);
-        const auto folder = sync.syncFolder;
+        const auto key = accountId.isEmpty() ? m_state->legacySyncId : accountId;
+        if (!m_state->syncs.contains(key)) { error = QStringLiteral("同期セッションがありません。"); return; }
+        const auto sync = m_state->syncs.value(key);
+        const auto id = sync.syncId, folder = sync.syncFolder;
         const diagnostics::OperationScope scope(sync.syncOperation);
         diagnostics::event("sync-cache-save-start", folders.size());
         auto &db = m_state->db;
@@ -789,7 +791,7 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
         };
         QSqlQuery count(db);
         count.prepare(QStringLiteral("SELECT (SELECT COUNT(*) FROM sync_messages WHERE account=?) + (SELECT COUNT(*) FROM sync_reused r WHERE account=? AND NOT EXISTS (SELECT 1 FROM sync_messages m WHERE m.account=r.account AND m.uid=r.uid))"));
-        count.addBindValue(id); count.addBindValue(id);
+        count.addBindValue(key); count.addBindValue(key);
         const bool countAvailable = count.exec() && count.next();
         if (!countAvailable || (expectedCount >= 0 && count.value(0).toLongLong() != expectedCount)) {
             if (count.lastError().isValid()) recordSqlError(count.lastError());
@@ -840,13 +842,14 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
                 if (table == QStringLiteral("cache_messages")) values.append(QVariantList{id, folder, sync.syncValidity});
                 values.append(sync.boundary.toMSecsSinceEpoch());
             }
+            values.append(key); values.append(key);
             if (!run(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" AS c WHERE account=? AND folder=? AND uidvalidity=?") + window
-                + QStringLiteral(" AND NOT EXISTS (SELECT 1 FROM sync_reused r WHERE r.account=c.account AND r.uid=c.uid) AND NOT EXISTS (SELECT 1 FROM sync_messages m WHERE m.account=c.account AND m.uid=c.uid)"), values)) break;
+                + QStringLiteral(" AND NOT EXISTS (SELECT 1 FROM sync_reused r WHERE r.account=? AND r.uid=c.uid) AND NOT EXISTS (SELECT 1 FROM sync_messages m WHERE m.account=? AND m.uid=c.uid)"), values)) break;
         }
-        if (error.isEmpty()) run(QStringLiteral("INSERT OR REPLACE INTO cache_messages SELECT * FROM sync_messages WHERE account=?"), {id});
-        if (error.isEmpty()) run(QStringLiteral("INSERT OR REPLACE INTO cache_index SELECT * FROM sync_index WHERE account=?"), {id});
+        if (error.isEmpty()) run(QStringLiteral("INSERT OR REPLACE INTO cache_messages SELECT ?,folder,uidvalidity,uid,flags,raw FROM sync_messages WHERE account=?"), {id, key});
+        if (error.isEmpty()) run(QStringLiteral("INSERT OR REPLACE INTO cache_index SELECT ?,folder,uidvalidity,uid,flags,meta,search_text FROM sync_index WHERE account=?"), {id, key});
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
-            if (error.isEmpty()) run(QStringLiteral("UPDATE ") + table + QStringLiteral(" AS c SET flags=(SELECT flags FROM sync_reused r WHERE r.account=c.account AND r.uid=c.uid) WHERE account=? AND folder=? AND uidvalidity=? AND uid IN (SELECT uid FROM sync_reused WHERE account=?) AND flags<>(SELECT flags FROM sync_reused r WHERE r.account=c.account AND r.uid=c.uid)"), {id, folder, sync.syncValidity, id});
+            if (error.isEmpty()) run(QStringLiteral("UPDATE ") + table + QStringLiteral(" AS c SET flags=(SELECT flags FROM sync_reused r WHERE r.account=? AND r.uid=c.uid) WHERE account=? AND folder=? AND uidvalidity=? AND uid IN (SELECT uid FROM sync_reused WHERE account=?) AND flags<>(SELECT flags FROM sync_reused r WHERE r.account=? AND r.uid=c.uid)"), {key, id, folder, sync.syncValidity, key, key});
         }
         if (error.isEmpty()) run(QStringLiteral("INSERT INTO folder_state VALUES(?,?,?) ON CONFLICT(account,folder) DO UPDATE SET uidvalidity=excluded.uidvalidity WHERE folder_state.uidvalidity<>excluded.uidvalidity"), {id, folder, sync.syncValidity});
         // Edits made while the network worker was fetching must win locally
