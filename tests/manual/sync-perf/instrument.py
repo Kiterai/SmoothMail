@@ -28,10 +28,10 @@ text = text.replace(needle, needle + "\n    perf::Scope perfJob(job.metaObject()
 path.write_text(text, encoding="utf-8")
 path = instrument("storage/accountrepository.cpp", [
     ("AccountRepository::" + name, "db." + name) for name in
-    ["prepareSync", "recentBoundary", "beginSync", "reuseMessage", "stageMessages", "commitSync", "abortSync"]
+    ["prepareSync", "recentBoundary", "beginSync", "reuseMessages", "stageMessages", "commitSync", "abortSync"]
 ])
 text = path.read_text(encoding="utf-8")
-for name in ["prepareSync", "recentBoundary", "beginSync", "reuseMessage", "stageMessages", "commitSync", "abortSync"]:
+for name in ["prepareSync", "recentBoundary", "beginSync", "reuseMessages", "stageMessages", "commitSync", "abortSync"]:
     start = text.index(f"AccountRepository::{name}(")
     begin = text.index("QMetaObject::invokeMethod(m_worker,", start)
     brace = text.index("{", begin)

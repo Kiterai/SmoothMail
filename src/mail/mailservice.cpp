@@ -530,15 +530,19 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                     jobError = runJob(job); if (!jobError.isEmpty()) return jobError;
                     if (headers.size() != qMin<qint64>(MailPageSize, recentUids.size() - first))
                         return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+                    QList<AccountRepository::SyncFlags> reusable;
                     for (const auto &header : headers) {
                         if (interrupted()) return QStringLiteral("中断しました。");
                         if (header.message && header.message->date()->dateTime().isValid()
                             && header.message->date()->dateTime() < boundary) continue;
                         if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
-                        bool found = false;
-                        jobError = cache->reuseMessage(header.uid, header.flags.contains("\\Seen"), header.flags.contains("\\Flagged"), found, account.id);
-                        if (!jobError.isEmpty()) return jobError;
-                        if (found) continue;
+                        reusable.append({header.uid, header.flags.contains("\\Seen"), header.flags.contains("\\Flagged")});
+                    }
+                    QSet<qint64> reused;
+                    jobError = cache->reuseMessages(reusable, reused, account.id); if (!jobError.isEmpty()) return jobError;
+                    for (const auto &candidate : reusable) {
+                        if (reused.contains(candidate.uid)) continue;
+                        const auto &header = headers[candidate.uid];
                         plan << header.uid << header.size << header.flags;
                         ++needed;
                     }
@@ -573,6 +577,15 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             jobError = runJob(headerJob);
             if (!jobError.isEmpty()) return jobError;
             if (headers.size() != qMin<qint64>(MailPageSize, candidates - first + 1)) return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+            }
+            QSet<qint64> reused;
+            if (cache && !boundary.isValid()) {
+                QList<AccountRepository::SyncFlags> reusable;
+                for (const auto &header : headers) {
+                    if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
+                    reusable.append({header.uid, header.flags.contains("\\Seen"), header.flags.contains("\\Flagged")});
+                }
+                jobError = cache->reuseMessages(reusable, reused, account.id); if (!jobError.isEmpty()) return jobError;
             }
             QMap<qint64, KIMAP::Message> pending;
             qint64 pendingBytes = 0;
@@ -622,13 +635,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 if (header.size > MimeParser::MaxRawBytes) return QStringLiteral("メールがMIMEサイズ上限を超えているため、このフォルダを同期できません。");
                 constexpr qint64 snapshotLimit = 128 * 1024 * 1024;
                 if (!cache && header.size > snapshotLimit - retainedBytes) return QStringLiteral("一括取得の安全上限（128 MiB）を超えています。");
-                const bool seen = header.flags.contains("\\Seen"), important = header.flags.contains("\\Flagged");
-                if (cache && !boundary.isValid()) {
-                    bool found = false;
-                    jobError = cache->reuseMessage(header.uid, seen, important, found, account.id);
-                    if (!jobError.isEmpty()) return jobError;
-                    if (found) { ++completed; continue; }
-                }
+                if (reused.contains(header.uid)) { ++completed; continue; }
                 if (!pending.isEmpty() && (header.size <= 0 || pendingBytes + header.size > 8 * 1024 * 1024)) {
                     jobError = fetchPending(); if (!jobError.isEmpty()) return jobError;
                 }

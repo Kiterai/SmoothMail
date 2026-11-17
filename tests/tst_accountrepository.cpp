@@ -26,6 +26,74 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void incrementalStageKeepsUnchangedRowsAndPublishesOnlyDelta()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto path = directory.filePath(QStringLiteral("delta.sqlite"));
+        AccountRepository repository(path); const auto account = makeAccount(QStringLiteral("delta@example.test"));
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved),
+            pages(&repository, &AccountRepository::pageLoaded), flags(&repository, &AccountRepository::flagsUpdated);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const QString folder = QStringLiteral("INBOX");
+        const QList<MailFolder> folders{{folder, u'/', {}, 4}};
+        const auto record = [&](qint64 uid, const QByteArray &date) {
+            return MailRecord{account.id, folder, 10, uid, false, false,
+                MimeParser::parse("Subject: delta\r\n" + date + "\r\n\r\nunchanged body").message};
+        };
+        const auto old = record(1, "Date: Wed, 18 Nov 2026 08:00:00 +0000"),
+            recent = record(2, "Date: Wed, 18 Nov 2026 09:00:00 +0000"),
+            removed = record(3, "Date: Wed, 18 Nov 2026 10:00:00 +0000"),
+            undated = record(4, "");
+        repository.saveSnapshot(account.id, folder, folders, {old, recent, removed, undated}); QTRY_COMPARE(saved.size(), 1);
+        const auto connection = QUuid::createUuid().toString();
+        {
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection); db.setDatabaseName(path); QVERIFY(db.open());
+            QSqlQuery sql(db);
+            QVERIFY(sql.exec(QStringLiteral("CREATE TABLE audit(kind TEXT)")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_insert AFTER INSERT ON cache_messages BEGIN INSERT INTO audit VALUES('insert'); END")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_delete AFTER DELETE ON cache_messages BEGIN INSERT INTO audit VALUES('delete'); END")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_update AFTER UPDATE ON cache_messages BEGIN INSERT INTO audit VALUES('update'); END")));
+            const auto boundary = QDateTime::fromString(QStringLiteral("2026-11-18T09:00:00Z"), Qt::ISODate);
+            QVERIFY(repository.beginSync(account.id, folder, 10, boundary).isEmpty());
+            QSet<qint64> reused;
+            // Old over-selected candidates must retain their original flags.
+            QVERIFY(repository.reuseMessages({{1, true, true}, {2, true, false}, {5, false, false}}, reused, account.id).isEmpty());
+            QCOMPARE(reused, (QSet<qint64>{1, 2}));
+            QVERIFY(repository.stageMessages({record(5, "Date: Wed, 18 Nov 2026 10:30:00 +0000")}, account.id).isEmpty());
+            repository.queueFlag(recent, true, true); QTRY_COMPARE(flags.size(), 1);
+            QVERIFY(repository.commitSync(folders, -1, false, account.id).isEmpty()); repository.abortSync(account.id);
+            MailQuery query; query.accountId = account.id; query.folder = folder;
+            repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+            const auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QVERIFY(page.error.isEmpty()); QCOMPARE(page.total, 4);
+            for (const auto &message : page.messages) {
+                QVERIFY(message.uid != 3);
+                if (message.uid == 1) { QVERIFY(!message.seen); QVERIFY(!message.important); }
+                if (message.uid == 2) { QVERIFY(message.seen); QVERIFY(message.important); }
+            }
+            QVERIFY(sql.exec(QStringLiteral("SELECT COUNT(*) FROM audit WHERE kind='insert'"))); QVERIFY(sql.next()); QCOMPARE(sql.value(0).toInt(), 1); sql.finish();
+            QVERIFY(sql.exec(QStringLiteral("SELECT COUNT(*) FROM audit WHERE kind='delete'"))); QVERIFY(sql.next()); QCOMPARE(sql.value(0).toInt(), 1); sql.finish();
+            // A no-change full publication must not rewrite even one body row.
+            QVERIFY(sql.exec(QStringLiteral("DELETE FROM pending_flags")));
+            QVERIFY(sql.exec(QStringLiteral("DELETE FROM audit")));
+            QVERIFY(repository.beginSync(account.id, folder, 10).isEmpty());
+            QVERIFY(repository.reuseMessages({{1, false, false}, {2, true, true}, {4, false, false}, {5, false, false}}, reused, account.id).isEmpty());
+            QCOMPARE(reused.size(), 4);
+            QVERIFY(repository.commitSync(folders, 4, false, account.id).isEmpty()); repository.abortSync(account.id);
+            QVERIFY(sql.exec(QStringLiteral("SELECT COUNT(*) FROM audit"))); QVERIFY(sql.next()); QCOMPARE(sql.value(0).toInt(), 0); sql.finish();
+            // Invalid batches and a failed publication don't leak flags.
+            QVERIFY(repository.beginSync(account.id, folder, 10, boundary).isEmpty());
+            QVERIFY(!repository.reuseMessages({{2, false, false}, {2, true, true}}, reused, account.id).isEmpty());
+            QVERIFY(reused.isEmpty());
+            QVERIFY(!repository.reuseMessages(QList<AccountRepository::SyncFlags>(MailPageSize + 1, {1, false, false}), reused, account.id).isEmpty());
+            QVERIFY(repository.reuseMessages({{2, false, false}}, reused, account.id).isEmpty());
+            QVERIFY(!repository.commitSync({{QString{}, u'/', {}, 0}}, -1, false, account.id).isEmpty());
+            repository.abortSync(account.id);
+            repository.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+            for (const auto &message : qvariant_cast<MailPage>(pages.takeFirst().first()).messages)
+                if (message.uid == 2) { QVERIFY(message.seen); QVERIFY(message.important); }
+        }
+        QSqlDatabase::removeDatabase(connection);
+    }
     void trackedReplySourceFollowsMovesWithoutRebindingCollidingUids()
     {
         AccountRepository repository(QStringLiteral(":memory:")); const auto account = makeAccount(QStringLiteral("reply@example.test"));
