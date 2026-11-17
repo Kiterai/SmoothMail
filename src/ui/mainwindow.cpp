@@ -48,6 +48,40 @@
 namespace smoothmail {
 namespace {
 
+class PageArrowButton final : public QPushButton
+{
+public:
+    PageArrowButton(bool next, QWidget *parent) : QPushButton(parent), m_next(next) { updateIcon(); }
+protected:
+    void changeEvent(QEvent *event) override
+    {
+        QPushButton::changeEvent(event);
+        if (event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange
+            || event->type() == QEvent::ActivationChange) updateIcon();
+    }
+private:
+    void updateIcon()
+    {
+        QIcon icon;
+        for (auto mode : {QIcon::Normal, QIcon::Active, QIcon::Disabled}) {
+            const auto group = mode == QIcon::Disabled ? QPalette::Disabled
+                : isActiveWindow() ? QPalette::Active : QPalette::Inactive;
+            QPixmap pixmap(16, 16); pixmap.fill(Qt::transparent);
+            QPainter painter(&pixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(QPen(palette().color(group, QPalette::ButtonText), 1.8,
+                Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            const qreal tip = m_next ? 11 : 5, tail = m_next ? 5 : 11;
+            painter.drawLine(QPointF(tail, 3), QPointF(tip, 8));
+            painter.drawLine(QPointF(tip, 8), QPointF(tail, 13));
+            painter.end();
+            icon.addPixmap(pixmap, mode);
+        }
+        setIcon(icon);
+    }
+    bool m_next;
+};
+
 class PageNumberBox final : public QSpinBox
 {
 public:
@@ -129,10 +163,14 @@ public:
         const auto rect = badgeRect(option.rect);
         painter->translate(rect.topLeft());
         painter->scale(rect.width() / 16.0, rect.height() / 16.0);
+        const auto group = !(option.state & QStyle::State_Enabled) ? QPalette::Disabled
+            : option.state & QStyle::State_Active ? QPalette::Active : QPalette::Inactive;
+        const auto foreground = background.palette.color(group,
+            option.state & QStyle::State_Selected ? QPalette::HighlightedText : QPalette::Text);
         const auto value = index.data(Qt::DisplayRole).toString();
         if (index.column() == 0) {
             const bool important = value == QStringLiteral("★");
-            const QColor color = important ? QColor(255, 200, 0) : QColor(Qt::black);
+            const QColor color = important ? QColor(255, 200, 0) : foreground;
             painter->setPen(QPen(color, 1));
             painter->setBrush(important ? QBrush(color) : Qt::NoBrush);
             QPolygonF star;
@@ -144,11 +182,11 @@ public:
             painter->drawPolygon(star);
         } else if (index.column() == 1) {
             const bool unread = value == QStringLiteral("●");
-            painter->setPen(QPen(unread ? Qt::black : Qt::gray, 1));
-            painter->setBrush(unread ? QBrush(Qt::black) : Qt::NoBrush);
+            painter->setPen(QPen(foreground, 1));
+            painter->setBrush(unread ? QBrush(foreground) : Qt::NoBrush);
             painter->drawEllipse(QRectF(4, 4, 8, 8));
         } else if (!value.isEmpty()) {
-            painter->setPen(QPen(Qt::black, 1.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter->setPen(QPen(foreground, 1.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
             painter->setBrush(Qt::NoBrush);
             QPainterPath clip;
             clip.moveTo(6, 6); clip.lineTo(6, 11);
@@ -379,10 +417,8 @@ void MainWindow::createPanes()
     m_page = new PageNumberBox(listPane); m_page->setObjectName(QStringLiteral("mailPage")); m_page->setRange(1, 1); m_page->setEnabled(false); m_page->setKeyboardTracking(false);
     m_page->setButtonSymbols(QAbstractSpinBox::NoButtons);
     m_page->setCorrectionMode(QAbstractSpinBox::CorrectToNearestValue);
-    m_previousPage = new QPushButton(listPane); m_previousPage->setObjectName(QStringLiteral("previousPage"));
-    m_nextPage = new QPushButton(listPane); m_nextPage->setObjectName(QStringLiteral("nextPage"));
-    m_previousPage->setIcon(style()->standardIcon(QStyle::SP_ArrowLeft));
-    m_nextPage->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
+    m_previousPage = new PageArrowButton(false, listPane); m_previousPage->setObjectName(QStringLiteral("previousPage"));
+    m_nextPage = new PageArrowButton(true, listPane); m_nextPage->setObjectName(QStringLiteral("nextPage"));
     m_previousPage->setToolTip(QStringLiteral("前のページ")); m_nextPage->setToolTip(QStringLiteral("次のページ"));
     m_previousPage->setAccessibleName(m_previousPage->toolTip()); m_nextPage->setAccessibleName(m_nextPage->toolTip());
     m_previousPage->setEnabled(false); m_nextPage->setEnabled(false);

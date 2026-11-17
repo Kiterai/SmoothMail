@@ -27,14 +27,14 @@ QString valueHtml(const QString &value, bool address = false)
 {
     if (value.isEmpty()) return QStringLiteral("<span style=\"color:gray\">(空)</span>");
     bool nonAscii = false; for (const auto c : value) if (c.unicode() > 127) nonAscii = true;
-    return QStringLiteral("<span style=\"color:%1;font-weight:bold\">%2</span>")
-        .arg(address && nonAscii ? QStringLiteral("red") : QStringLiteral("black"), value.toHtmlEscaped());
+    return QStringLiteral("<span style=\"%1font-weight:bold\">%2</span>")
+        .arg(address && nonAscii ? QStringLiteral("color:red;") : QString{}, value.toHtmlEscaped());
 }
 QString summaryHtml(const MessageDocument &message)
 {
     QStringList recipients;
     for (const auto &address : message.recipients) recipients.append(valueHtml(address, true));
-    return QStringLiteral("<span style=\"color:black\">件名: %1<br>日時: %2<br>差出人: %3 ( %4 ) 宛先: %5</span>")
+    return QStringLiteral("<span>件名: %1<br>日時: %2<br>差出人: %3 ( %4 ) 宛先: %5</span>")
         .arg(valueHtml(message.subject), valueHtml(displayTime(message.date, true)), valueHtml(message.senderName),
              valueHtml(message.senderAddress, true), recipients.isEmpty() ? valueHtml({}) : recipients.join(QStringLiteral(", ")));
 }

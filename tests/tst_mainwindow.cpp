@@ -156,8 +156,45 @@ private slots:
         window.showSyncProgress(account.id, QStringLiteral("INBOX"), 0, 0);
         QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("INBOX フォルダを取得中 0 / 0 件")));
     }
+    void paginationArrowsFollowPalette()
+    {
+        smoothmail::MainWindow window(false);
+        for (const auto *name : {"previousPage", "nextPage"}) {
+            auto *button = window.findChild<QPushButton *>(QLatin1String(name));
+            for (const auto color : {QColor(Qt::white), QColor(Qt::black)}) {
+                auto palette = button->palette();
+                palette.setColor(QPalette::ButtonText, color);
+                palette.setColor(QPalette::Disabled, QPalette::ButtonText, Qt::gray);
+                button->setPalette(palette);
+                const auto image = button->icon().pixmap(16, 16, QIcon::Normal).toImage();
+                const auto disabled = button->icon().pixmap(16, 16, QIcon::Disabled).toImage();
+                bool found = false, foundDisabled = false;
+                for (int y = 0; y < image.height(); ++y) for (int x = 0; x < image.width(); ++x) {
+                    if (image.pixelColor(x, y).alpha() > 200) {
+                        QCOMPARE(image.pixelColor(x, y).rgb(), color.rgb()); found = true;
+                    }
+                    if (disabled.pixelColor(x, y).alpha() > 200) {
+                        QVERIFY(qAbs(disabled.pixelColor(x, y).red() - QColor(Qt::gray).red()) <= 2); foundDisabled = true;
+                    }
+                }
+                QVERIFY(found); QVERIFY(foundDisabled);
+            }
+        }
+    }
+    void badgeShapesAndColors_data()
+    {
+        QTest::addColumn<QColor>("foreground");
+        QTest::addColumn<bool>("selected");
+        QTest::addColumn<bool>("enabled");
+        QTest::addColumn<bool>("active");
+        for (bool dark : {false, true}) for (bool selected : {false, true})
+            for (bool enabled : {false, true}) for (bool active : {false, true})
+                QTest::newRow(qPrintable(QStringLiteral("%1-%2-%3-%4").arg(dark).arg(selected).arg(enabled).arg(active)))
+                    << QColor(dark ? Qt::white : Qt::black) << selected << enabled << active;
+    }
     void badgeShapesAndColors()
     {
+        QFETCH(QColor, foreground); QFETCH(bool, selected); QFETCH(bool, enabled); QFETCH(bool, active);
         using namespace smoothmail;
         MainWindow window(false);
         Account account; account.id = QStringLiteral("badges"); window.setAccounts({account});
@@ -165,25 +202,41 @@ private slots:
         record.important = true;
         window.applySnapshot(account.id, record.folder, {{record.folder, u'/', {}, 0}}, {record}, {});
         auto *view = window.findChild<QTreeView *>(QStringLiteral("messageList"));
-        const auto render = [view](int column, const QString &value) {
+        const auto render = [=](int column, const QString &value) {
             const auto index = view->model()->index(0, column);
             view->model()->setData(index, value);
-            QImage image(32, 24, QImage::Format_ARGB32); image.fill(Qt::white);
+            const QColor base = foreground == QColor(Qt::white) ? Qt::black : Qt::white;
+            QImage image(32, 24, QImage::Format_ARGB32); image.fill(base);
             QPainter painter(&image);
             QStyleOptionViewItem option; option.rect = image.rect(); option.widget = view;
-            option.palette.setColor(QPalette::Base, Qt::white);
+            option.palette.setColor(QPalette::Base, base);
+            option.palette.setColor(QPalette::Highlight, base);
+            option.state.setFlag(QStyle::State_Enabled, enabled);
+            option.state.setFlag(QStyle::State_Active, active);
+            option.state.setFlag(QStyle::State_Selected, selected);
+            const auto group = !enabled ? QPalette::Disabled : active ? QPalette::Active : QPalette::Inactive;
+            option.palette.setColor(group, selected ? QPalette::HighlightedText : QPalette::Text, foreground);
             view->itemDelegateForColumn(column)->paint(&painter, option, index);
             return image;
         };
         const auto star = render(0, QStringLiteral("★"));
         QCOMPARE(star.pixelColor(15, 11), QColor(255, 200, 0));
         const auto outline = render(0, QStringLiteral("☆"));
-        QCOMPARE(outline.pixelColor(15, 11), QColor(Qt::white));
+        const auto empty = render(2, {});
+        QCOMPARE(outline.pixelColor(15, 11), empty.pixelColor(15, 11));
         const auto unread = render(1, QStringLiteral("●"));
-        QCOMPARE(unread.pixelColor(15, 11), QColor(Qt::black));
+        QCOMPARE(unread.pixelColor(15, 11), foreground);
         const auto read = render(1, QStringLiteral("○"));
-        QCOMPARE(read.pixelColor(15, 11), QColor(Qt::white));
+        QCOMPARE(read.pixelColor(15, 11), empty.pixelColor(15, 11));
         QVERIFY(render(2, QStringLiteral("📎")) != render(2, {}));
+        for (const auto &image : {outline, render(2, QStringLiteral("📎"))}) {
+            bool found = false;
+            for (int y = 0; y < image.height(); ++y) for (int x = 0; x < image.width(); ++x)
+                if (qAbs(image.pixelColor(x, y).red() - foreground.red()) < 30
+                    && qAbs(image.pixelColor(x, y).green() - foreground.green()) < 30
+                    && qAbs(image.pixelColor(x, y).blue() - foreground.blue()) < 30) found = true;
+            QVERIFY(found);
+        }
     }
     void splitterLinesContrastAndRemainDraggable_data()
     {

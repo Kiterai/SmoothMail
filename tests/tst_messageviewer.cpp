@@ -89,6 +89,10 @@ private slots:
         QVERIFY(text.contains(QStringLiteral("差出人: (空) ( 利用者@example.test ) 宛先: safe@example.test")));
         QCOMPARE(formatAt(&summary, int(text.indexOf(message.senderAddress))).foreground().color(), QColor(Qt::red));
         QCOMPARE(formatAt(&summary, int(text.indexOf(message.subject))).fontWeight(), int(QFont::Bold));
+        // Normal text inherits QLabel's palette, including after a theme change.
+        for (const auto &value : {QStringLiteral("件名:"), message.subject,
+                 smoothmail::displayTime(message.date, true), QStringLiteral("safe@example.test")})
+            QCOMPARE(formatAt(&summary, int(text.indexOf(value))).foreground().style(), Qt::NoBrush);
         QCOMPARE(formatAt(&summary, int(text.indexOf(QStringLiteral("(空)")))).foreground().color(), QColor(QStringLiteral("gray")));
         QVERIFY(!formatAt(&summary, 0).isAnchor());
         const auto local = message.date.toTimeZone(QTimeZone::systemTimeZone());
