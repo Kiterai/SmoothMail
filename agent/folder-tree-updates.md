@@ -50,3 +50,6 @@
 - 切り上げで次の範囲へ達しても、選択した形式は維持する（例: 9分59.999秒は`10分0秒`、59分59.999秒は`60分`）。0秒も指定形式の`0分0秒`とする。
 - 線形予測、件数変化時のみの更新、アカウント別の状態管理は維持。
 - 10分・1時間・10時間の直前/一致/直後、各切り上げ単位の境界を検査。mainwindow CTest成功、個別ログ`build/directory-refactor/eta-format-results.txt`は51 passed / 0 failed / 0 skipped。
+- 標準Release再構築と配置後照合が終了コード0で完了。通常起動先`build/rel/run/launch.cmd`へ反映済み。対応ソースコミットは`e85382aa0f2fe066da7fade71e29a9734a8a74e8`。
+- ZIP全361ファイルと配置済みファイルのinventory・SHA256、配布成果物のSHA256SUMS、本体とapp EXEの一致を確認。証跡は`build/rel/folder-deployment-verification.json`。
+- 本体SHA256: `a0a4133e1c1c18b43925079ce9ab73a9d9762d17d64e007fecb53da5964ff5f8`。旧配置は`build/rel/run-previous-0a3588576b5c4255b0c0921592c482ea`。ホストでのアプリ起動・実メール操作は行っていない。
