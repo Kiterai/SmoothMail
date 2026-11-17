@@ -92,3 +92,11 @@ repository／transport／mailtransport／GUI統合試験を実行し、成功し
 `validate-bulk.py <回収先>`で45同期・9DBの各フォルダのUIDと件数を検証する。
 `run-bulk-validation.ps1 -Phase <未使用名>`は全回帰・従来120同期に成功後、
 LIST-STATUS非対応/対応の順に大量取得を測定する。GUI試験中にguestへ入力しないこと。
+
+## フォルダ並列の比較
+
+`run-folder-parallel-guest.ps1 -Phase <未使用名>`は全回帰と従来120同期に成功した後、
+20フォルダ各500通・応答待ち20ms・LIST-STATUS対応で並列1/2/4/8を各3反復する。
+各並列数で15同期・3DB。`validate-bulk.py`でフォルダ別のUID/原文/件数、
+DB整合性、最大接続数が設定以内であることを検証する。
+直接実行する場合は`--bulk-only --folders-only --list-status --parallel N`。

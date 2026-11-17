@@ -37,21 +37,24 @@ public:
         : QObject(parent), m_protocol(protocol), m_mechanisms(mechanisms)
     {
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
-            m_pausedMetadata.clear();
-            m_socket = qobject_cast<QSslSocket *>(m_server.nextPendingConnection());
+            auto *socket = qobject_cast<QSslSocket *>(m_server.nextPendingConnection());
+            activate(socket);
+            ++liveConnections; maximumConnections = qMax(maximumConnections, liveConnections);
+            connect(socket, &QTcpSocket::disconnected, this, [this] { --liveConnections; });
             m_socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
             m_socket->setLocalCertificate(certificate);
             m_socket->setPrivateKey(privateKey);
             m_socket->setPeerVerifyMode(QSslSocket::VerifyNone); // Test server does not require a client certificate.
             m_socket->setProtocol(QSsl::TlsV1_2OrLater);
-            connect(m_socket, &QSslSocket::encrypted, this, [this] { tlsEstablished = true; });
+            connect(m_socket, &QSslSocket::encrypted, this, [this, socket] { activate(socket); tlsEstablished = true; });
             if (tlsMode == TlsMode::Implicit) {
-                connect(m_socket, &QSslSocket::encrypted, this, [this] { greeting(); });
+                connect(m_socket, &QSslSocket::encrypted, this, [this, socket] { activate(socket); greeting(); });
                 m_socket->startServerEncryption();
             } else {
                 greeting();
             }
-            connect(m_socket, &QTcpSocket::readyRead, this, [this] {
+            connect(m_socket, &QTcpSocket::readyRead, this, [this, socket] {
+                activate(socket);
                 while (m_socket && m_socket->bytesAvailable()) {
                     if (m_appendRemaining >= 0) {
                         const auto bytes = m_socket->read(qMin(m_appendRemaining, m_socket->bytesAvailable()));
@@ -88,6 +91,7 @@ public:
     quint16 port() const { return m_server.serverPort(); }
 
     QList<QByteArray> commands;
+    int liveConnections = 0, maximumConnections = 0;
     QList<QByteArray> authenticationResponses;
     AuthenticationReply authenticationReply = AuthenticationReply::Accept;
     QByteArray imapEmptyChallenge = "+ ";
@@ -106,6 +110,8 @@ public:
     qint64 advertisedMessageCount = -1;
     qint64 advertisedMessageSize = -1;
     bool disconnectOnBodyFetch = false;
+    QByteArray disconnectBodyFolder;
+    int bodyCompletionDelayMs = 0;
     QMap<qint64, QList<QByteArray>> messageFlags;
     bool rejectFlagChanges = false;
     int fullFetchCount = 0;
@@ -143,6 +149,23 @@ public:
     }
 
 private:
+    struct ClientState {
+        QByteArray selected = "INBOX", tag, payload;
+        QList<QByteArray> paused;
+        int waiting = 0;
+        bool receiving = false;
+        qint64 appendRemaining = -1;
+    };
+    QHash<QSslSocket *, ClientState> m_clients;
+    void activate(QSslSocket *socket) {
+        if (m_socket == socket) return;
+        if (m_socket) m_clients[m_socket] = {m_selected, m_tag, m_payload, m_pausedMetadata,
+                                            m_waitingFor, m_receivingData, m_appendRemaining};
+        m_socket = socket;
+        const auto state = m_clients.value(socket);
+        m_selected = state.selected; m_tag = state.tag; m_payload = state.payload; m_pausedMetadata = state.paused;
+        m_waitingFor = state.waiting; m_receivingData = state.receiving; m_appendRemaining = state.appendRemaining;
+    }
     QByteArray m_selected = "INBOX";
     QList<QByteArray> m_pausedMetadata;
     QMap<qint64, QByteArray> &selectedMessages() { return m_selected == "INBOX" ? messages : folderMessages[m_selected]; }
@@ -343,7 +366,8 @@ private:
         } else if (provideMailbox && (command == "FETCH" || (command == "UID" && fields.value(commandIndex + 1) == "FETCH"))) {
             const bool flagsOnly = !line.contains("BODY") && !line.contains("RFC822");
             if (pauseMetadata && (line.contains("HEADER") || flagsOnly)) { m_pausedMetadata.append(line); return; }
-            if (disconnectOnBodyFetch && !line.contains("HEADER") && !flagsOnly) { m_socket->disconnectFromHost(); return; }
+            if ((disconnectOnBodyFetch || (!disconnectBodyFolder.isEmpty() && disconnectBodyFolder == m_selected))
+                && !line.contains("HEADER") && !flagsOnly) { m_socket->disconnectFromHost(); return; }
             const bool uidBased = command == "UID";
             const auto requested = fields.value(commandIndex + (uidBased ? 2 : 1));
             const auto range = requested.split(':');
@@ -385,7 +409,11 @@ private:
                 write(")");
             }
             maximumFlagsWindow = qMax(maximumFlagsWindow, returnedFlags);
-            write(m_tag + " OK fetch completed");
+            if (bodyCompletionDelayMs && !flagsOnly && !line.contains("HEADER")) {
+                QTimer::singleShot(bodyCompletionDelayMs, this, [socket = m_socket, tag = m_tag] {
+                    if (socket && socket->isOpen()) socket->write(tag + " OK fetch completed\r\n");
+                });
+            } else write(m_tag + " OK fetch completed");
         } else if (m_protocol == Protocol::Smtp && command == "MAIL") {
             write("250 sender accepted");
         } else if (m_protocol == Protocol::Smtp && command == "RCPT") {

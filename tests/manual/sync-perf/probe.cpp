@@ -80,6 +80,8 @@ int main(int argc, char **argv) {
         cache.insert(account); insertedLoop.exec();
         if (!inserted || !insertError.isEmpty()) { ++failures; return; }
         MailService service(QCoreApplication::applicationDirPath() + "/sasl2");
+        const int parallel = args.contains("--parallel") ? qBound(1, args.value(args.indexOf("--parallel") + 1).toInt(), 32) : 1;
+        service.setSyncConcurrency(parallel);
         auto run = [&](QString phase, MailService::SyncMode mode, QString folder = {}) {
             server.commands.clear(); server.fullFetchCount = server.headerFetchCount = server.flagsFetchCount = 0; perf::reset();
             QEventLoop loop; bool done = false; QString error;
@@ -128,6 +130,7 @@ int main(int argc, char **argv) {
                 {"bytes_per_message", bytes}, {"folders", folders}, {"delay_ms", delay}, {"diagnostics", logEnabled},
                 {"wall_ms", elapsed}, {"cpu_ms", cpuElapsed}, {"ok", ok}, {"error", error},
                 {"page_ms", pageMs}, {"render_ms", renderMs}, {"tls", tls},
+                {"parallel", parallel}, {"maximum_connections", server.maximumConnections},
                 {"header_messages", server.headerFetchCount}, {"flags_messages", server.flagsFetchCount},
                 {"flag_searches", qMax(0, commands.value("UID SEARCH").toInt()
                     - (bulk && mode != MailService::SyncMode::SelectedRecent ? folders : 1))},
@@ -147,6 +150,10 @@ int main(int argc, char **argv) {
     };
     for (int repeat = 1; repeat <= 3; ++repeat) {
         if (args.contains("--bulk-only")) {
+            if (args.contains("--folders-only")) {
+                scenario("medium-20x500", 500, 2048, 20, 20, false, repeat);
+                continue;
+            }
             scenario("huge-20000", 20000, 2048, 1, 20, false, repeat);
             scenario("huge-large-2000", 2000, 65536, 1, 20, false, repeat);
             scenario("medium-20x500", 500, 2048, 20, 20, false, repeat);

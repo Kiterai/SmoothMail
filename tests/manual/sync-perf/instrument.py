@@ -51,7 +51,7 @@ instrument("core/diagnostics.cpp", [("appendRecord", "diagnostics.append")])
 text = (root / "tests/mailtestserver.h").read_text(encoding="utf-8")
 assert text.count("                    handle(line);") == 1
 text = text.replace("                    handle(line);",
-    "                    if (commandDelayMs) QTimer::singleShot(commandDelayMs, this, [this, line] { handle(line); });\n"
+    "                    if (commandDelayMs) QTimer::singleShot(commandDelayMs, this, [this, line, socket] { activate(socket); handle(line); });\n"
     "                    else handle(line);")
 text = text.replace("    int fullFetchCount = 0;", "    int commandDelayMs = 0;\n    int fullFetchCount = 0;")
 text = text.replace("    void handle(const QByteArray &line)\n    {",

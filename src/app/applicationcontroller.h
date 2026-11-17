@@ -6,6 +6,7 @@
 #include <QQueue>
 #include <QSet>
 #include <QHash>
+#include <memory>
 class QWidget;
 class QProgressDialog;
 class QUndoStack;
@@ -16,6 +17,7 @@ class AccountRepository;
 class CredentialStore;
 class AccountRegistrar;
 class MailService;
+class SyncBudget;
 class AccountDialog;
 class ComposeDialog;
 class DownloadHistoryDialog;
@@ -51,6 +53,7 @@ private:
     CredentialStore *m_credentials;
     AccountRegistrar *m_registrar;
     QList<MailService *> m_syncWorkers;
+    std::shared_ptr<SyncBudget> m_syncBudget;
     QString m_saslPlugins;
     MailService *m_actions;
     AuthenticationBroker *m_authentication;

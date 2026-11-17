@@ -1,6 +1,7 @@
 #include "mail/mailservice.h"
 #include "mailtestserver.h"
 #include "mime/mimeparser.h"
+#include "mail/syncbudget.h"
 #include <QSignalSpy>
 #include <QFile>
 #include <QSslConfiguration>
@@ -20,6 +21,98 @@ class ConnectionTesterTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void sharedSyncBudgetPrioritizesAccountsAndHonorsShrink()
+    {
+        SyncBudget budget(4);
+        QVERIFY(budget.reserve()); QVERIFY(budget.reserve());
+        budget.setPrimaryWaiting(true); QVERIFY(!budget.reserve(true));
+        QVERIFY(budget.reserve()); budget.setPrimaryWaiting(false);
+        QVERIFY(budget.reserve(true)); QVERIFY(!budget.reserve());
+        budget.setLimit(2); budget.release(); QVERIFY(!budget.reserve(true));
+        budget.release(); QVERIFY(!budget.reserve()); budget.release();
+        QVERIFY(budget.reserve()); budget.release(); budget.release();
+        QVERIFY(budget.reserve(true)); budget.release();
+    }
+    void parallelFoldersKeepDistinctUidsAndFailedPublication_data()
+    {
+        QTest::addColumn<int>("parallel");
+        QTest::addColumn<bool>("tls");
+        QTest::newRow("serial") << 1 << false; QTest::newRow("two") << 2 << false; QTest::newRow("four") << 4 << false;
+        QTest::newRow("four-tls") << 4 << true;
+    }
+    void parallelFoldersKeepDistinctUidsAndFailedPublication()
+    {
+        QFETCH(int, parallel);
+        QFETCH(bool, tls);
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        server.provideMailbox = true; server.supportListStatus = true;
+        if (tls) {
+            QFile cert(":/test/tls-cert.pem"), key(":/test/tls-key.pem");
+            QVERIFY(cert.open(QIODevice::ReadOnly)); QVERIFY(key.open(QIODevice::ReadOnly));
+            server.tlsMode = MailTestServer::TlsMode::Implicit;
+            server.certificate = QSslCertificate(cert.readAll());
+            server.privateKey = QSslKey(key.readAll(), QSsl::Rsa);
+            auto trust = QSslConfiguration::defaultConfiguration(); trust.addCaCertificate(server.certificate);
+            QSslConfiguration::setDefaultConfiguration(trust);
+        }
+        const auto raw = [](const QByteArray &name, int uid) { return "Subject: " + name + '-' + QByteArray::number(uid) + "\r\nDate: Wed, 18 Nov 2026 10:00:00 +0000\r\n\r\nbody"; };
+        for (int uid = 1; uid <= 131; ++uid) server.messages[uid] = raw("INBOX", uid);
+        for (int i = 0; i < 7; ++i) {
+            const auto folder = "Folder-" + QByteArray::number(i); server.extraFolders.insert(folder);
+            for (int uid = 1; uid <= 131; ++uid) server.folderMessages[folder][uid] = raw(folder, uid);
+        }
+        QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("parallel@example.test"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, tls ? EncryptionMode::ImplicitTls : EncryptionMode::None}};
+        AccountRepository cache(QStringLiteral(":memory:"));
+        QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); service.setSyncConcurrency(parallel);
+        QSignalSpy result(&service, &MailService::synchronized);
+        const auto sync = [&] {
+            service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All);
+            QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000);
+        };
+        sync(); auto error = result.takeFirst().at(4).toString(); QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(server.fullFetchCount, 8 * 131);
+        QVERIFY(server.maximumConnections <= parallel);
+        if (parallel > 1) QVERIFY(server.maximumConnections > 1);
+        for (const auto &name : server.extraFolders) {
+            MailQuery query; query.accountId = account.id; query.folder = QString::fromLatin1(name);
+            cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+            const auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 131);
+            for (const auto &record : page.messages) QVERIFY(record.document.subject.startsWith(query.folder + '-'));
+        }
+        for (auto &folder : server.folderMessages) folder[777] = raw("new", 777);
+        server.disconnectBodyFolder = "Folder-3";
+        sync(); QVERIFY(!result.takeFirst().at(4).toString().isEmpty());
+        MailQuery query; query.accountId = account.id; query.folder = "Folder-3";
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 131);
+        server.disconnectBodyFolder.clear();
+        sync(); error = result.takeFirst().at(4).toString(); QVERIFY2(error.isEmpty(), qPrintable(error));
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 132);
+    }
+    void reportsReceivedCountWhileBodyJobIsStillRunning()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
+        server.provideMailbox = true; server.bodyCompletionDelayMs = 4500;
+        server.messages[1] = "Subject: progress\r\n\r\nbody"; QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("progress@example.test"),
+            {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")},
+            {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+        QSignalSpy result(&service, &MailService::synchronized), progress(&service, &MailService::syncProgress);
+        service.synchronize(account, QStringLiteral("dummy"), {}, &cache);
+        QTRY_VERIFY_WITH_TIMEOUT(!progress.isEmpty() && progress.last().at(2).toLongLong() == 1, 4000);
+        QVERIFY(result.isEmpty()); // The tagged FETCH completion is still pending.
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000);
+        QVERIFY(result.first().at(4).toString().isEmpty());
+    }
     void pipelinedMimeFailureDoesNotPublishEarlierBatches()
     {
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});

@@ -7,6 +7,7 @@
 #include "ui/systemsettingsdialog.h"
 #include "storage/accountregistrar.h"
 #include "mail/mailservice.h"
+#include "mail/syncbudget.h"
 #include "mail/authenticationbroker.h"
 #include <QStatusBar>
 #include <QApplication>
@@ -57,6 +58,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     m_systemSettings.useDefaultGoogleClient = settings.value(QStringLiteral("google/useDefault"), m_systemSettings.googleClientId.isEmpty()).toBool();
     m_systemSettings.useDefaultMicrosoftClient = settings.value(QStringLiteral("microsoft/useDefault"), m_systemSettings.microsoftClientId.isEmpty()).toBool();
     if (!validSettings(m_systemSettings)) { m_systemSettings.pageSize = 100; m_systemSettings.refreshSeconds = 30; m_systemSettings.parallelUpdates = 4; }
+    m_syncBudget = std::make_shared<SyncBudget>(m_systemSettings.parallelUpdates);
     window->applySettings(m_systemSettings);
     m_credentials->read(QStringLiteral("system/google-client-secret"), [this](const QString &secret, const QString &error) {
         if (!error.isEmpty()) { m_window->statusBar()->showMessage(QStringLiteral("システム設定の秘密情報を読み込めません: ") + error); return; }
@@ -153,7 +155,7 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
             active.mail->cancelSynchronization(id);
             // Authentication has not started network work yet. Its callback is
             // invalidated by the per-request serial, without occupying a slot.
-            if (!active.mail->busy()) m_active.remove(id);
+            if (!active.mail->busy()) { m_active.remove(id); m_syncBudget->release(); }
         }
         for (qsizetype i = m_queue.size(); i-- > 0;) if (m_queue.at(i).accountId == id) m_queue.removeAt(i);
         for (qsizetype i = m_accounts.size(); i-- > 0;) if (m_accounts.at(i).id == id) m_accounts.removeAt(i);
@@ -316,7 +318,9 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
 void ApplicationController::connectSyncWorker(MailService *mail)
 {
     m_syncWorkers.append(mail);
+    connect(mail, &MailService::syncCapacityChanged, this, &ApplicationController::processNext, Qt::QueuedConnection);
     connect(mail, &MailService::syncProgress, m_window, &MainWindow::showSyncProgress);
+    connect(mail, &MailService::syncFolderFinished, m_window, &MainWindow::finishSyncFolder);
     connect(mail, &MailService::synchronized, this,
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders,
                const QList<MailRecord> &messages, const QString &error) {
@@ -513,6 +517,13 @@ void ApplicationController::refresh(const QString &id, const QString &folder, bo
 void ApplicationController::processNext()
 {
     if (m_accountMutation) return;
+    m_syncBudget->setLimit(m_systemSettings.parallelUpdates);
+    const auto waitingAccount = [&] {
+        for (const auto &request : m_queue)
+            if (!m_active.contains(request.accountId) && !m_deletedAccounts.contains(request.accountId)) return true;
+        return false;
+    };
+    m_syncBudget->setPrimaryWaiting(waitingAccount());
     while (m_active.size() < m_systemSettings.parallelUpdates && !m_queue.isEmpty()) {
         int next = -1; Account account;
         // Keep each account serial, and start eligible accounts in tree order.
@@ -521,7 +532,7 @@ void ApplicationController::processNext()
             for (int i = 0; i < m_queue.size(); ++i) if (m_queue.at(i).accountId == candidate.id) { account = candidate; next = i; break; }
             if (next >= 0) break;
         }
-        if (next < 0) return;
+        if (next < 0 || !m_syncBudget->reserve()) break;
         MailService *mail = nullptr;
         for (auto *worker : m_syncWorkers) {
             bool reserved = worker->busy();
@@ -538,19 +549,30 @@ void ApplicationController::processNext()
         [guard, account, request, mail, serial](const QString &secret, const QString &error) {
              if (!guard) return;
              if (!guard->m_active.contains(account.id) || guard->m_active.value(account.id).serial != serial) return;
-             if (guard->m_deletedAccounts.contains(account.id)) { guard->m_active.remove(account.id); guard->processNext(); return; }
+              if (guard->m_deletedAccounts.contains(account.id)) { guard->m_active.remove(account.id); guard->m_syncBudget->release(); guard->processNext(); return; }
             if (!error.isEmpty()) {
                 guard->m_window->setRefreshing(account.id, false);
                 guard->m_window->applySnapshot(account.id, {}, {}, {}, QStringLiteral("秘密情報を読み込めません: ") + error);
-                 guard->m_active.remove(account.id);
+                  guard->m_active.remove(account.id);
+                 guard->m_syncBudget->release();
                 guard->processNext();
                 return;
             }
              mail->synchronize(account, secret, request.folder, guard->m_repository,
                  request.folderOnly
                      ? (request.full ? MailService::SyncMode::SelectedFolder : MailService::SyncMode::SelectedRecent)
-                     : (request.full ? MailService::SyncMode::All : MailService::SyncMode::Recent));
+                      : (request.full ? MailService::SyncMode::All : MailService::SyncMode::Recent), guard->m_syncBudget);
          });
+    }
+    m_syncBudget->setPrimaryWaiting(waitingAccount());
+    // Every active account owns its primary; remaining permits are offered in
+    // tree order, never independently multiplied by the account limit.
+    int spare = qMax(0, m_systemSettings.parallelUpdates - int(m_active.size()));
+    for (const auto &account : m_accounts) {
+        const auto active = m_active.constFind(account.id);
+        if (active == m_active.cend()) continue;
+        const int extra = qMin(spare, qMax(0, active->mail->syncDemand() - 1));
+        active->mail->setSyncConcurrency(1 + extra); spare -= extra;
     }
 }
 

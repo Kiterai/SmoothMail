@@ -106,6 +106,78 @@ class GuiSmokeTest final : public QObject
         return matches.value(0);
     }
 private slots:
+    void controllerSharesSpareFolderSlotsAndPrioritizesNewAccounts()
+    {
+        QSettings().clear(); QSettings().setValue(QStringLiteral("refresh/parallelUpdates"), 4);
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto path = directory.filePath(QStringLiteral("folder-slots.sqlite"));
+        std::vector<std::unique_ptr<MailTestServer>> servers; QList<Account> accounts;
+        for (int i = 0; i < 3; ++i) {
+            auto server = std::make_unique<MailTestServer>(MailTestServer::Protocol::Imap, QStringList{"PLAIN"});
+            server->provideMailbox = true; server->bodyCompletionDelayMs = 250;
+            server->messages[1] = "Subject: primary\r\n\r\nbody";
+            for (int folder = 0; folder < 12; ++folder) {
+                const auto name = "Folder-" + QByteArray::number(folder); server->extraFolders.insert(name);
+                server->folderMessages[name][1] = "Subject: folder\r\n\r\nbody";
+            }
+            QVERIFY(server->listen());
+            accounts.append({QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("slots%1@example.test").arg(i),
+                {"127.0.0.1", 465, "test"}, {"127.0.0.1", server->port(), "test", AuthenticationMode::Plain, EncryptionMode::None}});
+            servers.push_back(std::move(server));
+        }
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted);
+            for (const auto &account : accounts) {
+                repository.insert(account); QTRY_COMPARE(inserted.size(), 1); inserted.clear();
+                QVERIFY(repository.beginSync(account.id, "INBOX", 10).isEmpty());
+                QVERIFY(repository.commitSync({{"INBOX", u'/', {}, 0}}, 0).isEmpty()); repository.abortSync();
+            }
+        }
+        CredentialStore credentials;
+        for (const auto &account : accounts) {
+            bool done = false;
+            credentials.write(AccountRegistrar::secretKey(account.id, "imap", AuthenticationMode::Plain), "dummy",
+                [&](const QString &, const QString &error) { QVERIFY(error.isEmpty()); done = true; });
+            QTRY_VERIFY(done);
+        }
+        {
+            MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+            window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+            auto *tree = window.findChild<QTreeView *>("folderTree"); QTRY_COMPARE(tree->model()->rowCount(), 3);
+            QSet<QString> finished; QStringList errors;
+            for (auto *mail : controller.findChildren<MailService *>()) connect(mail, &MailService::synchronized, &window,
+                [&](const QString &id, const QString &, const QList<MailFolder> &, const QList<MailRecord> &, const QString &error) {
+                    finished.insert(id); if (!error.isEmpty() && id != accounts[0].id) errors.append(error);
+                });
+            int maximum = 0;
+            QTimer monitor; monitor.setInterval(5);
+            connect(&monitor, &QTimer::timeout, &window, [&] {
+                int count = 0; for (const auto &server : servers) count += server->liveConnections;
+                maximum = qMax(maximum, count);
+            }); monitor.start();
+            window.targetRefreshRequested(accounts[0].id, {}, true);
+            window.targetRefreshRequested(accounts[1].id, {}, true);
+            QTRY_VERIFY_WITH_TIMEOUT(servers[0]->maximumConnections >= 3, 15000);
+            QCOMPARE(servers[1]->maximumConnections, 1); // Base for every account, surplus to the top one.
+            window.targetRefreshRequested(accounts[2].id, {}, true);
+            QTRY_VERIFY_WITH_TIMEOUT(servers[2]->receivedAuthentication(), 15000);
+            QVERIFY(!finished.contains(accounts[0].id));
+            action(window, "systemSettingsAction")->trigger();
+            QPointer<SystemSettingsDialog> settings = window.findChild<SystemSettingsDialog *>(); QVERIFY(settings);
+            settings->findChild<QSpinBox *>("settingsParallelUpdates")->setValue(2);
+            settings->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click(); QTRY_VERIFY(settings.isNull());
+            window.deleteAccountRequested(accounts[0].id); // Cancel primary and helper sessions together.
+            QTRY_COMPARE(tree->model()->rowCount(), 2);
+            QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 3, 30000);
+            QVERIFY2(errors.isEmpty(), qPrintable(errors.join('\n')));
+            QVERIFY(maximum <= 4);
+        }
+        for (const auto &account : accounts) {
+            bool done = false; credentials.remove(AccountRegistrar::secretKey(account.id, "imap", AuthenticationMode::Plain),
+                [&](const QString &, const QString &) { done = true; }); QTRY_VERIFY(done);
+        }
+        QSettings().clear();
+    }
     void initTestCase()
     {
         if (qEnvironmentVariable("SMOOTHMAIL_GUI_SANDBOX_TEST") != QStringLiteral("1"))
