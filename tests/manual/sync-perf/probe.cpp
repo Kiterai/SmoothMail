@@ -129,7 +129,8 @@ int main(int argc, char **argv) {
                 {"wall_ms", elapsed}, {"cpu_ms", cpuElapsed}, {"ok", ok}, {"error", error},
                 {"page_ms", pageMs}, {"render_ms", renderMs}, {"tls", tls},
                 {"header_messages", server.headerFetchCount}, {"flags_messages", server.flagsFetchCount},
-                {"flag_searches", qMax(0, commands.value("UID SEARCH").toInt() - 1)},
+                {"flag_searches", qMax(0, commands.value("UID SEARCH").toInt()
+                    - (bulk && mode != MailService::SyncMode::SelectedRecent ? folders : 1))},
                 {"body_messages", server.fullFetchCount}, {"commands", commands}, {"timings", timings},
                 {"database", id + ".sqlite"}, {"populated_folders", bulk ? folders : 1}});
             if (!ok) ++failures;

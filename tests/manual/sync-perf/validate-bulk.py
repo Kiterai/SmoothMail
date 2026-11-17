@@ -11,6 +11,9 @@ for row in rows:
     folders = row["populated_folders"]
     expected = row["messages"] * folders if row["phase"] == "initial" else 10 * folders if row["phase"] == "add10-recent" else 0
     assert row["body_messages"] == expected, row
+    expected_headers = row["messages"] * folders if row["phase"] in ("initial", "unchanged-all") else expected
+    assert row["header_messages"] == expected_headers, row
+    assert row["flags_messages"] == 0, row  # All populated folders exceed the boolean-search threshold.
 for name in {row["database"] for row in rows}:
     row = next(row for row in rows if row["database"] == name and row["phase"] == "add10-recent")
     with sqlite3.connect((root / name).as_uri() + "?mode=ro&immutable=1", uri=True) as db:
