@@ -123,6 +123,7 @@ int main(int argc, char **argv) {
                 {"wall_ms", elapsed}, {"cpu_ms", cpuElapsed}, {"ok", ok}, {"error", error},
                 {"page_ms", pageMs}, {"render_ms", renderMs}, {"tls", tls},
                 {"header_messages", server.headerFetchCount}, {"flags_messages", server.flagsFetchCount},
+                {"flag_searches", qMax(0, commands.value("UID SEARCH").toInt() - 1)},
                 {"body_messages", server.fullFetchCount}, {"commands", commands}, {"timings", timings}});
             if (!ok) ++failures;
             return ok;

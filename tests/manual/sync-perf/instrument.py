@@ -29,6 +29,10 @@ window = "constexpr qint64 flagWindow = 1000;"
 assert text.count(window) == 1
 text = text.replace(window, 'const int perfWindow = qEnvironmentVariableIntValue("SMOOTHMAIL_PERF_FLAG_WINDOW");\n'
     '                const qint64 flagWindow = perfWindow > 0 ? qBound(100, perfWindow, 1000) : 1000;')
+search = "bool flagsBySearch = recentUids.size() > flagSearchThreshold;"
+assert text.count(search) == 1
+text = text.replace(search, 'bool flagsBySearch = recentUids.size() > flagSearchThreshold\n'
+    '                    && qEnvironmentVariableIntValue("SMOOTHMAIL_PERF_FLAG_WINDOW") <= 0;')
 path.write_text(text, encoding="utf-8")
 path = instrument("storage/accountrepository.cpp", [
     ("AccountRepository::" + name, "db." + name) for name in

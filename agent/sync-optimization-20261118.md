@@ -66,3 +66,66 @@
   **276 passed / 0 failed / 0 skipped**。基礎120同期と24 DBも成功。
   10通追加Recentの履歴5000件は38ms（before459ms）、
   遅延なし30フォルダは228ms（before292ms）。
+
+## 第4段階：大量FLAGS応答を2本の標準検索で置換
+
+- FLAGS窓の調整だけでは、KIMAPの大量応答解析が大きく残った。
+  Date候補が256件を超える場合、同じSENTSINCE条件とNOT SEEN／FLAGGEDの検索を
+  各1回実行する方式を追加。対応拡張は不要で、Seen/Flaggedは従来どおり両方を確認する。
+- 整列済みのコンパクトなUID配列と二分探索を使う。
+  元の候補に含まれないUID、重複UID、無効UIDは失敗にし、Dateの厳密境界もDB側で維持。
+  本文は未知UIDだけ取得する。UID一覧以外のステージングは引き続き件数／byte上限付き。
+- 標準検索を拒否したサーバーはFLAGSへfallbackする。
+  タイムアウト・キャンセル・切断・不正UID結果ではfallbackしない。
+  KIMAPが不正tagged応答をerrorTextのみで返す場合も、空の未読集合と誤解しないよう拒否する。
+- 205件のFLAGS経路と2005件の検索経路を同じ追加／失敗／Date／サイズ試験で検査。
+  検索側は対象外UID、重複UID、不正tagged応答、明示拒否時fallbackも検査する。
+- 初回のfallback試験が失敗し、SELECT後のSession状態がAuthenticatedではなくSelectedである
+  ことを確認。認証済み／選択済みの双方を許容するよう修正した。
+  不正応答を成功扱いしたのではなく、拒否後の正しいFETCH再試行を検査して修正している。
+  targeted再試験4 passed / 0 failed / 0 skipped。元の全体ログは`output/stage4`に保持。
+
+## 最終確認と改善幅
+
+- `output/stage4b`の全17 EXEを独立集計:
+  **277 passed / 0 failed / 0 skipped**（init/cleanupを含む）。
+  GUI統合は実widgets、CTest指定の4 UI単体はoffscreen。
+- 同じVMで保存済み旧EXEを再実行したbeforeと比較。
+  最終版は基礎120同期＋TLS/GUI詳細60同期が全成功。
+  基礎24 DBのquick_check、raw/index件数、連続UID、取得件数、ヘッダ／フラグ経路も照合成功。
+- 以下は**10通追加Recent、各3反復の中央値、ミリ秒**。既存配置や実メールを使用した測定ではない。
+
+| 条件 | before | 最終版 | 比率 |
+|---|---:|---:|---:|
+| 1000件 × 2KiB | 475.8 | 52.7 | 9.0倍 |
+| 5000件 × 2KiB（Date集中） | 2346.7 | 179.0 | 13.1倍 |
+| 1000件 × 64KiB | 1664.1 | 77.8 | 21.4倍 |
+| 履歴5000件・最近1件 | 459.1 | 37.6 | 12.2倍 |
+| 1000件 × 2KiB・20ms遅延 | 827.5 | 295.1 | 2.8倍 |
+| 30フォルダ・20ms遅延 | 2063.6 | 2080.6 | 約同等 |
+
+- 5000件に10件追加した最終版は、UID SEARCH計3回（候補、未読、重要）と
+  新規ヘッダ1 Job／10件、本文1 Job／10件。既存5000件のヘッダ・本文を再転送しない。
+  MIME parseも10回。再利用は51バッチ。例ではSearch計27ms、FETCH計3ms、
+  reuse計55ms、commit計77ms。残る大口はSQLite側のメタデータ照合・公開。
+- ローカルTLSの1000件＋10件は詳細確認中央値76.4ms。
+  詳細の100件ページ取得2.6–23.3ms、描画適用13.7–23.4ms。
+  模擬サーバー・KIMAP・SQLite・OSキャッシュ等の条件に依存する値で、
+  実サービスの絶対時間や全てのメール形態の倍率を保証しない。
+- 未読COUNTのEXPLAIN QUERY PLANで`cache_messages_unread`の使用を確認。
+  既存DBは初回オープン時に索引作成の一時的コストがあるが、データの再取得／リセットはしない。
+- 30フォルダ・遅延ありではSTATUS30＋EXAMINE60の通信往復が依然中心。
+  検証を省いて見かけだけ高速化する変更はしていない。
+  接続再利用やLIST-STATUS等は別途互換性検証を要するため今回の実装には含めない。
+
+## 証跡
+
+- `build/sync-opt/share/output/stage1/{before,after}`、`stage2b/after`、
+  `stage3b/{after,deep}`、`stage4b/{tests,after,deep}`。
+  中間失敗の`stage2/stage3/stage4`も保持し、成功と扱っていない。
+- `build/sync-opt/{before,stage1,stage2b,stage3b,stage4b}.json`が基礎の集計。
+- FLAGS窓比較180同期を含む、今回の全段階の性能同期は合計900回。
+  最終コードの成功判定はstage4bの180回と上記277テスト。
+- 検証中に用いたSandboxはネットワーク無効の
+  `f93beb5d-841d-4ced-84e8-e4169f05390a`。
+  実アカウント／ホストのOS資格情報／実メールにはアクセスしていない。

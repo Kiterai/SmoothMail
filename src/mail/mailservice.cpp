@@ -34,6 +34,7 @@
 #include <QTimer>
 #include <QSslSocket>
 #include <functional>
+#include <algorithm>
 extern "C" {
 #include <sasl/sasl.h>
 }
@@ -496,11 +497,13 @@ void MailService::synchronize(const Account &account, const QString &secret, con
                 // bounded headers for UIDs that have not been cached yet.
                 search.setTerm(KIMAP::Term(KIMAP::Term::SentSince, boundary.date().addDays(-1)));
                 jobError = runJob(search); if (!jobError.isEmpty()) return jobError;
+                if (!search.errorText().isEmpty()) return QStringLiteral("差分検索の応答が不正です。");
                 recentUids = search.results();
-                QSet<qint64> unique;
+                std::sort(recentUids.begin(), recentUids.end());
+                qint64 previous = 0;
                 for (const auto uid : recentUids) {
-                    if (uid <= 0 || uid >= nextUid || unique.contains(uid)) return QStringLiteral("差分検索のUID応答が不正です。");
-                    unique.insert(uid);
+                    if (uid <= 0 || uid >= nextUid || uid == previous) return QStringLiteral("差分検索のUID応答が不正です。");
+                    previous = uid;
                 }
                 if (recentUids.size() > total) return QStringLiteral("差分検索中にメール一覧が変化しました。");
             }
@@ -518,24 +521,78 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             if (boundary.isValid()) {
                 if (!planned.open()) return QStringLiteral("差分取得の一時ファイルを作成できません。");
                 qint64 needed = 0;
+                // A large FLAGS response requires one parsed IMAP response per
+                // message. Two standard searches return compact UID lists for
+                // exactly the two flags we persist, independent of batch count.
+                constexpr qint64 flagSearchThreshold = 256;
+                bool flagsBySearch = recentUids.size() > flagSearchThreshold;
+                QList<qint64> unseenUids, flaggedUids;
+                if (flagsBySearch) {
+                    bool rejected = false;
+                    const auto searchFlags = [&](const KIMAP::Term &flag, QList<qint64> &uids) -> QString {
+                        KIMAP::SearchJob search(&session); search.setUidBased(true);
+                        search.setTerm(KIMAP::Term(KIMAP::Term::And, {flag,
+                            KIMAP::Term(KIMAP::Term::SentSince, boundary.date().addDays(-1))}));
+                        const auto error = runJob(search);
+                        // KIMAP can report a malformed tagged reply through
+                        // errorText without setting error(). Don't interpret
+                        // that as a valid empty set of unseen/flagged UIDs.
+                        if (error.isEmpty() && !search.errorText().isEmpty()) return QStringLiteral("フラグ検索の応答が不正です。");
+                        if (!error.isEmpty()) {
+                            rejected = search.error() != 0
+                                && (session.state() == KIMAP::Session::Authenticated || session.state() == KIMAP::Session::Selected)
+                                && !interrupted();
+                            return error;
+                        }
+                        uids = search.results(); std::sort(uids.begin(), uids.end());
+                        qint64 previous = 0;
+                        for (const auto uid : uids) {
+                            if (uid <= 0 || uid >= nextUid || uid == previous
+                                || !std::binary_search(recentUids.cbegin(), recentUids.cend(), uid))
+                                return QStringLiteral("フラグ検索のUID応答が不正です。");
+                            previous = uid;
+                        }
+                        return {};
+                    };
+                    auto unseen = KIMAP::Term(KIMAP::Term::Seen); unseen.setNegated(true);
+                    jobError = searchFlags(unseen, unseenUids);
+                    if (jobError.isEmpty()) jobError = searchFlags(KIMAP::Term(KIMAP::Term::Flagged), flaggedUids);
+                    if (!jobError.isEmpty()) {
+                        // A server rejecting the standard boolean search may
+                        // still support FETCH. Never mask malformed UID results,
+                        // timeout, cancellation or a disconnected session.
+                        if (!rejected) return jobError;
+                        flagsBySearch = false; unseenUids.clear(); flaggedUids.clear();
+                        diagnostics::event("sync-flag-search-fallback");
+                    }
+                }
                 // Flags are tiny metadata, not MIME bodies. Larger bounded
                 // windows avoid one round trip per 100 unchanged headers.
                 constexpr qint64 flagWindow = 1000;
                 for (qint64 first = 0; first < recentUids.size(); first += flagWindow) {
                     if (interrupted()) return QStringLiteral("中断しました。");
                     const auto requested = recentUids.mid(first, flagWindow);
-                    const QSet<qint64> requestedSet(requested.cbegin(), requested.cend());
                     QMap<qint64, KIMAP::Message> flags;
-                    KIMAP::FetchJob job(&session); job.setUidBased(true);
-                    KIMAP::ImapSet ids; ids.add(requested);
-                    job.setSequenceSet(ids);
-                    KIMAP::FetchJob::FetchScope scope; scope.mode = KIMAP::FetchJob::FetchScope::Flags; job.setScope(scope);
-                    connect(&job, &KIMAP::FetchJob::messagesAvailable, &job, [&](const QMap<qint64, KIMAP::Message> &items) {
-                        for (const auto &item : items) if (requestedSet.contains(item.uid)) flags.insert(item.uid, item);
-                    });
-                    jobError = runJob(job); if (!jobError.isEmpty()) return jobError;
-                    if (flags.size() != requested.size())
-                        return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+                    if (flagsBySearch) {
+                        for (const auto uid : requested) {
+                            KIMAP::Message item; item.uid = uid;
+                            if (!std::binary_search(unseenUids.cbegin(), unseenUids.cend(), uid)) item.flags.append("\\Seen");
+                            if (std::binary_search(flaggedUids.cbegin(), flaggedUids.cend(), uid)) item.flags.append("\\Flagged");
+                            flags.insert(uid, item);
+                        }
+                    } else {
+                        const QSet<qint64> requestedSet(requested.cbegin(), requested.cend());
+                        KIMAP::FetchJob job(&session); job.setUidBased(true);
+                        KIMAP::ImapSet ids; ids.add(requested);
+                        job.setSequenceSet(ids);
+                        KIMAP::FetchJob::FetchScope scope; scope.mode = KIMAP::FetchJob::FetchScope::Flags; job.setScope(scope);
+                        connect(&job, &KIMAP::FetchJob::messagesAvailable, &job, [&](const QMap<qint64, KIMAP::Message> &items) {
+                            for (const auto &item : items) if (requestedSet.contains(item.uid)) flags.insert(item.uid, item);
+                        });
+                        jobError = runJob(job); if (!jobError.isEmpty()) return jobError;
+                        if (flags.size() != requested.size())
+                            return QStringLiteral("同期中にメール一覧が変化しました。再試行してください。");
+                    }
                     QList<qint64> missing;
                     QList<AccountRepository::SyncFlags> reusable;
                     const auto reuse = [&]() -> QString {

@@ -20,6 +20,9 @@ for row in rows:
             expected_flags = 11 if row["phase"] in ("add10-recent", "unchanged-selected") else 1
         else:
             expected_flags = row["messages"]
+        if row.get("flag_searches", 0) > 0:
+            assert row["flag_searches"] == 2, row
+            expected_flags = 0
         assert row["flags_messages"] == expected_flags, row
 databases = list(directory.glob("*.sqlite"))
 assert len(databases) == 24, len(databases)

@@ -80,3 +80,5 @@ repository／transport／mailtransport／GUI統合試験を実行し、成功し
 `run-window-guest.ps1`は計測用コピーのFLAGS窓を100/250/500/1000へ切り替えて比較する。
 各45同期、既定1000。`SMOOTHMAIL_PERF_FLAG_WINDOW`による切替は`instrument.py`が
 コピーへ挿入するもので、製品ソース／通常EXEには存在しない。
+この比較時だけ大候補向けの2本のフラグ検索を無効化し、FLAGS経路を強制する。
+通常の基礎／詳細計測は、256件を超える候補にNOT SEEN／FLAGGED検索を使用する。

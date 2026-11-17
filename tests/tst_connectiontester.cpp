@@ -19,13 +19,20 @@ class ConnectionTesterTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void fewNewMessagesFetchOnlyNewHeadersAndKeepFailedStagesPrivate_data()
+    {
+        QTest::addColumn<int>("count");
+        QTest::newRow("small-flags-window") << 205;
+        QTest::newRow("large-boolean-search") << 2005;
+    }
     void fewNewMessagesFetchOnlyNewHeadersAndKeepFailedStagesPrivate()
     {
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}); server.provideMailbox = true;
         const auto raw = [](qint64 uid, const QByteArray &time) {
             return "Subject: delta " + QByteArray::number(uid) + "\r\nDate: Wed, 18 Nov 2026 " + time + " +0000\r\n\r\nbody";
         };
-        constexpr int count = 2005;
+        QFETCH(int, count);
+        const bool searchedFlags = count > 256;
         for (int i = 1; i <= count; ++i) server.messages.insert(i * 2, raw(i, "10:00:00"));
         QVERIFY(server.listen());
         Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("delta@example.test"),
@@ -43,29 +50,51 @@ private slots:
         server.headerFetchCount = server.flagsFetchCount = server.fullFetchCount = 0;
         for (int i = count + 1; i <= count + 3; ++i) server.messages.insert(i * 2, raw(i, "10:30:00"));
         server.messageFlags[2] = {"\\Seen"}; server.messageFlags[4] = {"\\Flagged"};
-        // The final flags window is incomplete after earlier windows staged
-        // changes: no new flags or partial bodies may become visible.
-        server.omitFlagUid = count * 2;
+        // Fail after earlier metadata windows staged changes, either in the
+        // final FLAGS response or the new body: publication must stay private.
+        if (searchedFlags) server.disconnectOnBodyFetch = true;
+        else server.omitFlagUid = count * 2;
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(!result.takeFirst().at(4).toString().isEmpty());
         QCOMPARE(server.fullFetchCount, 0);
         MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX"); query.sortColumn = 3;
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); const auto before = qvariant_cast<MailPage>(pages.takeFirst().first());
         QCOMPARE(before.total, count); for (const auto &message : before.messages) { QVERIFY(!message.seen); QVERIFY(!message.important); }
-        server.omitFlagUid = -1; server.headerFetchCount = server.flagsFetchCount = 0;
+        server.omitFlagUid = -1; server.disconnectOnBodyFetch = false; server.headerFetchCount = server.flagsFetchCount = 0;
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(result.takeFirst().at(4).toString().isEmpty());
         QCOMPARE(server.headerFetchCount, 3); QCOMPARE(server.fullFetchCount, 3);
-        QCOMPARE(server.flagsFetchCount, count + 3); QCOMPARE(server.maximumFlagsWindow, 1000);
+        QCOMPARE(server.flagsFetchCount, searchedFlags ? 0 : count + 3);
+        QCOMPARE(server.maximumFlagsWindow, searchedFlags ? 0 : count + 3);
         QVERIFY(server.maximumHeaderWindow <= MailPageSize);
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, count + 3);
         cache.loadMessage({account.id, QStringLiteral("INBOX"), 10, 2}); QTRY_COMPARE(results.size(), 1);
         const auto changed = qvariant_cast<MailRecord>(results.takeFirst().first());
         QVERIFY(changed.seen); QCOMPARE(changed.document.rawSource, originalRaw);
+        cache.loadMessage({account.id, QStringLiteral("INBOX"), 10, 4}); QTRY_COMPARE(results.size(), 1);
+        const auto important = qvariant_cast<MailRecord>(results.takeFirst().first());
+        QVERIFY(important.important); QVERIFY(!important.seen);
         server.headerFetchCount = server.fullFetchCount = 0;
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(result.takeFirst().at(4).toString().isEmpty());
         QCOMPARE(server.headerFetchCount, 0); QCOMPARE(server.fullFetchCount, 0);
+        if (searchedFlags) {
+            for (const auto invalid : {qint64(1), qint64(4)}) {
+                server.extraFlagSearchUid = invalid;
+                service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);
+                QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(result.takeFirst().at(4).toString().contains(QStringLiteral("UID")));
+                cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, count + 3);
+            }
+            server.extraFlagSearchUid = 0; server.malformFlagSearchReply = true;
+            service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);
+            QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(result.takeFirst().at(4).toString().contains(QStringLiteral("応答")));
+            cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, count + 3);
+            server.malformFlagSearchReply = false; server.rejectFlagSearch = true; server.flagsFetchCount = 0;
+            service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);
+            QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); const auto fallbackError = result.takeFirst().at(4).toString(); QVERIFY2(fallbackError.isEmpty(), qPrintable(fallbackError));
+            QCOMPARE(server.flagsFetchCount, count + 3); QCOMPARE(server.headerFetchCount, 0); QCOMPARE(server.fullFetchCount, 0);
+            server.rejectFlagSearch = false;
+        }
         // New but out-of-window Date is checked from its header, not its UID.
         server.messages.insert(99999, raw(99999, "08:00:00"));
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);

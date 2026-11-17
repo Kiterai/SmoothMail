@@ -111,6 +111,9 @@ public:
     int fullFetchCount = 0;
     int headerFetchCount = 0, flagsFetchCount = 0, maximumFlagsWindow = 0;
     qint64 omitFlagUid = -1;
+    bool rejectFlagSearch = false;
+    bool malformFlagSearchReply = false;
+    qint64 extraFlagSearchUid = 0;
     int maximumHeaderWindow = 0;
     qint64 uidValidity = 10;
     QMap<qint64, QByteArray> messages;
@@ -287,14 +290,20 @@ private:
             write("* OK [UIDNEXT " + QByteArray::number(next) + "] next UID");
             write(m_tag + (command == "EXAMINE" ? " OK [READ-ONLY] selected" : " OK [READ-WRITE] selected"));
         } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "SEARCH") {
+            const bool unseen = line.contains(" NOT SEEN "), flagged = line.contains(" FLAGGED ");
+            if ((unseen || flagged) && rejectFlagSearch) { write(m_tag + " NO unsupported boolean search"); return; }
             QByteArray result("* SEARCH");
             const auto since = QLocale::c().toDate(QString::fromLatin1(fields.last()).remove(u'"'), QStringLiteral("d-MMM-yyyy"));
             for (auto it = selectedMessages().cbegin(); it != selectedMessages().cend(); ++it) {
                 QDateTime date;
                 for (const auto &header : it.value().split('\n')) if (header.startsWith("Date:")) date = QDateTime::fromString(QString::fromLatin1(header.mid(5)).trimmed(), Qt::RFC2822Date);
-                if (!since.isValid() || (date.isValid() && date.date() >= since)) result += ' ' + QByteArray::number(it.key());
+                const auto flags = selectedFlags().value(it.key());
+                if ((!since.isValid() || (date.isValid() && date.date() >= since))
+                    && (!unseen || !flags.contains("\\Seen")) && (!flagged || flags.contains("\\Flagged")))
+                    result += ' ' + QByteArray::number(it.key());
             }
-            write(result); write(m_tag + " OK search completed");
+            if (flagged && extraFlagSearchUid > 0) result += ' ' + QByteArray::number(extraFlagSearchUid);
+            write(result); write((unseen || flagged) && malformFlagSearchReply ? m_tag : m_tag + " OK search completed");
         } else if (provideMailbox && command == "UID" && fields.value(commandIndex + 1) == "MOVE") {
             const auto target = line.split('"').value(1); const auto uid = fields.value(commandIndex + 2).toLongLong();
             if (!supportMove || (!extraFolders.contains(target) && target != "INBOX")) { write(m_tag + " NO unsupported move target"); return; }
