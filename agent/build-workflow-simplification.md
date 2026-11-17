@@ -29,7 +29,7 @@
 - CMakeのビルドガード、ライセンス環境／テンプレート16件、配布入口9件が成功。
 - MSVCで配布補助を別途構築し、CRT実バイナリ・長いパス・ソースアーカイブ・通知・ZIP・Pythonを含むCTest全12件が成功。最初の補助構成は検証コマンド内の`%PATH%`早期展開でNMakeを失ったが、`cmake -E env --modify`によるPATH追加へ修正して成功した。
 - clean cloneへ検証専用`.env`だけを作成して`python tools/build.py dist`を実行し、Ninjaの自動取得・実コンパイルと固定vcpkgの取得を確認。CMake HTTPSのstatus 35には、文書どおり`.env`へOpenSSL対応curlを指定して再実行し、vcpkgの構築ツール・GNU／MSYS2取得へ進んだ。実運用の`.env`・Qt SDKは変更していない。
-- Releaseの通し生成・成果物照合、Debug全体の構築・配置は後述のとおり成功。SDKなしOSでの製品実行・改変DLL差替えはBATCH-01で管理し、個別fixtureや旧入口の成功を今回の製品全体の実行検証済みとは扱わない。
+- Releaseの通し生成・成果物照合、Debug全体の構築・配置は後述のとおり成功。残っていたSDKなしOSでの製品実行・改変DLL差替えも[後続検証](dll-replacement-validation-20261117.md)で成功し、利用者の指示に従いBATCH-01を完了とした。未完了項目は`spec/inprogress/`から削除した。
 
 ## 反復実行時の保護
 
@@ -75,4 +75,4 @@
 - 独立した処理で配置の全37ファイルのSHA256とファイル集合、本体`app/smoothmail.exe`と配置済みEXEのバイト一致を確認した（一覧自体を含めると38ファイル）。
 - 実EXEとQt／SASLプラグインを起点に、配置ディレクトリとWindowsシステムDLLだけで26 DLLの通常／遅延importが解決することを確認した。追加のDLL配置・PATH設定は起動準備として不要。
 - 構築した通常の本体CTest 14ターゲットがすべて成功した。OS資格情報・意図的クラッシュ等のopt-in設定は有効化しておらず、実資格情報や実メールの検証成功を意味しない。
-- Debug配置は非再配布の開発用CRTを含む。Release ZIPの代わりに公開しない。今回の製品自体をSDK未導入OSで起動する確認と改変DLL差替えは未実施。
+- Debug配置は非再配布の開発用CRTを含む。Release ZIPの代わりに公開しない。この構築検証の後、製品ReleaseのSDK未導入OSでの起動・改変DLL差替えも[確認済み](dll-replacement-validation-20261117.md)。配布担当者の法的監査・公開条件は引き続き`docs/dev/distribution.md`に従う。
