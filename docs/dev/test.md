@@ -119,3 +119,11 @@ cmake "-DSMOOTHMAIL_DOWNLOAD_CURL=C:/path/to/Git/mingw64/bin/curl.exe" -P tests/
 ```
 
 実Google認可・送受信などの手動プローブ（`tests/manual/`）は通常テストに含めません。実行には対象アカウントの本人認可と、通信・メール作成・資格情報保存それぞれの許可が必要です。
+
+## DLL差し替えの検証
+
+1. `tests/source-replacement/BuildReview.cmake`へ、新しい`REVIEW_ROOT`、対象`Qt6_ROOT`、配布した`SMOOTHMAIL_SOURCE_ARCHIVES`、構築済み依存の`REFERENCE_PREFIX`、内部Ninjaの`CMAKE_MAKE_PROGRAM`を`-D`で渡します。原本・有効パッチを検証し、識別用export関数だけを追加したQtSvg／KCodecsを別prefixへ構築します。既存Qt SDKは変更しません。
+2. `verify-modified-source.ps1`で、改変が識別関数とその構築入力だけであることを照合します。
+3. `prepare_package_review.py --help`の引数に従い、対象ZIPのSHA256を明示して検証用セットを作ります。同じ本体EXEに対して2 DLLだけを差し替え、共通の検証EXE・Qt Test DLL・offscreenプラグインを両構成へ追加します。元のZIPは変更しません。
+4. 入力を読取り専用、ログ出力先だけを書込み可能にした**新規・外部ネットワーク無効のWindows Sandbox**で`run-package-guest.ps1`を実行します。ホストでは実行しません。通常版での識別関数の欠落、改変版での両関数の実呼出し、本体の起動・ロード元・ハッシュ、描画・SQLite・RFC2047等を確認します。
+5. `result.json`と両構成の試験ログを回収し、失敗・スキップ・想定外の差分がないことを確認してからSandboxを終了します。検証用セットを製品として公開せず、差し替えたDLLの新しい配布には別途ライセンス・プライバシー監査を行います。
