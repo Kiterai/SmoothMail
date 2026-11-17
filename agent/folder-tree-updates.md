@@ -39,3 +39,14 @@
 - 配置済みEXEと`build/rel/app/smoothmail.exe`のSHA256一致、ZIP内全361ファイルと配置済み全ファイルのinventory・SHA256一致、artifactsのSHA256SUMS全件一致を独立確認した。
 - 本体SHA256: `ba731f820a1c1497f4a6f7c3111a597e06fd4fc8ca95c49f17c08f82ae2fb656`。
 - 証跡: `build/rel/folder-deployment-verification.json`。ホスト上でのアプリ起動・実メール操作は行っていない。配布物の法的承認を意味せず、AUDIT-REQUIREDは維持する。
+
+## 残り時間の表示粒度変更（ff44d91）
+
+- `Smoothmail_spec`ブランチの仕様変更を取り込み、切り上げ前の推定値で表示形式を選択するよう変更。
+  - 10分未満: `m分s秒`、10秒単位。
+  - 1時間未満: `m分`、1分単位。
+  - 10時間未満: `H時間m分`、10分単位。
+  - 10時間以上: `H時間`、1時間単位。
+- 切り上げで次の範囲へ達しても、選択した形式は維持する（例: 9分59.999秒は`10分0秒`、59分59.999秒は`60分`）。0秒も指定形式の`0分0秒`とする。
+- 線形予測、件数変化時のみの更新、アカウント別の状態管理は維持。
+- 10分・1時間・10時間の直前/一致/直後、各切り上げ単位の境界を検査。mainwindow CTest成功、個別ログ`build/directory-refactor/eta-format-results.txt`は51 passed / 0 failed / 0 skipped。
