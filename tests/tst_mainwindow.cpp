@@ -34,9 +34,14 @@ private slots:
     void remainingTimeUsesLinearPredictionAndRoundsUp()
     {
         using smoothmail::estimatedRemainingTime;
-        QCOMPARE(estimatedRemainingTime(1, 2, 1), QStringLiteral("0分10秒"));
-        QCOMPARE(estimatedRemainingTime(1, 2, 10000), QStringLiteral("0分10秒"));
-        QCOMPARE(estimatedRemainingTime(1, 2, 10001), QStringLiteral("0分20秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 1), QStringLiteral("10秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 10000), QStringLiteral("10秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 10001), QStringLiteral("20秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 50000), QStringLiteral("50秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 50001), QStringLiteral("60秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 59999), QStringLiteral("60秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 60000), QStringLiteral("1分0秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 60001), QStringLiteral("1分10秒"));
         QCOMPARE(estimatedRemainingTime(2, 8, 20000), QStringLiteral("1分0秒"));
         QCOMPARE(estimatedRemainingTime(1, 2, 590000), QStringLiteral("9分50秒"));
         QCOMPARE(estimatedRemainingTime(1, 2, 590001), QStringLiteral("10分0秒"));
@@ -53,8 +58,8 @@ private slots:
         QCOMPARE(estimatedRemainingTime(1, 2, 36000000), QStringLiteral("10時間"));
         QCOMPARE(estimatedRemainingTime(1, 2, 36000001), QStringLiteral("11時間"));
         QCOMPARE(estimatedRemainingTime(1, 2, 39600000), QStringLiteral("11時間"));
-        QCOMPARE(estimatedRemainingTime(0, 0, 0), QStringLiteral("0分0秒"));
-        QCOMPARE(estimatedRemainingTime(20, 20, 10000), QStringLiteral("0分0秒"));
+        QCOMPARE(estimatedRemainingTime(0, 0, 0), QStringLiteral("0秒"));
+        QCOMPARE(estimatedRemainingTime(20, 20, 10000), QStringLiteral("0秒"));
         QVERIFY(estimatedRemainingTime(0, 20, 10000).isEmpty());
         QVERIFY(estimatedRemainingTime(1, -1, 10000).isEmpty());
         QVERIFY(estimatedRemainingTime(21, 20, 10000).isEmpty());
@@ -75,7 +80,7 @@ private slots:
         QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
         QTest::qWait(20);
         window.showSyncProgress(a.id, QStringLiteral("INBOX"), 1, 2);
-        QVERIFY(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 0分10秒)")));
+        QVERIFY(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 10秒)")));
         const auto previous = window.statusBar()->currentMessage();
         window.showSyncProgress(b.id, QStringLiteral("INBOX"), 0, 3);
         QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
@@ -84,7 +89,7 @@ private slots:
         window.showSyncProgress(a.id, QStringLiteral("Other"), 0, -1);
         QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
         window.showSyncProgress(a.id, QStringLiteral("Other"), 0, 0);
-        QVERIFY(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 0分0秒)")));
+        QVERIFY(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 0秒)")));
         window.setRefreshing(a.id, false); window.setRefreshing(a.id, true);
         window.showSyncProgress(a.id, QStringLiteral("INBOX"), 0, 2);
         QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));

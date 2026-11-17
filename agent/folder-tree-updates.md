@@ -53,3 +53,10 @@
 - 標準Release再構築と配置後照合が終了コード0で完了。通常起動先`build/rel/run/launch.cmd`へ反映済み。対応ソースコミットは`e85382aa0f2fe066da7fade71e29a9734a8a74e8`。
 - ZIP全361ファイルと配置済みファイルのinventory・SHA256、配布成果物のSHA256SUMS、本体とapp EXEの一致を確認。証跡は`build/rel/folder-deployment-verification.json`。
 - 本体SHA256: `a0a4133e1c1c18b43925079ce9ab73a9d9762d17d64e007fecb53da5964ff5f8`。旧配置は`build/rel/run-previous-0a3588576b5c4255b0c0921592c482ea`。ホストでのアプリ起動・実メール操作は行っていない。
+
+## 1分未満の秒のみ表示（2e25f02）
+
+- `Smoothmail_spec`の変更を取り込み、切り上げ前の推定値が1分未満なら`s秒`形式とする。10秒単位の切り上げは維持し、空フォルダ・完了時は`0秒`とする。
+- 50秒、50秒直後、1分直前、一致、直後を追加検査。1分未満から切り上がる場合は`60秒`、推定値が1分なら`1分0秒`。
+- mainwindow CTest成功。個別ログ`build/directory-refactor/eta-seconds-results.txt`: 51 passed / 0 failed / 0 skipped。
+- 通常Release配置は更新前にSmoothmailプロセス（PID 33148）を検出したため保留。強制終了は行わず、利用者の終了確認後に標準ビルドと配置後照合を実施する。
