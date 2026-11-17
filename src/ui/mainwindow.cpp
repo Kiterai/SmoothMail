@@ -4,6 +4,7 @@
 #include "aboutdialog.h"
 #include "core/threading.h"
 #include "core/displaytime.h"
+#include "core/syncprogress.h"
 #include "foldermodel.h"
 
 #include <QAction>
@@ -596,6 +597,7 @@ void MainWindow::setRefreshing(const QString &id, bool refreshing)
 {
     if (refreshing) m_refreshing.insert(id);
     else { m_refreshing.remove(id); m_loadingFolders.remove(id); }
+    m_syncEstimates.remove(id);
     updateFolderIndicators();
     if (refreshing) {
         for (const auto &account : m_accounts) if (account.id == id) statusBar()->showMessage(account.email + QStringLiteral(" のデータを取得中..."));
@@ -748,9 +750,20 @@ void MainWindow::showSyncProgress(const QString &id, const QString &folder, qint
         m_loadingFolders[id] = folder;
         updateFolderIndicators();
     }
+    auto &estimate = m_syncEstimates[id];
+    if (estimate.folder != folder || total < 0 || estimate.total != total || done < estimate.completed) {
+        estimate = SyncEstimate{};
+        estimate.folder = folder; estimate.total = total;
+    }
+    if (total >= 0 && !estimate.timer.isValid()) estimate.timer.start();
+    if (total >= 0 && done != estimate.completed) {
+        estimate.remaining = estimatedRemainingTime(done, total, estimate.timer.elapsed());
+        estimate.completed = done;
+    }
     for (const auto &account : m_accounts) if (account.id == id)
         statusBar()->showMessage(QStringLiteral("%1: %2 フォルダを取得中").arg(account.email, folder)
-            + (total < 0 ? QStringLiteral("...") : QStringLiteral(" %1 / %2 件...").arg(done).arg(total)));
+            + (total < 0 ? QStringLiteral("...") : QStringLiteral(" %1 / %2 件...").arg(done).arg(total))
+            + (estimate.remaining.isEmpty() ? QString{} : QStringLiteral(" (残り %1)").arg(estimate.remaining)));
 }
 void MainWindow::applySettings(const SystemSettings &settings)
 {
@@ -924,6 +937,7 @@ void MainWindow::clearAccountCache(const QString &id)
     if (m_accountId == id) { ++m_queryGeneration; m_loadedMessage.reset(); }
     m_mailCache.remove(id); m_folderCache.remove(id); m_syncErrors.remove(id); m_refreshing.remove(id);
     m_loadingFolders.remove(id);
+    m_syncEstimates.remove(id);
     if (m_accountId == id) {
         m_accountId.clear(); m_folder.clear(); rebuildMessages();
         if (m_pagedStorage) requestPage();

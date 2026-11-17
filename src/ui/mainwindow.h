@@ -7,6 +7,7 @@
 #include "core/systemsettings.h"
 #include <QHash>
 #include <QSet>
+#include <QElapsedTimer>
 #include <optional>
 
 class QCloseEvent;
@@ -113,6 +114,13 @@ private:
     QList<MailRecord> m_visibleMessages;
     QSet<QString> m_refreshing;
     QHash<QString, QString> m_loadingFolders;
+    struct SyncEstimate {
+        QString folder;
+        QElapsedTimer timer;
+        qint64 total = -1, completed = -1;
+        QString remaining;
+    };
+    QHash<QString, SyncEstimate> m_syncEstimates;
     QString m_accountId;
     QString m_folder;
     bool m_rebuilding = false;

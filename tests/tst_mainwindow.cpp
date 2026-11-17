@@ -17,6 +17,7 @@
 #include <QCheckBox>
 #include "ui/systemsettingsdialog.h"
 #include "core/oauthconfiguration.h"
+#include "core/syncprogress.h"
 #include <QGroupBox>
 #include <QDialogButtonBox>
 #include <QScrollBar>
@@ -30,6 +31,52 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void remainingTimeUsesLinearPredictionAndRoundsUp()
+    {
+        using smoothmail::estimatedRemainingTime;
+        QCOMPARE(estimatedRemainingTime(1, 2, 1), QStringLiteral("10秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 10000), QStringLiteral("10秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 10001), QStringLiteral("20秒"));
+        QCOMPARE(estimatedRemainingTime(2, 8, 20000), QStringLiteral("1分0秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 3590001), QStringLiteral("1時間0分0秒"));
+        QCOMPARE(estimatedRemainingTime(1, 2, 3600001), QStringLiteral("1時間0分10秒"));
+        QCOMPARE(estimatedRemainingTime(0, 0, 0), QStringLiteral("0秒"));
+        QCOMPARE(estimatedRemainingTime(20, 20, 10000), QStringLiteral("0秒"));
+        QVERIFY(estimatedRemainingTime(0, 20, 10000).isEmpty());
+        QVERIFY(estimatedRemainingTime(1, -1, 10000).isEmpty());
+        QVERIFY(estimatedRemainingTime(21, 20, 10000).isEmpty());
+        QVERIFY(estimatedRemainingTime(1, 20, 0).isEmpty());
+        QVERIFY(!estimatedRemainingTime(1, std::numeric_limits<qint64>::max(),
+            std::numeric_limits<qint64>::max()).isEmpty());
+    }
+    void remainingTimeResetsPerFolderAndAccount()
+    {
+        using namespace smoothmail;
+        MainWindow window(false);
+        Account a; a.id = QStringLiteral("eta-a"); a.email = QStringLiteral("a@example.test");
+        Account b; b.id = QStringLiteral("eta-b"); b.email = QStringLiteral("b@example.test");
+        window.setAccounts({a, b});
+        window.showSyncProgress(a.id, QStringLiteral("INBOX"), 0, -1);
+        QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
+        window.showSyncProgress(a.id, QStringLiteral("INBOX"), 0, 2);
+        QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
+        QTest::qWait(20);
+        window.showSyncProgress(a.id, QStringLiteral("INBOX"), 1, 2);
+        QVERIFY(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 10秒)")));
+        const auto previous = window.statusBar()->currentMessage();
+        window.showSyncProgress(b.id, QStringLiteral("INBOX"), 0, 3);
+        QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
+        window.showSyncProgress(a.id, QStringLiteral("INBOX"), 1, 2);
+        QCOMPARE(window.statusBar()->currentMessage(), previous);
+        window.showSyncProgress(a.id, QStringLiteral("Other"), 0, -1);
+        QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
+        window.showSyncProgress(a.id, QStringLiteral("Other"), 0, 0);
+        QVERIFY(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 0秒)")));
+        window.setRefreshing(a.id, false); window.setRefreshing(a.id, true);
+        window.showSyncProgress(a.id, QStringLiteral("INBOX"), 0, 2);
+        QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
+    }
+
     void folderLoadingIndicatorsAreIndependent()
     {
         using namespace smoothmail;
@@ -240,7 +287,7 @@ private slots:
         window.showSyncProgress(account.id, QStringLiteral("Archive"), 0, -1);
         QCOMPARE(window.statusBar()->currentMessage(), QStringLiteral("test@example.test: Archive フォルダを取得中..."));
         window.showSyncProgress(account.id, QStringLiteral("Archive"), 1, 2);
-        QCOMPARE(window.statusBar()->currentMessage(), QStringLiteral("test@example.test: Archive フォルダを取得中 1 / 2 件..."));
+        QVERIFY(window.statusBar()->currentMessage().startsWith(QStringLiteral("test@example.test: Archive フォルダを取得中 1 / 2 件...")));
         window.showSyncProgress(account.id, QStringLiteral("INBOX"), 0, 0);
         QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("INBOX フォルダを取得中 0 / 0 件")));
     }
