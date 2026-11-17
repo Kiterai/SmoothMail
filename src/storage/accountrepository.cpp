@@ -59,7 +59,7 @@ QJsonArray identifiers(const QList<QByteArray> &values)
 {
     QJsonArray result; for (const auto &value : values) result.append(QString::fromLatin1(value)); return result;
 }
-QString indexMessage(QSqlDatabase &db, const QString &table, const MailRecord &record)
+QVariantList indexValues(const MailRecord &record)
 {
     const auto &doc = record.document;
     QJsonArray attachments;
@@ -71,9 +71,12 @@ QString indexMessage(QSqlDatabase &db, const QString &table, const MailRecord &r
         {"hasReply", doc.hasReplyTo}, {"to", QJsonArray::fromStringList(doc.recipients)}, {"attachments", attachments}};
     QString search = doc.subject + u'\n' + doc.senderName + u'\n' + doc.senderAddress + u'\n' + doc.recipients.join(u'\n');
     for (const auto &part : doc.parts) search += u'\n' + part.text;
-    return sql(db, QStringLiteral("INSERT OR REPLACE INTO ") + table + QStringLiteral(" VALUES(?,?,?,?,?,?,?)"),
-        {record.accountId, record.folder, record.uidValidity, record.uid, (record.seen ? 1 : 0) | (record.important ? 2 : 0),
-         QString::fromUtf8(QJsonDocument(meta).toJson(QJsonDocument::Compact)), search.toCaseFolded()});
+    return {record.accountId, record.folder, record.uidValidity, record.uid, (record.seen ? 1 : 0) | (record.important ? 2 : 0),
+         QString::fromUtf8(QJsonDocument(meta).toJson(QJsonDocument::Compact)), search.toCaseFolded()};
+}
+QString indexMessage(QSqlDatabase &db, const QString &table, const MailRecord &record)
+{
+    return sql(db, QStringLiteral("INSERT OR REPLACE INTO ") + table + QStringLiteral(" VALUES(?,?,?,?,?,?,?)"), indexValues(record));
 }
 MailRecord summaryRecord(const QSqlQuery &query, const QString &id, const QString &folder)
 {
@@ -691,16 +694,27 @@ QString AccountRepository::stageMessages(const QList<MailRecord> &messages, cons
         const diagnostics::OperationScope scope(sync.syncOperation);
         auto &db = m_state->db;
         if (messages.size() > MailPageSize || !db.transaction()) { error = QStringLiteral("同期バッチを開始できません。"); return; }
+        QSqlQuery body(db), index(db), reused(db);
+        if (!body.prepare(QStringLiteral("INSERT OR REPLACE INTO sync_messages VALUES(?,?,?,?,?,?)"))
+            || !index.prepare(QStringLiteral("INSERT OR REPLACE INTO sync_index VALUES(?,?,?,?,?,?,?)"))
+            || !reused.prepare(QStringLiteral("DELETE FROM sync_reused WHERE account=? AND uid=?"))) {
+            error = body.lastError().isValid() ? body.lastError().text()
+                : index.lastError().isValid() ? index.lastError().text() : reused.lastError().text();
+            db.rollback(); return;
+        }
+        const auto execute = [&](QSqlQuery &query, const QVariantList &values) {
+            for (qsizetype i = 0; i < values.size(); ++i) query.bindValue(int(i), values[i]);
+            if (!query.exec()) { error = query.lastError().text(); return false; }
+            query.finish(); return true;
+        };
         for (const auto &record : messages) {
             if (record.accountId != sync.syncId || record.folder != sync.syncFolder || record.uidValidity != sync.syncValidity
                 || record.uid <= 0 || record.document.rawSource.isEmpty() || record.document.rawSource.size() > MimeParser::MaxRawBytes) {
                 error = QStringLiteral("同期バッチの識別情報が不正です。"); break;
             }
-            error = sql(db, QStringLiteral("INSERT OR REPLACE INTO sync_messages VALUES(?,?,?,?,?,?)"), {record.accountId, record.folder,
-                record.uidValidity, record.uid, (record.seen ? 1 : 0) | (record.important ? 2 : 0), record.document.rawSource});
-            if (!error.isEmpty()) break;
-            error = indexMessage(db, QStringLiteral("sync_index"), record); if (!error.isEmpty()) break;
-            error = sql(db, QStringLiteral("DELETE FROM sync_reused WHERE account=? AND uid=?"), {sync.syncId, record.uid}); if (!error.isEmpty()) break;
+            if (!execute(body, {record.accountId, record.folder, record.uidValidity, record.uid,
+                    (record.seen ? 1 : 0) | (record.important ? 2 : 0), record.document.rawSource})
+                || !execute(index, indexValues(record)) || !execute(reused, {sync.syncId, record.uid})) break;
         }
         if (error.isEmpty() && !db.commit()) error = db.lastError().text();
         if (!error.isEmpty()) db.rollback();

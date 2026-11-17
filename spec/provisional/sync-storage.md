@@ -9,6 +9,8 @@
 - フォルダの最終UIDVALIDITY・件数・UIDNEXT確認と原子的公開は省略しない。
 - 複数フォルダのRecent/Allでは認証後CAPABILITYを確認し、LIST-STATUS対応時に
   LIST RETURN (STATUS (UNSEEN))を利用する。欠落分は個別STATUS、明示拒否なら通常LISTへ一度だけ戻る。
+- 新規本文の保存は100件バッチ内で3つのprepared statementを再利用する。
+  索引内容・トランザクション境界・途中失敗時のrollbackは変えない。
 
 性能改善のための内部方式。`behavior.md`の更新範囲とローカル編集の優先規則は変更しない。
 
