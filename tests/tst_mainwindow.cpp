@@ -31,6 +31,26 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void nonexistentFoldersAreNonselectableButKeepTheirChildren()
+    {
+        using namespace smoothmail;
+        QVERIFY(isSelectableFolder({}));
+        QVERIFY(isSelectableFolder({"\\HasChildren"}));
+        QVERIFY(!isSelectableFolder({"\\nOnExIsTeNt", "\\HasChildren"}));
+        QVERIFY(!isSelectableFolder({"\\Noselect"}));
+        MainWindow window(false); Account account; account.id = "gmail-root"; window.setAccounts({account});
+        window.applySnapshot(account.id, "INBOX", {{"INBOX", u'/', {}, 0},
+            {"[Gmail]", u'/', {"\\NonExistent", "\\HasChildren"}, 0},
+            {"[Gmail]/All Mail", u'/', {"\\All"}, 0}}, {}, {});
+        auto *view = window.findChild<QTreeView *>("folderTree");
+        const auto root = view->model()->match(view->model()->index(0, 0), Qt::UserRole + 1,
+            "[Gmail]", 1, Qt::MatchExactly | Qt::MatchRecursive).value(0);
+        const auto child = view->model()->match(view->model()->index(0, 0), Qt::UserRole + 1,
+            "[Gmail]/All Mail", 1, Qt::MatchExactly | Qt::MatchRecursive).value(0);
+        QVERIFY(root.isValid()); QVERIFY(child.isValid());
+        QVERIFY(!(root.flags() & Qt::ItemIsSelectable)); QVERIFY(child.flags() & Qt::ItemIsSelectable);
+        QCOMPARE(child.parent(), root);
+    }
     void remainingTimeUsesLinearPredictionAndRoundsUp()
     {
         using smoothmail::estimatedRemainingTime;

@@ -56,9 +56,11 @@ void mergeFolderFlags(QList<QByteArray> &flags, const QList<QByteArray> &incomin
 {
     // A hierarchy placeholder must not hide a selectable description of the
     // same mailbox. Preserve role/extension flags rather than dropping a row.
-    const bool selectable = !hasFolderFlag(flags, "\\Noselect") || !hasFolderFlag(incoming, "\\Noselect");
+    const bool selectable = isSelectableFolder(flags) || isSelectableFolder(incoming);
     for (const auto &flag : incoming) if (!hasFolderFlag(flags, flag)) flags.append(flag);
-    if (selectable) flags.removeIf([](const QByteArray &flag) { return flag.toUpper() == "\\NOSELECT"; });
+    if (selectable) flags.removeIf([](const QByteArray &flag) {
+        return flag.toUpper() == "\\NOSELECT" || flag.toUpper() == "\\NONEXISTENT";
+    });
     if (hasFolderFlag(flags, "\\HasChildren")) flags.removeIf([](const QByteArray &flag) {
         const auto upper = flag.toUpper(); return upper == "\\HASNOCHILDREN" || upper == "\\NOINFERIORS";
     });
@@ -456,9 +458,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             }
             QStringList selectable;
             for (auto &folder : folders) {
-                bool noSelect = false;
-                for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") noSelect = true;
-                if (noSelect) continue;
+                if (!isSelectableFolder(folder.flags)) continue;
                 selectable.append(folder.name);
                 if (singleFolder && folder.name != selected) continue;
                 if (listedUnread.contains(folder.name)) { folder.unread = listedUnread.value(folder.name); continue; }
@@ -1031,9 +1031,9 @@ void MailService::submit(const Account &account, const QString &secret, const Co
                 connect(&listing, &KIMAP::ListJob::mailBoxesReceived, &listing,
                     [&](const QList<KIMAP::MailBoxDescriptor> &boxes, const QList<QList<QByteArray>> &flags) {
                         for (qsizetype i = 0; i < boxes.size(); ++i) {
-                            bool selectable = true, drafts = false;
+                            const bool selectable = isSelectableFolder(flags.value(i));
+                            bool drafts = false;
                             for (const auto &flag : flags.value(i)) {
-                                if (flag.toUpper() == "\\NOSELECT") selectable = false;
                                 if (flag.toUpper() == "\\DRAFTS") drafts = true;
                             }
                             if (selectable && drafts && folder.isEmpty()) folder = boxes.at(i).name;

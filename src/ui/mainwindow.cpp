@@ -899,7 +899,7 @@ void MainWindow::rebuildFolders()
                 parent = items.value(path);
             }
             parent->setData(folder.unread, Qt::UserRole + 2);
-            for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") parent->setSelectable(false);
+            if (!isSelectableFolder(folder.flags)) parent->setSelectable(false);
             if (account.id == m_accountId && folder.name == m_folder) selected = parent->index();
         }
         // Only the account's direct system nodes have the fixed order.

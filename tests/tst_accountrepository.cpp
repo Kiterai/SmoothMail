@@ -26,6 +26,18 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void cachedNonexistentFolderIsNotTheDefaultSelection()
+    {
+        AccountRepository repository(":memory:"); const auto account = makeAccount("gmail-root@example.test");
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved),
+            loaded(&repository, &AccountRepository::cacheLoaded);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        repository.saveSnapshot(account.id, "[Gmail]/All Mail",
+            {{"[Gmail]", u'/', {"\\NonExistent", "\\HasChildren"}, 0}, {"[Gmail]/All Mail", u'/', {}, 0}}, {});
+        QTRY_COMPARE(saved.size(), 1);
+        repository.loadCache(account.id, true); QTRY_COMPARE(loaded.size(), 1);
+        QCOMPARE(loaded.first().at(1).toString(), QStringLiteral("[Gmail]/All Mail"));
+    }
     void isolatesConcurrentStagesWithinOneAccount()
     {
         AccountRepository repository(QStringLiteral(":memory:"));

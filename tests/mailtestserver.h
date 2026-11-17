@@ -104,6 +104,8 @@ public:
     bool provideMailbox = false;
     bool duplicateInboxListing = false;
     QList<QByteArray> listResponses, listTailResponses;
+    QList<QByteArray> extendedListResponses;
+    QSet<QByteArray> nonSelectableFolders;
     int listTailDelayMs = 0;
     QSet<QByteArray> extraFolders;
     bool rejectFolderChanges = false;
@@ -277,7 +279,8 @@ private:
                 for (auto it = data.cbegin(); it != data.cend(); ++it) if (!flags.value(it.key()).contains("\\Seen")) ++unseen;
                 write("* STATUS \"" + name + "\" (UNSEEN " + QByteArray::number(unseen) + ')');
             };
-            if (!listResponses.isEmpty()) { for (const auto &response : listResponses) write(response); }
+            const auto &responses = extended && !extendedListResponses.isEmpty() ? extendedListResponses : listResponses;
+            if (!responses.isEmpty()) { for (const auto &response : responses) write(response); }
             else {
                 write("* LIST (\\HasNoChildren) \"/\" \"INBOX\"");
                 status("INBOX");
@@ -311,6 +314,9 @@ private:
             write(m_tag + " OK changed");
         } else if (provideMailbox && command == "STATUS") {
             const auto mailbox = line.split('"').value(1);
+            if (nonSelectableFolders.contains(mailbox)) {
+                write(m_tag + " NO [NONEXISTENT] Invalid folder: " + mailbox + " (Failure)"); return;
+            }
             const auto &data = mailbox == "INBOX" ? messages : folderMessages[mailbox];
             const auto &flags = mailbox == "INBOX" ? messageFlags : folderFlags[mailbox];
             qint64 unseen = 0;
@@ -319,6 +325,9 @@ private:
             write(m_tag + " OK status completed");
         } else if (provideMailbox && (command == "EXAMINE" || command == "SELECT")) {
             m_selected = line.split('"').value(1);
+            if (nonSelectableFolders.contains(m_selected)) {
+                write(m_tag + " NO [NONEXISTENT] Invalid folder: " + m_selected + " (Failure)"); return;
+            }
             const auto &data = selectedMessages();
             write("* FLAGS (\\Seen \\Flagged)");
             write("* " + QByteArray::number(advertisedMessageCount < 0 ? data.size() : advertisedMessageCount) + " EXISTS");

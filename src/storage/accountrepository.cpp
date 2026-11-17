@@ -495,7 +495,7 @@ void AccountRepository::loadCache(const QString &id, bool metadataOnly)
             for (auto &folder : folders) { QString remote; bool exists = true; const auto mappingError = serverFolder(m_state->db, id, folder.name, remote, exists); if (!mappingError.isEmpty()) { fail(mappingError); return; } folder.unread = qMax<qint64>(0, folder.unread + unreadChanges.value(remote)); }
             QString selected;
             for (const auto &folder : folders) {
-                bool selectable = true; for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") selectable = false;
+                const bool selectable = isSelectableFolder(folder.flags);
                 if (selectable) { selected = folder.name; break; }
             }
             emit cacheLoaded(id, selected, folders, {}); return;
@@ -976,7 +976,7 @@ void AccountRepository::setMoveIntent(const QString &handle, const MailRecord &i
             if (error.isEmpty()) error = journal(db, initial.accountId, operations);
             overlayFolders(folders, operations);
             bool found = false;
-            for (const auto &folder : folders) if (folder.name == destination) { found = true; for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") found = false; break; }
+            for (const auto &folder : folders) if (folder.name == destination) { found = isSelectableFolder(folder.flags); break; }
             if (error.isEmpty() && !found) error = QStringLiteral("移動先フォルダが存在しないか選択できません。");
         }
         if (error.isEmpty()) error = serverFolder(db, initial.accountId, destination, target, exists);

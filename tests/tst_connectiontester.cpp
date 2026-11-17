@@ -21,6 +21,57 @@ class ConnectionTesterTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void gmailHierarchyRootIsNeverFetched_data()
+    {
+        QTest::addColumn<bool>("extended"); QTest::addColumn<QString>("root"); QTest::addColumn<int>("parallel");
+        QTest::newRow("plain-gmail") << false << QStringLiteral("[Gmail]") << 1;
+        QTest::newRow("extended-gmail") << true << QStringLiteral("[Gmail]") << 1;
+        QTest::newRow("extended-gmail-parallel") << true << QStringLiteral("[Gmail]") << 4;
+        QTest::newRow("extended-generic") << true << QStringLiteral("Container") << 4;
+    }
+    void gmailHierarchyRootIsNeverFetched()
+    {
+        QFETCH(bool, extended); QFETCH(QString, root); QFETCH(int, parallel);
+        MailTestServer server(MailTestServer::Protocol::Imap, {"PLAIN"});
+        server.provideMailbox = true; server.supportListStatus = extended;
+        const auto wireRoot = root.toUtf8(), child = wireRoot + "/All Mail";
+        server.nonSelectableFolders.insert(wireRoot);
+        server.listResponses = {"* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
+            "* LIST (\\Noselect \\HasChildren) \"/\" \"" + wireRoot + '"',
+            "* LIST (\\HasNoChildren \\All) \"/\" \"" + child + '"'};
+        server.extendedListResponses = {"* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
+            "* LIST (\\nOnExIsTeNt \\HasChildren) \"/\" \"" + wireRoot + '"',
+            "* LIST (\\HasNoChildren \\All) \"/\" \"" + child + '"'};
+        server.messages[1] = "Subject: inbox\r\n\r\ninbox body";
+        server.extraFolders.insert(child); server.folderMessages[child][1] = "Subject: child\r\n\r\nchild body";
+        QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), "gmail-fixture@example.test",
+            {"127.0.0.1", 465, "test"}, {"127.0.0.1", server.port(), "test", AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(":memory:"); QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); service.setSyncConcurrency(parallel);
+        QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
+        const auto error = result.first().at(4).toString(); QVERIFY2(error.isEmpty(), qPrintable(error));
+        const auto folders = qvariant_cast<QList<MailFolder>>(result.first().at(2));
+        QCOMPARE(folders.size(), 3); QCOMPARE(server.fullFetchCount, 2);
+        bool foundRoot = false;
+        for (const auto &folder : folders) if (folder.name == root) {
+            foundRoot = true;
+            bool placeholder = false;
+            for (const auto &flag : folder.flags) if (flag.toUpper() == (extended ? "\\NONEXISTENT" : "\\NOSELECT")) placeholder = true;
+            QVERIFY(placeholder);
+        }
+        QVERIFY(foundRoot);
+        for (const auto &command : server.commands)
+            if (command.contains(" STATUS ") || command.contains(" SELECT ") || command.contains(" EXAMINE "))
+                QVERIFY2(!command.contains('"' + wireRoot + '"'), command.constData());
+        MailQuery query; query.accountId = account.id; query.folder = QString::fromUtf8(child);
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        const auto page = qvariant_cast<MailPage>(pages.takeFirst().first());
+        QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().document.subject, QStringLiteral("child"));
+    }
     void sharedSyncBudgetPrioritizesAccountsAndHonorsShrink()
     {
         SyncBudget budget(4);
@@ -345,6 +396,9 @@ private slots:
         QTest::newRow("non-inbox-case-distinct") << 6;
         QTest::newRow("raw-response-limit") << 7;
         QTest::newRow("inbox-case-normalized") << 8;
+        QTest::newRow("nonexistent-before-selectable") << 9;
+        QTest::newRow("selectable-before-nonexistent") << 10;
+        QTest::newRow("both-nonexistent") << 11;
     }
     void duplicateFolderListingIsMergedBeforeFetching()
     {
@@ -369,6 +423,10 @@ private slots:
         if (kind == 6) server.listResponses = {inbox, "* LIST () \"/\" \"Archive\"", "* LIST () \"/\" \"archive\""};
         if (kind == 7) for (int i = 0; i < 10001; ++i) server.listResponses.append(inbox);
         if (kind == 8) server.listResponses = {"* LIST () \"/\" \"inbox\"", inbox};
+        const QByteArray nonExistent("* LIST (\\NonExistent \\HasChildren \\X-Placeholder) \"/\" \"INBOX\"");
+        if (kind == 9) server.listResponses = {nonExistent, selectable};
+        if (kind == 10) server.listResponses = {selectable, nonExistent};
+        if (kind == 11) server.listResponses = {nonExistent, nonExistent};
         server.messages.insert(7, "Subject: synthetic fixture\r\n\r\nsynthetic body");
         Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("private-account@example.test"), {QStringLiteral("127.0.0.1"), 465, QStringLiteral("test")}, {QStringLiteral("127.0.0.1"), server.port(), QStringLiteral("test"), AuthenticationMode::Plain, EncryptionMode::None}};
         AccountRepository cache(QStringLiteral(":memory:")); QSignalSpy inserted(&cache, &AccountRepository::inserted);
@@ -407,25 +465,27 @@ private slots:
             if (command.contains(" STATUS \"INBOX\" ")) ++statuses;
             if (command.contains(" EXAMINE \"INBOX\"") || command.contains(" SELECT \"INBOX\"")) ++selections;
         }
-        QCOMPARE(statuses, kind == 4 ? 0 : 1);
+        const bool unselectable = kind == 4 || kind == 11;
+        QCOMPARE(statuses, unselectable ? 0 : 1);
         // One initial SELECT/EXAMINE and one final UIDVALIDITY/count/UIDNEXT
         // verification; duplicate LIST rows must not start a second such pair.
-        QCOMPARE(selections, kind == 4 ? 0 : 2);
+        QCOMPARE(selections, unselectable ? 0 : 2);
         if (kind == 1) {
             int batches = 0;
             for (const auto &line : log.split('\n')) if (line.contains(" sync-list-batch ") && line.endsWith(suffix)) ++batches;
             QVERIFY(batches >= 2); // KIMAP's 100 ms emission timer must have split this response.
         }
-        if (kind == 2 || kind == 3 || kind == 4) {
+        if (kind == 2 || kind == 3 || kind == 4 || kind >= 9) {
             QSet<QByteArray> flags; for (const auto &flag : folders.first().flags) flags.insert(flag.toUpper());
             QCOMPARE(flags.contains("\\NOSELECT"), kind == 4); QVERIFY(flags.contains("\\HASCHILDREN")); QVERIFY(!flags.contains("\\HASNOCHILDREN")); QVERIFY(!flags.contains("\\NOINFERIORS"));
+            QCOMPARE(flags.contains("\\NONEXISTENT"), kind == 11);
             QVERIFY(flags.contains("\\X-PLACEHOLDER"));
-            if (kind != 4) { QVERIFY(flags.contains("\\MARKED")); QVERIFY(flags.contains("\\X-SELECTABLE")); }
+            if (!unselectable) { QVERIFY(flags.contains("\\MARKED")); QVERIFY(flags.contains("\\X-SELECTABLE")); }
         }
         QSignalSpy pages(&cache, &AccountRepository::pageLoaded); MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX");
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
-        const auto page = qvariant_cast<MailPage>(pages.first().first()); QVERIFY(page.error.isEmpty()); QCOMPARE(page.total, kind == 4 ? 0 : 1);
-        QCOMPARE(server.fullFetchCount, kind == 4 ? 0 : 1);
+        const auto page = qvariant_cast<MailPage>(pages.first().first()); QVERIFY(page.error.isEmpty()); QCOMPARE(page.total, unselectable ? 0 : 1);
+        QCOMPARE(server.fullFetchCount, unselectable ? 0 : 1);
         if (kind == 0) {
             QSignalSpy queued(&cache, &AccountRepository::folderQueued);
             cache.queueFolder(account.id, QStringLiteral("create"), {}, QStringLiteral("Created")); QTRY_COMPARE(queued.size(), 1); QVERIFY(queued.first().at(1).toString().isEmpty());

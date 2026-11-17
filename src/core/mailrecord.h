@@ -3,6 +3,14 @@
 #include <QMetaType>
 
 namespace smoothmail {
+// RFC 5258: \NonExistent implies \NoSelect, even if the server omits it.
+inline bool isSelectableFolder(const QList<QByteArray> &flags)
+{
+    for (const auto &flag : flags)
+        if (flag.compare("\\Noselect", Qt::CaseInsensitive) == 0
+            || flag.compare("\\NonExistent", Qt::CaseInsensitive) == 0) return false;
+    return true;
+}
 struct MailFolder {
     QString name;
     QChar separator;
