@@ -594,8 +594,9 @@ void MainWindow::setAccounts(const QList<Account> &accounts)
 
 void MainWindow::setRefreshing(const QString &id, bool refreshing)
 {
-    if (refreshing) m_refreshing.insert(id); else m_refreshing.remove(id);
-    rebuildFolders();
+    if (refreshing) m_refreshing.insert(id);
+    else { m_refreshing.remove(id); m_loadingFolders.remove(id); }
+    updateFolderIndicators();
     if (refreshing) {
         for (const auto &account : m_accounts) if (account.id == id) statusBar()->showMessage(account.email + QStringLiteral(" のデータを取得中..."));
     }
@@ -743,6 +744,10 @@ void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &
 }
 void MainWindow::showSyncProgress(const QString &id, const QString &folder, qint64 done, qint64 total)
 {
+    if (m_loadingFolders.value(id) != folder) {
+        m_loadingFolders[id] = folder;
+        updateFolderIndicators();
+    }
     for (const auto &account : m_accounts) if (account.id == id)
         statusBar()->showMessage(QStringLiteral("%1: %2 フォルダを取得中").arg(account.email, folder)
             + (total < 0 ? QStringLiteral("...") : QStringLiteral(" %1 / %2 件...").arg(done).arg(total)));
@@ -883,8 +888,28 @@ void MainWindow::rebuildFolders()
         for (int i = 0; i < item->rowCount(); ++i) restore(item->child(i));
     };
     for (int i = 0; i < m_folders->rowCount(); ++i) restore(m_folders->item(i));
+    updateFolderIndicators();
     m_folderView->verticalScrollBar()->setValue(scroll);
     m_rebuilding = false;
+}
+
+void MainWindow::updateFolderIndicators()
+{
+    const std::function<void(QStandardItem *)> update = [&](QStandardItem *item) {
+        const auto id = item->data(Qt::UserRole).toString();
+        const auto path = item->data(Qt::UserRole + 1).toString();
+        if (!item->parent()) {
+            item->setIcon(m_refreshing.contains(id) || m_loadingFolders.contains(id)
+                ? style()->standardIcon(QStyle::SP_BrowserReload)
+                : m_syncErrors.contains(id) ? style()->standardIcon(QStyle::SP_MessageBoxWarning) : QIcon{});
+        } else if (!item->data(FolderModel::GroupRole).toBool()) {
+            const int kind = item->parent()->parent() ? -1 : systemFolders.indexOf(path);
+            item->setIcon(m_loadingFolders.contains(id) && m_loadingFolders.value(id) == path
+                ? style()->standardIcon(QStyle::SP_BrowserReload) : folderIcon(kind, palette()));
+        }
+        for (int i = 0; i < item->rowCount(); ++i) update(item->child(i));
+    };
+    for (int i = 0; i < m_folders->rowCount(); ++i) update(m_folders->item(i));
 }
 
 void MainWindow::changeEvent(QEvent *event)
@@ -898,6 +923,7 @@ void MainWindow::clearAccountCache(const QString &id)
 {
     if (m_accountId == id) { ++m_queryGeneration; m_loadedMessage.reset(); }
     m_mailCache.remove(id); m_folderCache.remove(id); m_syncErrors.remove(id); m_refreshing.remove(id);
+    m_loadingFolders.remove(id);
     if (m_accountId == id) {
         m_accountId.clear(); m_folder.clear(); rebuildMessages();
         if (m_pagedStorage) requestPage();

@@ -98,6 +98,7 @@ private:
     void createTray();
     void restoreWindow();
     void rebuildFolders();
+    void updateFolderIndicators();
     void rebuildMessages();
     void changeFlag(int row, bool importantFlag, bool enabled, bool automatic = false);
 
@@ -111,6 +112,7 @@ private:
     QHash<QString, QHash<QString, QList<MailRecord>>> m_mailCache;
     QList<MailRecord> m_visibleMessages;
     QSet<QString> m_refreshing;
+    QHash<QString, QString> m_loadingFolders;
     QString m_accountId;
     QString m_folder;
     bool m_rebuilding = false;

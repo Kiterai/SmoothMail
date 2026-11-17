@@ -30,6 +30,48 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void folderLoadingIndicatorsAreIndependent()
+    {
+        using namespace smoothmail;
+        MainWindow window(false);
+        Account a; a.id = QStringLiteral("loading-a");
+        Account b; b.id = QStringLiteral("loading-b");
+        window.setAccounts({a, b});
+        const QList<MailFolder> folders{{QStringLiteral("INBOX"), u'/', {}, 0},
+            {QStringLiteral("Other/Child"), u'/', {}, 0}};
+        window.applySnapshot(a.id, QStringLiteral("INBOX"), folders, {}, {});
+        window.applySnapshot(b.id, QStringLiteral("INBOX"), folders, {}, {});
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("folderTree"));
+        auto *model = view->model();
+        const auto find = [&](int account, const QString &path) {
+            const auto matches = model->match(model->index(0, 0, model->index(account, 0)),
+                Qt::UserRole + 1, path, 1, Qt::MatchExactly | Qt::MatchRecursive);
+            return matches.value(0);
+        };
+        const auto image = [](const QModelIndex &index) { return qvariant_cast<QIcon>(index.data(Qt::DecorationRole)).pixmap(20, 20).toImage(); };
+        const auto aInbox = find(0, QStringLiteral("INBOX")), aChild = find(0, QStringLiteral("Other/Child"));
+        const auto bInbox = find(1, QStringLiteral("INBOX"));
+        const auto normalInbox = image(aInbox), normalChild = image(aChild);
+        QSignalSpy reset(model, &QAbstractItemModel::rowsRemoved);
+        window.setRefreshing(a.id, true); window.setRefreshing(b.id, true);
+        window.showSyncProgress(a.id, QStringLiteral("INBOX"), 0, -1);
+        window.showSyncProgress(b.id, QStringLiteral("INBOX"), 0, -1);
+        QVERIFY(image(aInbox) != normalInbox); QVERIFY(image(bInbox) != normalInbox);
+        window.showSyncProgress(a.id, QStringLiteral("Other/Child"), 0, -1);
+        QCOMPARE(image(aInbox), normalInbox); QVERIFY(image(aChild) != normalChild);
+        window.showSyncProgress(a.id, QStringLiteral("Other/Child"), 1, 2);
+        QCOMPARE(reset.size(), 0); // Progress updates do not rebuild the model.
+        window.setRefreshing(a.id, false);
+        QCOMPARE(image(aChild), normalChild); QVERIFY(image(bInbox) != normalInbox);
+        window.setRefreshing(b.id, false); QCOMPARE(image(bInbox), normalInbox);
+        QVERIFY(qvariant_cast<QIcon>(model->index(0, 0).data(Qt::DecorationRole)).isNull());
+        window.applySnapshot(a.id, {}, {}, {}, QStringLiteral("failed"));
+        QVERIFY(!qvariant_cast<QIcon>(model->index(0, 0).data(Qt::DecorationRole)).isNull());
+        window.showSyncProgress(a.id, QStringLiteral("INBOX"), 0, -1);
+        window.setRefreshing(a.id, false);
+        QCOMPARE(image(find(0, QStringLiteral("INBOX"))), normalInbox);
+    }
+
     void systemFoldersAndCollapsedGroup()
     {
         using namespace smoothmail;
