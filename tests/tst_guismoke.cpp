@@ -118,7 +118,7 @@ private slots:
         std::vector<std::unique_ptr<MailTestServer>> servers; QList<Account> accounts;
         for (int i = 0; i < 4; ++i) {
             auto server = std::make_unique<MailTestServer>(MailTestServer::Protocol::Imap, QStringList{QStringLiteral("PLAIN")});
-            server->provideMailbox = true; server->pauseHeaders = true;
+            server->provideMailbox = true; server->pauseMetadata = true;
             server->messages.insert(1, "Subject: parallel " + QByteArray::number(i) + "\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nbody");
             QVERIFY(server->listen());
             accounts.append({QUuid::createUuid().toString(QUuid::WithoutBraces), QStringLiteral("parallel%1@example.test").arg(i),
@@ -150,26 +150,26 @@ private slots:
             for (auto *mail : controller.findChildren<MailService *>()) connect(mail, &MailService::synchronized, &window,
                 [&](const QString &id, const QString &, const QList<MailFolder> &, const QList<MailRecord> &, const QString &error) { results[id] = error; });
             window.fullRefreshRequested();
-            QTRY_VERIFY_WITH_TIMEOUT(servers[0]->pausedHeaderCount() > 0 && servers[1]->pausedHeaderCount() > 0, 15000);
+            QTRY_VERIFY_WITH_TIMEOUT(servers[0]->pausedMetadataCount() > 0 && servers[1]->pausedMetadataCount() > 0, 15000);
             QTest::qWait(150); QVERIFY(!servers[2]->receivedAuthentication()); QVERIFY(!servers[3]->receivedAuthentication());
             // Decreasing the limit drains existing work without cancelling it.
             action(window, "systemSettingsAction")->trigger();
             QPointer<SystemSettingsDialog> settings = window.findChild<SystemSettingsDialog *>(); QVERIFY(settings);
             settings->findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"))->setValue(1);
             settings->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click(); QTRY_VERIFY(settings.isNull());
-            servers[0]->disconnectOnBodyFetch = true; servers[0]->resumeHeaders();
+            servers[0]->disconnectOnBodyFetch = true; servers[0]->resumeMetadata();
             QTRY_VERIFY_WITH_TIMEOUT(results.contains(accounts[0].id), 15000); QVERIFY(!results.value(accounts[0].id).isEmpty());
             QVERIFY(!servers[2]->receivedAuthentication()); QVERIFY(!servers[3]->receivedAuthentication());
             // Delete only the paused account; the next account must progress.
             window.deleteAccountRequested(accounts[1].id);
             QTRY_COMPARE(tree->model()->rowCount(), 3);
-            QTRY_VERIFY_WITH_TIMEOUT(servers[2]->pausedHeaderCount() > 0, 15000);
+            QTRY_VERIFY_WITH_TIMEOUT(servers[2]->pausedMetadataCount() > 0, 15000);
             QVERIFY(!servers[3]->receivedAuthentication());
             action(window, "systemSettingsAction")->trigger(); settings = window.findChild<SystemSettingsDialog *>(); QVERIFY(settings);
             settings->findChild<QSpinBox *>(QStringLiteral("settingsParallelUpdates"))->setValue(2);
             settings->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click(); QTRY_VERIFY(settings.isNull());
-            QTRY_VERIFY_WITH_TIMEOUT(servers[3]->pausedHeaderCount() > 0, 15000);
-            servers[3]->resumeHeaders(); servers[2]->resumeHeaders();
+            QTRY_VERIFY_WITH_TIMEOUT(servers[3]->pausedMetadataCount() > 0, 15000);
+            servers[3]->resumeMetadata(); servers[2]->resumeMetadata();
             QTRY_VERIFY_WITH_TIMEOUT(results.contains(accounts[2].id) && results.contains(accounts[3].id), 15000);
             QVERIFY(results.value(accounts[2].id).isEmpty()); QVERIFY(results.value(accounts[3].id).isEmpty());
         }
@@ -519,7 +519,7 @@ private slots:
     {
         MailTestServer oldServer(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")}), nextServer(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
         MailTestServer smtp(MailTestServer::Protocol::Smtp, {QStringLiteral("PLAIN")});
-        oldServer.provideMailbox = nextServer.provideMailbox = true; oldServer.pauseHeaders = true;
+        oldServer.provideMailbox = nextServer.provideMailbox = true; oldServer.pauseMetadata = true;
         oldServer.messages.insert(1, "Subject: old snapshot\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nold body");
         nextServer.messages.insert(9, "Subject: new snapshot\r\nDate: Fri, 13 Nov 2026 10:00:00 +0000\r\n\r\nnew body");
         QVERIFY(oldServer.listen()); QVERIFY(nextServer.listen()); QVERIFY(smtp.listen());
@@ -538,23 +538,23 @@ private slots:
         MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
         QTRY_COMPARE(window.findChild<QTreeView *>(QStringLiteral("messageList"))->model()->rowCount(), 1);
         QVERIFY(oldServer.commands.isEmpty()); action(window, "refreshAction")->trigger();
-        QTRY_COMPARE_WITH_TIMEOUT(oldServer.pausedHeaderCount(), 1, 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(oldServer.pausedMetadataCount(), 1, 10000);
         auto *folders = window.findChild<QTreeView *>(QStringLiteral("folderTree")); auto *messages = window.findChild<QTreeView *>(QStringLiteral("messageList")); QTRY_COMPARE(messages->model()->rowCount(), 1);
         window.folderOperationRequested(account.id, QStringLiteral("create"), {}, QStringLiteral("Offline")); QTRY_VERIFY(folderIndex(folders, QStringLiteral("Offline")).isValid()); QVERIFY(!oldServer.extraFolders.contains("Offline"));
         action(window, "composeAction")->trigger(); QPointer<ComposeDialog> compose = window.findChild<ComposeDialog *>(); QVERIFY(compose);
         compose->findChild<QLineEdit *>(QStringLiteral("composeTo"))->setText(QStringLiteral("receiver@example.test")); compose->findChild<QLineEdit *>(QStringLiteral("composeSubject"))->setText(QStringLiteral("send during fetch"));
         compose->findChild<QPlainTextEdit *>(QStringLiteral("composeBody"))->setPlainText(QStringLiteral("synthetic body")); QTest::mouseClick(compose->findChild<QPushButton *>(QStringLiteral("composeSend")), Qt::LeftButton);
-        QTRY_COMPARE_WITH_TIMEOUT(smtp.deliveredMessages.size(), 1, 10000); QTRY_VERIFY(compose.isNull()); QCOMPARE(oldServer.pausedHeaderCount(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(smtp.deliveredMessages.size(), 1, 10000); QTRY_VERIFY(compose.isNull()); QCOMPARE(oldServer.pausedMetadataCount(), 1);
         contextAction(folders, folders->model()->index(0, 0), QStringLiteral("アカウントの編集")); QPointer<AccountDialog> dialog = window.findChild<AccountDialog *>(); QVERIFY(dialog); QTRY_VERIFY(dialog->isEnabled());
         dialog->findChild<QSpinBox *>(QStringLiteral("IMAP4Port"))->setValue(nextServer.port()); dialog->findChild<QLineEdit *>(QStringLiteral("accountEmail"))->setText(QStringLiteral("changed@example.test"));
         QTest::mouseClick(dialog->findChild<QPushButton *>(QStringLiteral("connectionTest")), Qt::LeftButton);
         QTRY_VERIFY_WITH_TIMEOUT(dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->isEnabled(), 15000); nextServer.commands.clear();
         QTest::mouseClick(dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok), Qt::LeftButton); QTRY_VERIFY(dialog.isNull());
         QTRY_VERIFY(folders->model()->index(0, 0).data().toString().startsWith(QStringLiteral("changed@example.test"))); QVERIFY(nextServer.commands.isEmpty());
-        oldServer.resumeHeaders(); QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000); QVERIFY(nextServer.commands.isEmpty());
+        oldServer.resumeMetadata(); QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000); QVERIFY(nextServer.commands.isEmpty());
         action(window, "refreshAction")->trigger(); QTRY_VERIFY_WITH_TIMEOUT(nextServer.receivedAuthentication(), 10000); QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), QStringLiteral("更新しました。"), 15000);
         QTRY_COMPARE(messages->model()->index(0, 3).data().toString(), QStringLiteral("new snapshot")); QVERIFY(!nextServer.extraFolders.contains("Offline"));
-        nextServer.pauseHeaders = true; action(window, "refreshAction")->trigger(); QTRY_COMPARE_WITH_TIMEOUT(nextServer.pausedHeaderCount(), 1, 10000);
+        nextServer.pauseMetadata = true; action(window, "refreshAction")->trigger(); QTRY_COMPARE_WITH_TIMEOUT(nextServer.pausedMetadataCount(), 1, 10000);
         QElapsedTimer elapsed; elapsed.start(); window.deleteAccountRequested(account.id);
         QTRY_COMPARE_WITH_TIMEOUT(folders->model()->rowCount(), 0, 3000);
         const auto services = controller.findChildren<MailService *>();

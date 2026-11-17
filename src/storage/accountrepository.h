@@ -9,6 +9,7 @@
 #include "core/pendingmove.h"
 #include <QObject>
 #include <QThread>
+#include <QSet>
 #include <atomic>
 
 namespace smoothmail {
@@ -63,6 +64,8 @@ public:
     // The empty default is retained for legacy, single-session consumers.
     QString beginSync(const QString &id, const QString &folder, qint64 validity, const QDateTime &boundary = {}, quint64 operation = 0);
     QString stageMessages(const QList<MailRecord> &messages, const QString &accountId = {});
+    struct SyncFlags { qint64 uid; bool seen = false, important = false; };
+    QString reuseMessages(const QList<SyncFlags> &messages, QSet<qint64> &found, const QString &accountId = {});
     QString reuseMessage(qint64 uid, bool seen, bool important, bool &found, const QString &accountId = {});
     QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly = false, const QString &accountId = {});
     QString resolveSyncFolder(const QString &id, const QString &local, QString &remote, bool &exists);
