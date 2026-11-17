@@ -277,6 +277,13 @@ MainWindow::MainWindow(bool enableSystemTray, QWidget *parent)
         m_lastUpdated->setText(QStringLiteral("最終更新: %1 (%2)").arg(displayUpdateTime(m_lastSuccess), ago));
     });
     statusBar()->showMessage(QStringLiteral("アカウント設定を読み込み中..."));
+    auto *progressClock = new QTimer(this);
+    progressClock->start(100);
+    connect(progressClock, &QTimer::timeout, this, [this] {
+        if (m_loadingFolders.value(m_progressAccount).contains(m_progressFolder)
+            && m_syncEstimates[m_progressAccount][m_progressFolder].displayed.elapsed() >= 3000)
+            renderSyncProgress(m_progressAccount, m_progressFolder);
+    });
     if (enableSystemTray && QSystemTrayIcon::isSystemTrayAvailable()) {
         createTray();
     }
@@ -746,24 +753,40 @@ void MainWindow::displayLoadedMessage(const MailRecord &message, const QString &
 }
 void MainWindow::showSyncProgress(const QString &id, const QString &folder, qint64 done, qint64 total)
 {
-    if (m_loadingFolders.value(id) != folder) {
-        m_loadingFolders[id] = folder;
+    if (!m_loadingFolders.value(id).contains(folder)) {
+        m_loadingFolders[id].insert(folder);
         updateFolderIndicators();
     }
-    auto &estimate = m_syncEstimates[id];
+    auto &estimate = m_syncEstimates[id][folder];
+    bool immediate = !estimate.displayed.isValid();
     if (estimate.folder != folder || total < 0 || estimate.total != total || done < estimate.completed) {
         estimate = SyncEstimate{};
         estimate.folder = folder; estimate.total = total;
+        immediate = true;
     }
     if (total >= 0 && !estimate.timer.isValid()) estimate.timer.start();
-    if (total >= 0 && done != estimate.completed) {
-        estimate.remaining = estimatedRemainingTime(done, total, estimate.timer.elapsed());
-        estimate.completed = done;
-    }
+    estimate.completed = done;
+    m_progressAccount = id; m_progressFolder = folder;
+    if (immediate || (total >= 0 && done == total)) renderSyncProgress(id, folder);
+}
+void MainWindow::renderSyncProgress(const QString &id, const QString &folder)
+{
+    auto &estimate = m_syncEstimates[id][folder];
+    const auto done = estimate.completed, total = estimate.total;
+    estimate.remaining = total >= 0 && estimate.timer.isValid()
+        ? estimatedRemainingTime(done, total, estimate.timer.elapsed()) : QString{};
+    estimate.displayed.start();
     for (const auto &account : m_accounts) if (account.id == id)
         statusBar()->showMessage(QStringLiteral("%1: %2 フォルダを取得中").arg(account.email, folder)
             + (total < 0 ? QStringLiteral("...") : QStringLiteral(" %1 / %2 件...").arg(done).arg(total))
             + (estimate.remaining.isEmpty() ? QString{} : QStringLiteral(" (残り %1)").arg(estimate.remaining)));
+}
+void MainWindow::finishSyncFolder(const QString &id, const QString &folder)
+{
+    m_loadingFolders[id].remove(folder);
+    if (m_loadingFolders.value(id).isEmpty()) m_loadingFolders.remove(id);
+    m_syncEstimates[id].remove(folder);
+    updateFolderIndicators();
 }
 void MainWindow::applySettings(const SystemSettings &settings)
 {
@@ -917,7 +940,7 @@ void MainWindow::updateFolderIndicators()
                 : m_syncErrors.contains(id) ? style()->standardIcon(QStyle::SP_MessageBoxWarning) : QIcon{});
         } else if (!item->data(FolderModel::GroupRole).toBool()) {
             const int kind = item->parent()->parent() ? -1 : systemFolders.indexOf(path);
-            item->setIcon(m_loadingFolders.contains(id) && m_loadingFolders.value(id) == path
+            item->setIcon(m_loadingFolders.value(id).contains(path)
                 ? style()->standardIcon(QStyle::SP_BrowserReload) : folderIcon(kind, palette()));
         }
         for (int i = 0; i < item->rowCount(); ++i) update(item->child(i));

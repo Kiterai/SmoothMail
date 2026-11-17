@@ -80,12 +80,13 @@ private slots:
         QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
         QTest::qWait(20);
         window.showSyncProgress(a.id, QStringLiteral("INBOX"), 1, 2);
-        QVERIFY(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 10秒)")));
+        QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("1 / 2")));
+        QTRY_VERIFY_WITH_TIMEOUT(window.statusBar()->currentMessage().endsWith(QStringLiteral("(残り 10秒)")), 4000);
         const auto previous = window.statusBar()->currentMessage();
         window.showSyncProgress(b.id, QStringLiteral("INBOX"), 0, 3);
         QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
         window.showSyncProgress(a.id, QStringLiteral("INBOX"), 1, 2);
-        QCOMPARE(window.statusBar()->currentMessage(), previous);
+        QTRY_COMPARE_WITH_TIMEOUT(window.statusBar()->currentMessage(), previous, 4000);
         window.showSyncProgress(a.id, QStringLiteral("Other"), 0, -1);
         QVERIFY(!window.statusBar()->currentMessage().contains(QStringLiteral("残り")));
         window.showSyncProgress(a.id, QStringLiteral("Other"), 0, 0);
@@ -123,7 +124,9 @@ private slots:
         window.showSyncProgress(b.id, QStringLiteral("INBOX"), 0, -1);
         QVERIFY(image(aInbox) != normalInbox); QVERIFY(image(bInbox) != normalInbox);
         window.showSyncProgress(a.id, QStringLiteral("Other/Child"), 0, -1);
-        QCOMPARE(image(aInbox), normalInbox); QVERIFY(image(aChild) != normalChild);
+        QVERIFY(image(aInbox) != normalInbox); QVERIFY(image(aChild) != normalChild);
+        window.finishSyncFolder(a.id, QStringLiteral("INBOX"));
+        QCOMPARE(image(aInbox), normalInbox);
         window.showSyncProgress(a.id, QStringLiteral("Other/Child"), 1, 2);
         QCOMPARE(reset.size(), 0); // Progress updates do not rebuild the model.
         window.setRefreshing(a.id, false);

@@ -49,6 +49,7 @@ public:
     void applyPage(const MailPage &page);
     void displayLoadedMessage(const MailRecord &message, const QString &error);
     void showSyncProgress(const QString &id, const QString &folder, qint64 done, qint64 total);
+    void finishSyncFolder(const QString &id, const QString &folder);
     void followFolderRename(const QString &id, const QString &source, const QString &destination);
     void applySettings(const SystemSettings &settings);
     QByteArray messageColumns() const;
@@ -113,14 +114,17 @@ private:
     QHash<QString, QHash<QString, QList<MailRecord>>> m_mailCache;
     QList<MailRecord> m_visibleMessages;
     QSet<QString> m_refreshing;
-    QHash<QString, QString> m_loadingFolders;
+    QHash<QString, QSet<QString>> m_loadingFolders;
     struct SyncEstimate {
         QString folder;
         QElapsedTimer timer;
+        QElapsedTimer displayed;
         qint64 total = -1, completed = -1;
         QString remaining;
     };
-    QHash<QString, SyncEstimate> m_syncEstimates;
+    QHash<QString, QHash<QString, SyncEstimate>> m_syncEstimates;
+    QString m_progressAccount, m_progressFolder;
+    void renderSyncProgress(const QString &id, const QString &folder);
     QString m_accountId;
     QString m_folder;
     bool m_rebuilding = false;
