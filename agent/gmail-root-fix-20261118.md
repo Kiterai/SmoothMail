@@ -83,3 +83,17 @@
   通常配置への反映は利用者による終了確認待ち。
 - 実Gmail認証・実メールへの接続は行っていない。実サービスでの再確認は利用者の試用が必要。
   DBや設定のリセット、SDK/ACL/Git global設定の変更も行っていない。
+
+## 通常配置への反映（利用者の終了確認後）
+
+- 利用者の「終了しました。」を受け、Smoothmailプロセスが検出されないこと、
+  反映前の通常EXEが上記4bd210ef…54a92であることを確認した。
+- 検証済みReleaseを同じ親の一時配置へコピーし、manifest360ファイルと全361ファイルの
+  inventoryを照合してから通常runを置換。配置後も同じ照合に成功した。
+- 現在の起動先 **`build/rel/run/launch.cmd`はGmail修正版**。
+  本体hashは上記2db5862c…6549eで、検証済み別Releaseと同一。
+- 旧版一式は`build/rel/run-previous-gmail-fix-20261118-073641-cff00bb4`へ退避。
+  配置証跡は`build/gmail-fix/normal-deployment.json`。
+  通常runのみの反映であり、生成ZIP/対応ソースは`build/gmail-fix/release/artifacts`に保持する。
+- ホスト上のアプリ起動、実Gmailへの接続、メールDB/設定/資格情報の変更、
+  アプリ強制終了、ACL変更は行っていない。
