@@ -4,7 +4,6 @@
 #include "oauth/oauthclient.h"
 #include "storage/accountregistrar.h"
 
-#include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <iostream>

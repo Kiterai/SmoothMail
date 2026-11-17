@@ -24,7 +24,6 @@
 #include <QTimer>
 #include <QStatusBar>
 #include <QPainter>
-#include <QStyledItemDelegate>
 
 class MainWindowTest final : public QObject
 {

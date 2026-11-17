@@ -15,7 +15,6 @@
 #include <QMenuBar>
 #include <QPainter>
 #include <QPainterPath>
-#include <QSplitter>
 #include "visiblesplitter.h"
 #include <QStandardItemModel>
 #include <QStatusBar>

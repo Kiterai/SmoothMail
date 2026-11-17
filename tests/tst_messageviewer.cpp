@@ -14,7 +14,6 @@
 #include <QLineEdit>
 #include <QSplitter>
 #include <QSplitterHandle>
-#include <QScrollBar>
 #include "core/displaytime.h"
 
 namespace {

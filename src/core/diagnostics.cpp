@@ -9,7 +9,6 @@
 #include <cstdlib>
 #include <csignal>
 #include <QCryptographicHash>
-#include <QLoggingCategory>
 #include <QScopedValueRollback>
 #include <atomic>
 #ifdef Q_OS_WIN
