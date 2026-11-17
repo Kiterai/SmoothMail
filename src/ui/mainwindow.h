@@ -80,6 +80,7 @@ signals:
     void messageMoveRequested(const smoothmail::MailRecord &identity, const QString &destination);
 
 protected:
+    void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *object, QEvent *event) override;
 

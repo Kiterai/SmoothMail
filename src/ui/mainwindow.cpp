@@ -47,6 +47,52 @@
 namespace smoothmail {
 namespace {
 
+const QStringList systemFolders = {QStringLiteral("INBOX"), QStringLiteral("Junk"),
+    QStringLiteral("Drafts"), QStringLiteral("Sent"), QStringLiteral("Outbox"),
+    QStringLiteral("Trash"), QStringLiteral("Archive")};
+
+// Original, palette-based line drawings; no external icon assets.
+QIcon folderIcon(int kind, const QPalette &palette)
+{
+    QIcon icon;
+    for (auto mode : {QIcon::Normal, QIcon::Active, QIcon::Disabled}) {
+        QPixmap pixmap(20, 20); pixmap.fill(Qt::transparent);
+        QPainter p(&pixmap); p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(palette.color(mode == QIcon::Disabled ? QPalette::Disabled : QPalette::Active,
+            QPalette::Text), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        if (kind == 0 || kind == 1) {
+            p.drawRect(QRectF(2, 4, 15, 11));
+            p.drawLine(QPointF(2, 4), QPointF(9.5, 10)); p.drawLine(QPointF(17, 4), QPointF(9.5, 10));
+            if (kind == 1) {
+                p.fillRect(QRectF(12, 10, 7, 9), palette.brush(QPalette::Base));
+                p.drawPolygon(QPolygonF{QPointF(15.5, 10), QPointF(19, 18), QPointF(12, 18)});
+                p.drawLine(QPointF(15.5, 13), QPointF(15.5, 15)); p.drawPoint(QPointF(15.5, 17));
+            }
+        } else if (kind == 2) {
+            p.drawPolygon(QPolygonF{QPointF(3, 17), QPointF(4, 12), QPointF(14, 2),
+                QPointF(18, 6), QPointF(8, 16)});
+            p.drawLine(QPointF(12, 4), QPointF(16, 8));
+        } else if (kind == 3 || kind == 4) {
+            p.drawPolygon(QPolygonF{QPointF(2, 3), QPointF(18, 9), QPointF(2, 16), QPointF(6, 9)});
+            p.drawLine(QPointF(6, 9), QPointF(18, 9));
+            if (kind == 4) {
+                p.drawLine(QPointF(10, 16), QPointF(18, 16));
+                p.drawLine(QPointF(15, 13), QPointF(18, 16)); p.drawLine(QPointF(15, 19), QPointF(18, 16));
+            }
+        } else if (kind == 5) {
+            p.drawRect(QRectF(5, 6, 10, 12)); p.drawLine(3, 5, 17, 5);
+            p.drawLine(7, 2, 13, 2); p.drawLine(8, 9, 8, 15); p.drawLine(12, 9, 12, 15);
+        } else if (kind == 6) {
+            p.drawRect(QRectF(3, 7, 14, 11)); p.drawRect(QRectF(2, 3, 16, 4)); p.drawLine(8, 11, 12, 11);
+        } else {
+            p.drawPolygon(QPolygonF{QPointF(2, 4), QPointF(8, 4), QPointF(10, 7),
+                QPointF(18, 7), QPointF(18, 17), QPointF(2, 17)});
+        }
+        p.end(); icon.addPixmap(pixmap, mode);
+    }
+    return icon;
+}
+
 class PageArrowButton final : public QPushButton
 {
 public:
@@ -326,6 +372,7 @@ void MainWindow::createPanes()
     connect(folders, &QTreeView::customContextMenuRequested, this, [this, folders](const QPoint &position) {
         const auto index = folders->indexAt(position);
         if (!index.isValid()) return;
+        if (index.data(FolderModel::GroupRole).toBool()) return;
         const auto id = index.data(Qt::UserRole).toString();
         const auto folder = index.data(Qt::UserRole + 1).toString();
         Account account;
@@ -386,6 +433,7 @@ void MainWindow::createPanes()
     });
     connect(folders->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex &index) {
         if (m_rebuilding || !index.isValid()) return;
+        if (index.data(FolderModel::GroupRole).toBool()) return;
         // A context-menu click must not start a refresh that immediately makes
         // its own edit/delete operation unavailable.
         if (QApplication::mouseButtons().testFlag(Qt::RightButton)) return;
@@ -756,6 +804,18 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 void MainWindow::rebuildFolders()
 {
     m_rebuilding = true;
+    const auto nodeKey = [](QStandardItem *item) {
+        return !item->parent() ? QStringLiteral("account")
+            : item->data(FolderModel::GroupRole).toBool() ? QStringLiteral("group")
+            : QStringLiteral("folder:") + item->data(Qt::UserRole + 1).toString();
+    };
+    QHash<QString, QHash<QString, bool>> expanded;
+    const std::function<void(QStandardItem *)> remember = [&](QStandardItem *item) {
+        expanded[item->data(Qt::UserRole).toString()][nodeKey(item)] = m_folderView->isExpanded(item->index());
+        for (int i = 0; i < item->rowCount(); ++i) remember(item->child(i));
+    };
+    for (int i = 0; i < m_folders->rowCount(); ++i) remember(m_folders->item(i));
+    const int scroll = m_folderView->verticalScrollBar()->value();
     m_folders->removeRows(0, m_folders->rowCount());
     QModelIndex selected;
     for (const auto &account : m_accounts) {
@@ -768,13 +828,19 @@ void MainWindow::rebuildFolders()
         if (m_syncErrors.contains(account.id)) root->setToolTip(QStringLiteral("<qt>")
             + (QStringLiteral("直近の更新に失敗しました: ") + m_syncErrors.value(account.id)).toHtmlEscaped() + QStringLiteral("</qt>"));
         m_folders->appendRow(root);
+        auto *group = new QStandardItem(QStringLiteral("フォルダ"));
+        group->setEditable(false); group->setSelectable(false);
+        group->setDragEnabled(false); group->setDropEnabled(false);
+        group->setData(account.id, Qt::UserRole); group->setData(true, FolderModel::GroupRole);
+        group->setIcon(folderIcon(-1, palette()));
         QHash<QString, QStandardItem *> items;
         QList<MailFolder> folders = m_folderCache.value(account.id);
         std::sort(folders.begin(), folders.end(), [](const MailFolder &a, const MailFolder &b) { return a.name.size() < b.name.size(); });
         for (const auto &folder : folders) {
-            QStandardItem *parent = root;
             QString path;
             const auto parts = folder.separator.isNull() ? QStringList{folder.name} : folder.name.split(folder.separator);
+            const int systemKind = systemFolders.indexOf(parts.first(), 0);
+            QStandardItem *parent = systemKind >= 0 ? root : group;
             for (const auto &part : parts) {
                 if (!path.isEmpty()) path += folder.separator;
                 path += part;
@@ -785,6 +851,7 @@ void MainWindow::rebuildFolders()
                     node->setData(folder.separator.isNull() ? QString{} : QString(folder.separator), Qt::UserRole + 4);
                     node->setData(account.id, Qt::UserRole);
                     node->setData(path, Qt::UserRole + 1);
+                    node->setIcon(folderIcon(path == parts.first() ? systemKind : -1, palette()));
                     parent->appendRow(node);
                     items[path] = node;
                 }
@@ -794,6 +861,12 @@ void MainWindow::rebuildFolders()
             for (const auto &flag : folder.flags) if (flag.toUpper() == "\\NOSELECT") parent->setSelectable(false);
             if (account.id == m_accountId && folder.name == m_folder) selected = parent->index();
         }
+        // Only the account's direct system nodes have the fixed order.
+        for (const auto &name : systemFolders) {
+            auto *item = items.value(name, nullptr);
+            if (item && item->parent() == root) root->appendRow(root->takeRow(item->row()));
+        }
+        root->appendRow(group);
         const std::function<qint64(QStandardItem *)> decorate = [&](QStandardItem *item) {
             qint64 unread = item->data(Qt::UserRole + 2).toLongLong();
             for (int i = 0; i < item->rowCount(); ++i) unread += decorate(item->child(i));
@@ -803,9 +876,22 @@ void MainWindow::rebuildFolders()
         };
         decorate(root);
     }
-    m_folderView->expandAll();
     if (selected.isValid()) m_folderView->setCurrentIndex(selected);
+    const std::function<void(QStandardItem *)> restore = [&](QStandardItem *item) {
+        const auto states = expanded.value(item->data(Qt::UserRole).toString());
+        m_folderView->setExpanded(item->index(), states.value(nodeKey(item), !item->data(FolderModel::GroupRole).toBool()));
+        for (int i = 0; i < item->rowCount(); ++i) restore(item->child(i));
+    };
+    for (int i = 0; i < m_folders->rowCount(); ++i) restore(m_folders->item(i));
+    m_folderView->verticalScrollBar()->setValue(scroll);
     m_rebuilding = false;
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    QMainWindow::changeEvent(event);
+    if (m_folders && (event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange))
+        rebuildFolders();
 }
 
 void MainWindow::clearAccountCache(const QString &id)

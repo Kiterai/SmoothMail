@@ -20,6 +20,7 @@ QMimeData *FolderModel::mimeData(const QModelIndexList &indexes) const
 {
     auto *data = new QMimeData;
     if (indexes.size() != 1) return data;
+    if (indexes.first().data(GroupRole).toBool()) return data;
     if (indexes.first().parent().isValid()) {
         const auto index = indexes.first();
         data->setData(folderMime, QJsonDocument(QJsonObject{{"token", token()}, {"account", index.data(Qt::UserRole).toString()}, {"folder", index.data(Qt::UserRole + 1).toString()}, {"separator", index.data(Qt::UserRole + 4).toString()}}).toJson(QJsonDocument::Compact)); return data;
@@ -33,6 +34,7 @@ bool FolderModel::dropMimeData(const QMimeData *data, Qt::DropAction action, int
     if (action == Qt::IgnoreAction) return true;
     if (action == Qt::CopyAction && parent.isValid() && (data->hasFormat(folderMime) || data->hasFormat(mailMime))) {
         const auto target = parent.siblingAtColumn(0); const auto id = target.data(Qt::UserRole).toString(), destination = target.data(Qt::UserRole + 1).toString();
+        if (target.data(GroupRole).toBool()) return false;
         if (data->hasFormat(folderMime)) {
             const auto object = QJsonDocument::fromJson(data->data(folderMime)).object(); const auto source = object.value("folder").toString(), separator = object.value("separator").toString();
             if (object.value("token").toString() != token() || object.value("account").toString() != id || source.isEmpty() || separator.size() != 1 || source == destination || destination.startsWith(source + separator)) return false;

@@ -30,6 +30,53 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void systemFoldersAndCollapsedGroup()
+    {
+        using namespace smoothmail;
+        MainWindow window(false);
+        Account account; account.id = QStringLiteral("folders"); account.email = QStringLiteral("folders@example.test");
+        window.setAccounts({account});
+        const QList<MailFolder> data{{QStringLiteral("Archive"), u'/', {}, 0},
+            {QStringLiteral("Parent/INBOX"), u'/', {}, 2}, {QStringLiteral("INBOX/Child"), u'/', {}, 1},
+            {QStringLiteral("Trash"), u'/', {}, 0}, {QStringLiteral("Sent"), u'/', {}, 0},
+            {QStringLiteral("Drafts"), u'/', {}, 0}, {QStringLiteral("Junk"), u'/', {}, 0},
+            {QStringLiteral("Outbox"), u'/', {}, 0}, {QStringLiteral("INBOX"), u'/', {}, 3},
+            {QStringLiteral("フォルダ"), u'/', {}, 4}};
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), data, {}, {});
+        auto *view = window.findChild<QTreeView *>(QStringLiteral("folderTree"));
+        auto *model = qobject_cast<FolderModel *>(view->model());
+        auto root = model->index(0, 0);
+        QCOMPARE(root.data().toString(), QStringLiteral("folders@example.test (10)"));
+        const QStringList names{QStringLiteral("INBOX"), QStringLiteral("Junk"), QStringLiteral("Drafts"),
+            QStringLiteral("Sent"), QStringLiteral("Outbox"), QStringLiteral("Trash"), QStringLiteral("Archive")};
+        QCOMPARE(model->rowCount(root), 8);
+        for (int i = 0; i < names.size(); ++i) {
+            auto index = model->index(i, 0, root);
+            QCOMPARE(index.data(Qt::UserRole + 1).toString(), names[i]);
+            QVERIFY(!qvariant_cast<QIcon>(index.data(Qt::DecorationRole)).isNull());
+        }
+        auto group = model->index(7, 0, root);
+        QVERIFY(group.data(FolderModel::GroupRole).toBool());
+        QCOMPARE(group.data().toString(), QStringLiteral("フォルダ (6)"));
+        QCOMPARE(model->rowCount(group), 2);
+        QVERIFY(!view->isExpanded(group));
+        QVERIFY(!(model->flags(group) & (Qt::ItemIsSelectable | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled | Qt::ItemIsEditable)));
+        QScopedPointer<QMimeData> mime(model->mimeData({model->index(0, 0, root)}));
+        QVERIFY(!model->dropMimeData(mime.data(), Qt::CopyAction, -1, 0, group));
+        QScopedPointer<QMimeData> groupMime(model->mimeData({group}));
+        QVERIFY(groupMime->formats().isEmpty());
+        view->setExpanded(group, true); view->setExpanded(root, false);
+        window.setRefreshing(account.id, true);
+        root = model->index(0, 0); group = model->index(7, 0, root);
+        QVERIFY(view->isExpanded(group)); QVERIFY(!view->isExpanded(root));
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), data, {}, {});
+        root = model->index(0, 0); group = model->index(7, 0, root);
+        QVERIFY(view->isExpanded(group)); QVERIFY(!view->isExpanded(root));
+        window.applySnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 0}}, {}, {});
+        root = model->index(0, 0); group = model->index(1, 0, root);
+        QVERIFY(group.data(FolderModel::GroupRole).toBool()); QCOMPARE(model->rowCount(group), 0);
+    }
+
     void filterAndSortPreserveSelectedIdentity()
     {
         using namespace smoothmail;

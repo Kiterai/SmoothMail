@@ -7,6 +7,7 @@ class FolderModel final : public QStandardItemModel
 {
     Q_OBJECT
 public:
+    static constexpr int GroupRole = Qt::UserRole + 6;
     explicit FolderModel(QObject *parent = nullptr);
     QStringList mimeTypes() const override;
     QMimeData *mimeData(const QModelIndexList &indexes) const override;
