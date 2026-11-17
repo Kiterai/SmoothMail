@@ -192,6 +192,7 @@ struct AccountRepository::State
                   QStringLiteral("CREATE TABLE IF NOT EXISTS cache_messages (account TEXT NOT NULL,folder TEXT NOT NULL,uidvalidity INTEGER NOT NULL,uid INTEGER NOT NULL,flags INTEGER NOT NULL,raw BLOB NOT NULL,PRIMARY KEY(account,folder,uidvalidity,uid))"),
                   QStringLiteral("CREATE TABLE IF NOT EXISTS cache_index (account TEXT NOT NULL,folder TEXT NOT NULL,uidvalidity INTEGER NOT NULL,uid INTEGER NOT NULL,flags INTEGER NOT NULL,meta TEXT NOT NULL,search_text TEXT NOT NULL,PRIMARY KEY(account,folder,uidvalidity,uid))"),
                   QStringLiteral("CREATE INDEX IF NOT EXISTS cache_index_date ON cache_index(account,folder,json_extract(meta,'$.date'),uid)"),
+                  QStringLiteral("CREATE INDEX IF NOT EXISTS cache_messages_unread ON cache_messages(account,folder) WHERE (flags & 1)=0"),
                  QStringLiteral("CREATE TABLE IF NOT EXISTS downloads (id TEXT PRIMARY KEY,account TEXT,folder TEXT,uidvalidity INTEGER,uid INTEGER,subject TEXT,path TEXT,size INTEGER,saved_at TEXT)"),
                   QStringLiteral("CREATE TABLE IF NOT EXISTS pending_flags (account TEXT NOT NULL,folder TEXT NOT NULL,uidvalidity INTEGER NOT NULL,uid INTEGER NOT NULL,mask INTEGER NOT NULL,enabled INTEGER NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(account,folder,uidvalidity,uid,mask))"),
                   QStringLiteral("CREATE TABLE IF NOT EXISTS cache_reset (account TEXT PRIMARY KEY)"),
@@ -796,11 +797,20 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
             if (!present) { diagnostics::event("sync-cache-target-unavailable"); fail(QStringLiteral("更新対象のフォルダ情報がありません。")); return; }
         }
         if (!validFolderMetadata(folders, diagnostics::FolderWriteSource::SyncCommit)) { fail(QStringLiteral("フォルダ情報が不正です。")); return; }
-        if (!folderOnly && !run(QStringLiteral("DELETE FROM cache_folders WHERE account=?"), {id})) { fail(error); return; }
+        if (!folderOnly) {
+            QSet<QString> listed; for (const auto &item : folders) listed.insert(item.name);
+            QSqlQuery cached(db); cached.prepare(QStringLiteral("SELECT name FROM cache_folders WHERE account=?")); cached.addBindValue(id);
+            if (!cached.exec()) { fail(cached.lastError().text()); return; }
+            QStringList removed;
+            while (cached.next()) if (!listed.contains(cached.value(0).toString())) removed.append(cached.value(0).toString());
+            if (cached.lastError().isValid()) { fail(cached.lastError().text()); return; }
+            cached.finish();
+            for (const auto &name : removed) if (!run(QStringLiteral("DELETE FROM cache_folders WHERE account=? AND name=?"), {id, name})) { fail(error); return; }
+        }
         for (const auto &item : folders) {
             if (folderOnly && item.name != folder) continue;
             QJsonArray flags; for (const auto &flag : item.flags) flags.append(QString::fromLatin1(flag));
-            if (!run(QStringLiteral("INSERT OR REPLACE INTO cache_folders VALUES(?,?,?,?,?)"), {id, item.name, item.separator.isNull() ? QString{} : QString(item.separator), QJsonDocument(flags).toJson(QJsonDocument::Compact), item.unread})) break;
+            if (!run(QStringLiteral("INSERT INTO cache_folders VALUES(?,?,?,?,?) ON CONFLICT(account,name) DO UPDATE SET separator=excluded.separator,flags=excluded.flags,unread=excluded.unread WHERE cache_folders.separator IS NOT excluded.separator OR cache_folders.flags IS NOT excluded.flags OR cache_folders.unread<>excluded.unread"), {id, item.name, item.separator.isNull() ? QString{} : QString(item.separator), QJsonDocument(flags).toJson(QJsonDocument::Compact), item.unread})) break;
         }
         if (!error.isEmpty()) { fail(error); return; }
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
@@ -824,7 +834,7 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
             if (error.isEmpty()) run(QStringLiteral("UPDATE ") + table + QStringLiteral(" AS c SET flags=(SELECT flags FROM sync_reused r WHERE r.account=c.account AND r.uid=c.uid) WHERE account=? AND folder=? AND uidvalidity=? AND uid IN (SELECT uid FROM sync_reused WHERE account=?) AND flags<>(SELECT flags FROM sync_reused r WHERE r.account=c.account AND r.uid=c.uid)"), {id, folder, sync.syncValidity, id});
         }
-        if (error.isEmpty()) run(QStringLiteral("INSERT OR REPLACE INTO folder_state VALUES(?,?,?)"), {id, folder, sync.syncValidity});
+        if (error.isEmpty()) run(QStringLiteral("INSERT INTO folder_state VALUES(?,?,?) ON CONFLICT(account,folder) DO UPDATE SET uidvalidity=excluded.uidvalidity WHERE folder_state.uidvalidity<>excluded.uidvalidity"), {id, folder, sync.syncValidity});
         // Edits made while the network worker was fetching must win locally
         // until their own revision is submitted on a later synchronization.
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
@@ -837,7 +847,8 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
             run(prune, {id, folder});
         }
         if (error.isEmpty()) run(QStringLiteral("UPDATE cache_folders AS f SET unread=(SELECT COUNT(*) FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name AND (c.flags & 1)=0) WHERE account=? AND ")
-            + (folderOnly ? QStringLiteral("name=?") : QStringLiteral("(name=? OR EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name))")), {id, folder});
+            + (folderOnly ? QStringLiteral("name=?") : QStringLiteral("(name=? OR EXISTS (SELECT 1 FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name))"))
+            + QStringLiteral(" AND unread<>(SELECT COUNT(*) FROM cache_messages c WHERE c.account=f.account AND c.folder=f.name AND (c.flags & 1)=0)"), {id, folder});
         if (error.isEmpty() && !db.commit()) { recordSqlError(db.lastError()); error = db.lastError().text(); }
         if (!error.isEmpty()) { fail(error); return; }
         transactionActive = false; diagnostics::event("sync-cache-commit", expectedCount);

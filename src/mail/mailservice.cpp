@@ -433,6 +433,7 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             const auto visibleFolder = selected;
             const auto targets = singleFolder || (mode == SyncMode::SelectedFolder && !forceFull) ? QStringList{selected} : selectable;
             if (!cache && mode != SyncMode::SelectedFolder) return QStringLiteral("全フォルダ同期にはローカル保存先が必要です。");
+            bool accountMetadataPublished = false;
             for (const auto &target : targets) {
             selected = target;
             emit syncProgress(account.id, selected, 0, -1);
@@ -688,11 +689,15 @@ void MailService::synchronize(const Account &account, const QString &secret, con
             if (cache) {
                 if (interrupted()) return QStringLiteral("中断しました。");
                 QList<MailFolder> published;
-                if (singleFolder) { for (const auto &folder : folders) if (folder.name == selected) published.append(folder); }
+                const bool scopedCommit = singleFolder || accountMetadataPublished;
+                if (scopedCommit) { for (const auto &folder : folders) if (folder.name == selected) published.append(folder); }
                 else published = folders;
-                jobError = cache->commitSync(published, boundary.isValid() ? -1 : total, singleFolder, account.id);
+                jobError = cache->commitSync(published, boundary.isValid() ? -1 : total, scopedCommit, account.id);
                 cache->abortSync(account.id);
                 if (!jobError.isEmpty()) return jobError;
+                // The complete LIST and disappeared-folder cleanup need only
+                // one successful publication per account, not one per folder.
+                accountMetadataPublished = true;
             }
             }
             selected = visibleFolder;

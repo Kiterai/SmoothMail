@@ -26,6 +26,36 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void addsUnreadIndexToExistingVersionFiveWithoutChangingMessages()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto path = directory.filePath(QStringLiteral("existing.sqlite"));
+        const auto account = makeAccount(QStringLiteral("existing@example.test"));
+        const auto document = MimeParser::parse("Subject: existing\r\nDate: Wed, 18 Nov 2026 10:00:00 +0000\r\n\r\nkept");
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved);
+            repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+            repository.saveSnapshot(account.id, QStringLiteral("INBOX"), {{QStringLiteral("INBOX"), u'/', {}, 1}},
+                {{account.id, QStringLiteral("INBOX"), 10, 7, false, false, document.message}});
+            QTRY_COMPARE(saved.size(), 1);
+        }
+        const auto connection = QUuid::createUuid().toString();
+        {
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection); db.setDatabaseName(path); QVERIFY(db.open());
+            QSqlQuery query(db); QVERIFY(query.exec(QStringLiteral("DROP INDEX cache_messages_unread")));
+        }
+        QSqlDatabase::removeDatabase(connection);
+        {
+            AccountRepository repository(path); QSignalSpy loaded(&repository, &AccountRepository::messageLoaded);
+            repository.loadMessage({account.id, QStringLiteral("INBOX"), 10, 7}); QTRY_COMPARE(loaded.size(), 1);
+            QVERIFY(loaded.first().at(1).toString().isEmpty());
+            QCOMPARE(qvariant_cast<MailRecord>(loaded.first().first()).document.rawSource, document.message.rawSource);
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection); db.setDatabaseName(path); QVERIFY(db.open());
+            QSqlQuery query(db); QVERIFY(query.exec(QStringLiteral("PRAGMA user_version"))); QVERIFY(query.next()); QCOMPARE(query.value(0).toInt(), 5); query.finish();
+            QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='cache_messages_unread'"))); QVERIFY(query.next()); QCOMPARE(query.value(0).toInt(), 1); query.finish();
+        }
+        QSqlDatabase::removeDatabase(connection);
+    }
     void incrementalStageKeepsUnchangedRowsAndPublishesOnlyDelta()
     {
         QTemporaryDir directory; QVERIFY(directory.isValid());
@@ -53,6 +83,11 @@ private slots:
             QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_insert AFTER INSERT ON cache_messages BEGIN INSERT INTO audit VALUES('insert'); END")));
             QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_delete AFTER DELETE ON cache_messages BEGIN INSERT INTO audit VALUES('delete'); END")));
             QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_update AFTER UPDATE ON cache_messages BEGIN INSERT INTO audit VALUES('update'); END")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_folder_insert AFTER INSERT ON cache_folders BEGIN INSERT INTO audit VALUES('folder-insert'); END")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_folder_update AFTER UPDATE ON cache_folders BEGIN INSERT INTO audit VALUES('folder-update'); END")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_folder_delete AFTER DELETE ON cache_folders BEGIN INSERT INTO audit VALUES('folder-delete'); END")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_state_insert AFTER INSERT ON folder_state BEGIN INSERT INTO audit VALUES('state-insert'); END")));
+            QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_state_update AFTER UPDATE ON folder_state BEGIN INSERT INTO audit VALUES('state-update'); END")));
             const auto boundary = QDateTime::fromString(QStringLiteral("2026-11-18T09:00:00Z"), Qt::ISODate);
             QVERIFY(repository.beginSync(account.id, folder, 10, boundary).isEmpty());
             QSet<qint64> reused;
@@ -78,7 +113,8 @@ private slots:
             QVERIFY(repository.beginSync(account.id, folder, 10).isEmpty());
             QVERIFY(repository.reuseMessages({{1, false, false}, {2, true, true}, {4, false, false}, {5, false, false}}, reused, account.id).isEmpty());
             QCOMPARE(reused.size(), 4);
-            QVERIFY(repository.commitSync(folders, 4, false, account.id).isEmpty()); repository.abortSync(account.id);
+            auto stableFolders = folders; stableFolders[0].unread = 3;
+            QVERIFY(repository.commitSync(stableFolders, 4, false, account.id).isEmpty()); repository.abortSync(account.id);
             QVERIFY(sql.exec(QStringLiteral("SELECT COUNT(*) FROM audit"))); QVERIFY(sql.next()); QCOMPARE(sql.value(0).toInt(), 0); sql.finish();
             // Invalid batches and a failed publication don't leak flags.
             QVERIFY(repository.beginSync(account.id, folder, 10, boundary).isEmpty());

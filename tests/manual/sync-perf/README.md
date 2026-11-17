@@ -74,6 +74,8 @@ python tests/manual/sync-perf/summarize.py build/sync-perf/share/output/with-dia
 repository／transport／mailtransport／GUI統合試験を実行し、成功した場合だけ120同期を計測する。
 `-Baseline`時は共有runtimeに別途置いた旧`sync_perf_before.exe`も先に実行する。
 段階ごとに新しいguestローカルフォルダ／DBを使用する。複数の計測を同時実行しない。
+`-AllTests`は配置した全テストEXEを実行する（CTest指定の4 UI単体試験はoffscreen）。
+`-Deep`は基礎計測後にTLS／ページ／描画の60同期も追加する。
 
 `run-window-guest.ps1`は計測用コピーのFLAGS窓を100/250/500/1000へ切り替えて比較する。
 各45同期、既定1000。`SMOOTHMAIL_PERF_FLAG_WINDOW`による切替は`instrument.py`が

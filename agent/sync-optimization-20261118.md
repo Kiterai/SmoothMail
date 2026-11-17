@@ -48,3 +48,21 @@
   20ms遅延・1000件では616/492/468/448ms。
   小さい窓へ単純に戻すことは採用しない。窓の切替環境変数は計測用ソースコピーにしか
   挿入せず、製品にチューニング用環境変数を追加していない。
+
+## 第3段階：共通メタデータの重複公開と永続書込みを抑制
+
+- 全フォルダLISTの公開は最初の成功フォルダだけ。以後はそのフォルダの差分公開とする。
+  フォルダがF件ある際に全F件の属性を書き直す処理をF回行わない。
+- 属性・未読数・UIDVALIDITYが同じならcache_folders/folder_stateも更新しない。
+  消えたフォルダだけを削除する。未読集計に後方互換の部分索引を追加し、
+  既存v5 DBに索引を追加しても原文・user_versionが変わらないことを試験する。
+- repositoryのSQL trigger監視は本文だけでなくフォルダ属性とfolder_stateにも拡張。
+  変更なし全同期で、これらすべての永続行の書込み0件を確認。
+- AllTests runner初版はCTestのoffscreen指定を反映せず、aboutdialogの画面高さ制約と
+  mainwindowの描画テスト4行が失敗した。製品UIや期待値を変えず、
+  既存CTestと同じ4テストだけoffscreen、GUI統合はwindowsで実行するよう修正した。
+  元の失敗ログは`output/stage3`へ保持。
+- 修正後`output/stage3b`の17 EXEを独立集計し
+  **276 passed / 0 failed / 0 skipped**。基礎120同期と24 DBも成功。
+  10通追加Recentの履歴5000件は38ms（before459ms）、
+  遅延なし30フォルダは228ms（before292ms）。
