@@ -131,9 +131,12 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     connect(m_repository, &AccountRepository::cacheLoaded, this,
         [this](const QString &id, const QString &folder, const QList<MailFolder> &folders, const QList<MailRecord> &messages) {
             if (m_deletedAccounts.contains(id)) return;
-            m_window->applySnapshot(id, folder, folders, messages, {}, m_completedSyncs.remove(id) > 0);
-            if (m_window->selectedAccountId() == id) m_repository->ensureFolderLoaded(id, m_window->selectedFolderFor(id));
             const auto error = m_cacheReloadErrors.take(id);
+            m_window->applySnapshot(id, folder, folders, messages, {}, m_completedSyncs.remove(id) > 0);
+            // A partial folder deliberately remains incomplete. Reloading it
+            // after failure/cancellation must not start another initial fetch.
+            if (error.isEmpty() && m_window->selectedAccountId() == id)
+                m_repository->ensureFolderLoaded(id, m_window->selectedFolderFor(id));
             if (!error.isEmpty()) m_window->statusBar()->showMessage(QStringLiteral("更新に失敗しました: ") + error);
         });
     connect(m_repository, &AccountRepository::snapshotSaved, this,
@@ -276,13 +279,10 @@ ApplicationController::ApplicationController(MainWindow *window, const QString &
     });
     connect(window, &MainWindow::refreshRequested, m_repository, &AccountRepository::ensureFolderLoaded);
     connect(window, &MainWindow::targetRefreshRequested, this, [this](const QString &id, const QString &folder, bool full) { refresh(id, folder, full, !folder.isEmpty()); });
-    connect(m_repository, &AccountRepository::initialFetchRequired, this, [this](const QString &id, const QString &folder) { refresh(id, folder); });
-    connect(window, &MainWindow::refreshAllRequested, this, [this] {
-        for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id));
-    });
-    connect(window, &MainWindow::fullRefreshRequested, this, [this] {
-        for (const auto &account : m_accounts) refresh(account.id, m_window->selectedFolderFor(account.id), true);
-    });
+    connect(m_repository, &AccountRepository::initialFetchRequired, this, [this](const QString &id, const QString &folder) { refresh(id, folder, false, true); });
+    connect(window, &MainWindow::refreshAllRequested, this, [this] { refreshAll(false); });
+    connect(window, &MainWindow::fullRefreshRequested, this, [this] { refreshAll(true); });
+    connect(window, &MainWindow::cancelRefreshRequested, this, &ApplicationController::cancelRefresh);
     connect(m_registrar, &AccountRegistrar::finished, this, [this](const QString &id, const QString &error) {
         if (error.isEmpty() && m_editedId.isEmpty()) m_addedAccounts.insert(id);
         if (error.isEmpty() && !m_editedId.isEmpty()) {
@@ -506,11 +506,36 @@ void ApplicationController::openAccount(const QString &id)
 
 void ApplicationController::refresh(const QString &id, const QString &folder, bool full, bool folderOnly)
 {
-    if (m_deletedAccounts.contains(id)) return;
-    const auto sameTarget = [&](const Request &request) { return request.accountId == id && request.folderOnly == folderOnly && (!folderOnly || request.folder == folder); };
-    if (m_active.contains(id) && sameTarget(m_active.value(id).request) && (!full || m_active.value(id).request.full)) return;
-    for (auto &request : m_queue) if (sameTarget(request)) { request.full = request.full || full; return; }
+    if (m_deletedAccounts.contains(id) || !m_active.isEmpty() || !m_queue.isEmpty()) return;
     m_queue.enqueue({id, folder, full, folderOnly});
+    m_window->setUpdateRunning(true);
+    processNext();
+}
+
+void ApplicationController::refreshAll(bool full)
+{
+    if (!m_active.isEmpty() || !m_queue.isEmpty()) return;
+    for (const auto &account : m_accounts) {
+        if (!m_deletedAccounts.contains(account.id))
+            m_queue.enqueue({account.id, m_window->selectedFolderFor(account.id), full, false});
+    }
+    m_window->setUpdateRunning(!m_queue.isEmpty());
+    processNext();
+}
+
+void ApplicationController::cancelRefresh()
+{
+    m_queue.clear();
+    const auto ids = m_active.keys();
+    for (const auto &id : ids) {
+        auto *mail = m_active.value(id).mail;
+        if (mail->busy()) mail->cancelSynchronization(id);
+        else {
+            m_active.remove(id); // A credentials callback may still be pending.
+            m_syncBudget->release();
+            m_window->setRefreshing(id, false);
+        }
+    }
     processNext();
 }
 
@@ -574,6 +599,7 @@ void ApplicationController::processNext()
         const int extra = qMin(spare, qMax(0, active->mail->syncDemand() - 1));
         active->mail->setSyncConcurrency(1 + extra); spare -= extra;
     }
+    m_window->setUpdateRunning(!m_active.isEmpty() || !m_queue.isEmpty());
 }
 
 void ApplicationController::compose(bool reply)

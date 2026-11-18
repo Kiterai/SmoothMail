@@ -537,7 +537,7 @@ QString AccountRepository::recentBoundary(const QString &id, const QString &fold
         for (int i = 0; i < 3; ++i) { query.addBindValue(id); query.addBindValue(folder); }
         if (!query.exec()) { error = query.lastError().text(); return; }
         if (query.next() && !query.value(0).isNull() && query.value(1).toLongLong() == validity && query.value(2).toLongLong() == validity)
-            boundary = QDateTime::fromMSecsSinceEpoch(query.value(0).toLongLong(), QTimeZone::UTC).addSecs(-3600);
+            boundary = QDateTime::fromMSecsSinceEpoch(query.value(0).toLongLong(), QTimeZone::UTC);
     }, Qt::BlockingQueuedConnection);
     return error;
 }
@@ -756,7 +756,7 @@ QString AccountRepository::reuseMessages(const QList<SyncFlags> &messages, QSet<
             const auto date = query.value(0); query.finish();
             // Cached MIME/Date is immutable within a UIDVALIDITY. A search may
             // over-select the preceding day; don't refresh those older flags.
-            if (!sync.boundary.isValid() || date.isNull() || date.toLongLong() >= sync.boundary.toMSecsSinceEpoch()) {
+            if (!sync.boundary.isValid() || (!date.isNull() && date.toLongLong() > sync.boundary.toMSecsSinceEpoch())) {
                 insert.bindValue(0, id); insert.bindValue(1, message.uid); insert.bindValue(2, (message.seen ? 1 : 0) | (message.important ? 2 : 0));
                 if (!insert.exec()) { error = insert.lastError().text(); break; }
                 insert.finish();
@@ -772,7 +772,45 @@ QString AccountRepository::resolveSyncFolder(const QString &id, const QString &l
 {
     QString error; QMetaObject::invokeMethod(m_worker, [&, this] { error = m_state->error; if (error.isEmpty()) error = serverFolder(m_state->db, id, local, remote, exists); }, Qt::BlockingQueuedConnection); return error;
 }
-QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly, const QString &accountId)
+QString AccountRepository::syncDownloadedCount(const QString &stageKey, qint64 &count)
+{
+    QString error; count = 0;
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        if (!m_state->syncs.contains(stageKey)) return;
+        QSqlQuery query(m_state->db);
+        query.prepare(QStringLiteral("SELECT COUNT(*) FROM sync_messages WHERE account=?"));
+        query.addBindValue(stageKey);
+        if (!query.exec() || !query.next()) error = query.lastError().text();
+        else count = query.value(0).toLongLong();
+    }, Qt::BlockingQueuedConnection);
+    return error;
+}
+QString AccountRepository::retainSyncUids(const QString &stageKey, const QList<qint64> &uids)
+{
+    QString error;
+    QMetaObject::invokeMethod(m_worker, [&, this] {
+        if (!m_state->syncs.contains(stageKey)) { error = QStringLiteral("同期セッションがありません。"); return; }
+        auto &db = m_state->db;
+        if (!db.transaction()) { error = db.lastError().text(); return; }
+        error = sql(db, QStringLiteral("CREATE TEMP TABLE IF NOT EXISTS sync_live_uid(uid INTEGER PRIMARY KEY)"));
+        if (error.isEmpty()) error = sql(db, QStringLiteral("DELETE FROM sync_live_uid"));
+        QSqlQuery insert(db); insert.prepare(QStringLiteral("INSERT INTO sync_live_uid VALUES(?)"));
+        for (const auto uid : uids) {
+            if (!error.isEmpty()) break;
+            insert.bindValue(0, uid);
+            if (!insert.exec()) error = insert.lastError().text();
+            insert.finish();
+        }
+        for (const auto &table : {QStringLiteral("sync_messages"), QStringLiteral("sync_index"), QStringLiteral("sync_reused")}) {
+            if (error.isEmpty()) error = sql(db, QStringLiteral("DELETE FROM ") + table
+                + QStringLiteral(" WHERE account=? AND uid NOT IN (SELECT uid FROM sync_live_uid)"), {stageKey});
+        }
+        if (error.isEmpty() && !db.commit()) error = db.lastError().text();
+        if (!error.isEmpty()) db.rollback();
+    }, Qt::BlockingQueuedConnection);
+    return error;
+}
+QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly, const QString &accountId, bool mergeOnly)
 {
     QString error;
     QMetaObject::invokeMethod(m_worker, [&, this] {
@@ -800,7 +838,9 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
             if (countAvailable) diagnostics::event("sync-cache-actual-count", count.value(0).toLongLong());
             fail(QStringLiteral("同期中にメール件数が変化しました。再試行してください。")); return;
         }
+        const auto stagedCount = count.value(0).toLongLong();
         count.finish();
+        if (mergeOnly && stagedCount == 0) return;
         if (!db.transaction()) { recordSqlError(db.lastError()); fail(db.lastError().text()); return; }
         transactionActive = true;
         const auto run = [&](const QString &statement, const QVariantList &values = {}) {
@@ -813,7 +853,7 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
             if (!present) { diagnostics::event("sync-cache-target-unavailable"); fail(QStringLiteral("更新対象のフォルダ情報がありません。")); return; }
         }
         if (!validFolderMetadata(folders, diagnostics::FolderWriteSource::SyncCommit)) { fail(QStringLiteral("フォルダ情報が不正です。")); return; }
-        if (!folderOnly) {
+        if (!folderOnly && !mergeOnly) {
             QSet<QString> listed; for (const auto &item : folders) listed.insert(item.name);
             QSqlQuery cached(db); cached.prepare(QStringLiteral("SELECT name FROM cache_folders WHERE account=?")); cached.addBindValue(id);
             if (!cached.exec()) { fail(cached.lastError().text()); return; }
@@ -823,13 +863,46 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
             cached.finish();
             for (const auto &name : removed) if (!run(QStringLiteral("DELETE FROM cache_folders WHERE account=? AND name=?"), {id, name})) { fail(error); return; }
         }
+        if (folderOnly && !mergeOnly) {
+            QChar separator;
+            QSet<QString> listed;
+            for (const auto &item : folders) { listed.insert(item.name); if (item.name == folder) separator = item.separator; }
+            if (!separator.isNull()) {
+                QSqlQuery cached(db); cached.prepare(QStringLiteral("SELECT name FROM cache_folders WHERE account=?")); cached.addBindValue(id);
+                if (!cached.exec()) { fail(cached.lastError().text()); return; }
+                QStringList removed;
+                while (cached.next()) {
+                    const auto name = cached.value(0).toString();
+                    if (name.startsWith(folder + separator) && !listed.contains(name)) removed.append(name);
+                }
+                if (cached.lastError().isValid()) { fail(cached.lastError().text()); return; }
+                cached.finish();
+                for (const auto &name : removed) {
+                    for (const auto &table : {QStringLiteral("cache_folders"), QStringLiteral("cache_messages"), QStringLiteral("cache_index"),
+                                             QStringLiteral("folder_state"), QStringLiteral("pending_flags")}) {
+                        if (!run(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=? AND ")
+                            + (table == QStringLiteral("cache_folders") ? QStringLiteral("name=?") : QStringLiteral("folder=?")), {id, name})) { fail(error); return; }
+                    }
+                }
+            }
+        }
         for (const auto &item : folders) {
-            if (folderOnly && item.name != folder) continue;
+            if (folderOnly && item.name != folder) {
+                QChar separator;
+                for (const auto &target : folders) if (target.name == folder) separator = target.separator;
+                if (separator.isNull() || !item.name.startsWith(folder + separator)) continue;
+            }
             QJsonArray flags; for (const auto &flag : item.flags) flags.append(QString::fromLatin1(flag));
             if (!run(QStringLiteral("INSERT INTO cache_folders VALUES(?,?,?,?,?) ON CONFLICT(account,name) DO UPDATE SET separator=excluded.separator,flags=excluded.flags,unread=excluded.unread WHERE cache_folders.separator IS NOT excluded.separator OR cache_folders.flags IS NOT excluded.flags OR cache_folders.unread<>excluded.unread"), {id, item.name, item.separator.isNull() ? QString{} : QString(item.separator), QJsonDocument(flags).toJson(QJsonDocument::Compact), item.unread})) break;
         }
         if (!error.isEmpty()) { fail(error); return; }
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
+            if (mergeOnly) {
+                // Partial publication must not infer deletions from an incomplete
+                // enumeration. A changed mailbox identity is never mixed locally.
+                if (!run(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=? AND folder=? AND uidvalidity<>?"), {id, folder, sync.syncValidity})) break;
+                continue;
+            }
             if (!folderOnly && !run(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" AS c WHERE account=? AND NOT EXISTS (SELECT 1 FROM cache_folders f WHERE f.account=c.account AND f.name=c.folder)"), {id})) break;
             if (!run(QStringLiteral("DELETE FROM ") + table + QStringLiteral(" WHERE account=? AND folder=? AND uidvalidity<>?"), {id, folder, sync.syncValidity})) break;
             // Delete only missing rows in this refresh window. Old dates remain
@@ -837,8 +910,8 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
             QString window;
             QVariantList values{id, folder, sync.syncValidity};
             if (sync.boundary.isValid()) {
-                window = table == QStringLiteral("cache_index") ? QStringLiteral(" AND json_extract(meta,'$.date')>=?")
-                    : QStringLiteral(" AND uid IN (SELECT uid FROM cache_index WHERE account=? AND folder=? AND uidvalidity=? AND json_extract(meta,'$.date')>=?)");
+                window = table == QStringLiteral("cache_index") ? QStringLiteral(" AND json_extract(meta,'$.date')>?")
+                    : QStringLiteral(" AND uid IN (SELECT uid FROM cache_index WHERE account=? AND folder=? AND uidvalidity=? AND json_extract(meta,'$.date')>?)");
                 if (table == QStringLiteral("cache_messages")) values.append(QVariantList{id, folder, sync.syncValidity});
                 values.append(sync.boundary.toMSecsSinceEpoch());
             }
@@ -851,7 +924,7 @@ QString AccountRepository::commitSync(const QList<MailFolder> &folders, qint64 e
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {
             if (error.isEmpty()) run(QStringLiteral("UPDATE ") + table + QStringLiteral(" AS c SET flags=(SELECT flags FROM sync_reused r WHERE r.account=? AND r.uid=c.uid) WHERE account=? AND folder=? AND uidvalidity=? AND uid IN (SELECT uid FROM sync_reused WHERE account=?) AND flags<>(SELECT flags FROM sync_reused r WHERE r.account=? AND r.uid=c.uid)"), {key, id, folder, sync.syncValidity, key, key});
         }
-        if (error.isEmpty()) run(QStringLiteral("INSERT INTO folder_state VALUES(?,?,?) ON CONFLICT(account,folder) DO UPDATE SET uidvalidity=excluded.uidvalidity WHERE folder_state.uidvalidity<>excluded.uidvalidity"), {id, folder, sync.syncValidity});
+        if (error.isEmpty() && !mergeOnly) run(QStringLiteral("INSERT INTO folder_state VALUES(?,?,?) ON CONFLICT(account,folder) DO UPDATE SET uidvalidity=excluded.uidvalidity WHERE folder_state.uidvalidity<>excluded.uidvalidity"), {id, folder, sync.syncValidity});
         // Edits made while the network worker was fetching must win locally
         // until their own revision is submitted on a later synchronization.
         for (const auto &table : {QStringLiteral("cache_messages"), QStringLiteral("cache_index")}) {

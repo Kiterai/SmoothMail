@@ -316,13 +316,16 @@ void MainWindow::createMenus()
     auto *fullRefresh = pendingAction(mail, QStringLiteral("最新の全ての情報を取得"), "fullRefreshAction");
     fullRefresh->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F5));
     connect(fullRefresh, &QAction::triggered, this, &MainWindow::fullRefreshRequested);
+    auto *cancelRefresh = pendingAction(mail, QStringLiteral("更新処理を中止"), "cancelRefreshAction");
+    cancelRefresh->setEnabled(false);
+    connect(cancelRefresh, &QAction::triggered, this, &MainWindow::cancelRefreshRequested);
     auto *automatic = pendingAction(mail, QStringLiteral("自動で更新"), "autoRefreshAction");
     automatic->setCheckable(true);
     auto *poll = new QTimer(this);
     m_poll = poll;
     poll->setInterval(30000);
     connect(automatic, &QAction::toggled, this, [poll](bool enabled) { if (enabled) poll->start(); else poll->stop(); });
-    connect(poll, &QTimer::timeout, this, &MainWindow::refreshAllRequested);
+    connect(poll, &QTimer::timeout, this, [this] { if (!m_updateRunning) emit refreshAllRequested(); });
     auto *autoRead = pendingAction(mail, QStringLiteral("自動で既読を付ける"), "autoReadAction");
     autoRead->setCheckable(true); // Opt in; do not silently mark mail read by default.
     mail->addSeparator();
@@ -392,7 +395,7 @@ void MainWindow::createPanes()
         auto *full = menu.addAction(QStringLiteral("最新の全ての情報を取得"));
         recent->setObjectName(QStringLiteral("targetRecentRefresh")); full->setObjectName(QStringLiteral("targetFullRefresh"));
         const bool realFolder = folder.isEmpty() || bool(index.flags() & Qt::ItemIsSelectable);
-        recent->setEnabled(realFolder); full->setEnabled(realFolder);
+        recent->setEnabled(realFolder && !m_updateRunning); full->setEnabled(realFolder && !m_updateRunning);
         menu.addSeparator();
         auto *edit = menu.addAction(folder.isEmpty() ? QStringLiteral("アカウントの編集") : QStringLiteral("名前の変更"));
         auto *remove = menu.addAction(folder.isEmpty() ? QStringLiteral("アカウントの削除") : QStringLiteral("削除"));
@@ -596,8 +599,17 @@ void MainWindow::setAccounts(const QList<Account> &accounts)
     for (const auto *name : {"refreshAction", "fullRefreshAction", "autoRefreshAction", "autoReadAction", "threadAction"}) {
         findChild<QAction *>(QLatin1String(name))->setEnabled(!accounts.isEmpty());
     }
+    setUpdateRunning(m_updateRunning);
     statusBar()->showMessage(accounts.isEmpty() ? QStringLiteral("アカウントを追加してください。")
                                               : QStringLiteral("アカウント設定を読み込みました。"));
+}
+
+void MainWindow::setUpdateRunning(bool running)
+{
+    m_updateRunning = running;
+    findChild<QAction *>(QStringLiteral("refreshAction"))->setEnabled(!running && !m_accounts.isEmpty());
+    findChild<QAction *>(QStringLiteral("fullRefreshAction"))->setEnabled(!running && !m_accounts.isEmpty());
+    findChild<QAction *>(QStringLiteral("cancelRefreshAction"))->setEnabled(running);
 }
 
 void MainWindow::setRefreshing(const QString &id, bool refreshing)

@@ -26,6 +26,35 @@ class AccountRepositoryTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void partialPublicationPreservesUnenumeratedMailAndPendingEdits()
+    {
+        AccountRepository repository(":memory:"); const auto account = makeAccount("partial@example.test");
+        QSignalSpy inserted(&repository, &AccountRepository::inserted), saved(&repository, &AccountRepository::snapshotSaved),
+            pages(&repository, &AccountRepository::pageLoaded), flags(&repository, &AccountRepository::flagsUpdated),
+            loaded(&repository, &AccountRepository::cacheLoaded);
+        repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        const auto record = [&](QString folder, qint64 uid) {
+            return MailRecord{account.id, folder, 10, uid, false, false, MimeParser::parse("Subject: partial\r\n\r\nbody").message};
+        };
+        const QList<MailFolder> folders{{"INBOX", u'/', {}, 1}, {"Other", u'/', {}, 1}};
+        repository.saveSnapshot(account.id, "INBOX", folders, {record("INBOX", 1)}); QTRY_COMPARE(saved.size(), 1);
+        repository.saveSnapshot(account.id, "Other", folders, {record("Other", 1)}); QTRY_COMPARE(saved.size(), 2);
+        QVERIFY(repository.beginSync(account.id, "INBOX", 10, {}, 0, "partial").isEmpty());
+        const auto added = record("INBOX", 2);
+        QVERIFY(repository.stageMessages({added}, "partial").isEmpty());
+        qint64 downloaded = 0; QVERIFY(repository.syncDownloadedCount("partial", downloaded).isEmpty()); QCOMPARE(downloaded, 1);
+        QVERIFY(repository.commitSync({folders.first()}, -1, false, "partial", true).isEmpty());
+        repository.queueFlag(added, true, true); QTRY_COMPARE(flags.size(), 1);
+        QVERIFY(repository.commitSync({folders.first()}, -1, false, "partial", true).isEmpty());
+        repository.abortSync("partial");
+        repository.loadPage({account.id, "INBOX"}); QTRY_COMPARE(pages.size(), 1);
+        const auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 2);
+        for (const auto &message : page.messages) if (message.uid == 2) QVERIFY(message.important);
+        repository.loadPage({account.id, "Other"}); QTRY_COMPARE(pages.size(), 1);
+        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1);
+        repository.loadCache(account.id, true); QTRY_COMPARE(loaded.size(), 1);
+        QCOMPARE(qvariant_cast<QList<MailFolder>>(loaded.first().at(2)).size(), 2);
+    }
     void cachedNonexistentFolderIsNotTheDefaultSelection()
     {
         AccountRepository repository(":memory:"); const auto account = makeAccount("gmail-root@example.test");
@@ -134,7 +163,7 @@ private slots:
             QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_folder_delete AFTER DELETE ON cache_folders BEGIN INSERT INTO audit VALUES('folder-delete'); END")));
             QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_state_insert AFTER INSERT ON folder_state BEGIN INSERT INTO audit VALUES('state-insert'); END")));
             QVERIFY(sql.exec(QStringLiteral("CREATE TRIGGER audit_state_update AFTER UPDATE ON folder_state BEGIN INSERT INTO audit VALUES('state-update'); END")));
-            const auto boundary = QDateTime::fromString(QStringLiteral("2026-11-18T09:00:00Z"), Qt::ISODate);
+            const auto boundary = QDateTime::fromString(QStringLiteral("2026-11-18T08:59:59Z"), Qt::ISODate);
             QVERIFY(repository.beginSync(account.id, folder, 10, boundary).isEmpty());
             QSet<qint64> reused;
             // Old over-selected candidates must retain their original flags.
@@ -460,7 +489,7 @@ private slots:
             QVERIFY(!page.messages.first().seen); QVERIFY(!page.messages.first().important);
             QVERIFY(repository.flagRevision(through).isEmpty()); QVERIFY(repository.pendingFlags(account.id, identity.folder, 0, through, edits).isEmpty()); QCOMPARE(edits.size(), 1); QVERIFY(!edits.first().enabled);
             QDateTime boundary; QVERIFY(repository.recentBoundary(account.id, identity.folder, 10, boundary).isEmpty());
-            QCOMPARE(boundary, parsed.message.date.addSecs(-3600));
+            QCOMPARE(boundary, parsed.message.date);
             QVERIFY(repository.recentBoundary(account.id, identity.folder, 20, boundary).isEmpty()); QVERIFY(!boundary.isValid());
             QVERIFY(repository.beginSync(account.id, identity.folder, 20).isEmpty());
             server.uidValidity = 20; QVERIFY(repository.stageMessages({server}).isEmpty()); QVERIFY(repository.commitSync(folders, 1).isEmpty()); repository.abortSync();

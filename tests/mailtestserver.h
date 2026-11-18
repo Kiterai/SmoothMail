@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QLocale>
 #include <QTimer>
+#include <functional>
 
 class MailTestTcpServer final : public QTcpServer
 {
@@ -81,6 +82,7 @@ public:
                     const auto line = wire.trimmed();
                     if (line.isEmpty()) continue;
                     commands.append(line);
+                    if (commandReceived) commandReceived(line);
                     handle(line);
                 }
             });
@@ -112,6 +114,10 @@ public:
     qint64 advertisedMessageCount = -1;
     qint64 advertisedMessageSize = -1;
     bool disconnectOnBodyFetch = false;
+    int disconnectAfterBodies = -1;
+    qint64 truncateBodyUid = -1;
+    int bodyFetchAttempts = 0;
+    std::function<void(const QByteArray &)> commandReceived;
     QByteArray disconnectBodyFolder;
     int bodyCompletionDelayMs = 0;
     QMap<qint64, QList<QByteArray>> messageFlags;
@@ -374,6 +380,7 @@ private:
             write(m_tag + " OK store completed");
         } else if (provideMailbox && (command == "FETCH" || (command == "UID" && fields.value(commandIndex + 1) == "FETCH"))) {
             const bool flagsOnly = !line.contains("BODY") && !line.contains("RFC822");
+            if (!line.contains("HEADER") && !flagsOnly) ++bodyFetchAttempts;
             if (pauseMetadata && (line.contains("HEADER") || flagsOnly)) { m_pausedMetadata.append(line); return; }
             if ((disconnectOnBodyFetch || (!disconnectBodyFolder.isEmpty() && disconnectBodyFolder == m_selected))
                 && !line.contains("HEADER") && !flagsOnly) { m_socket->disconnectFromHost(); return; }
@@ -381,16 +388,14 @@ private:
             const auto requested = fields.value(commandIndex + (uidBased ? 2 : 1));
             const auto range = requested.split(':');
             const auto first = range.value(0).toLongLong();
-            const auto last = range.size() > 1 ? (range.value(1) == "*" ? std::numeric_limits<qint64>::max() : range.value(1).toLongLong()) : first;
             QList<QPair<qint64, qint64>> intervals;
             for (const auto &interval : requested.split(',')) {
                 const auto ends = interval.split(':'); const auto low = ends.value(0).toLongLong();
                 const auto high = ends.size() > 1 ? (ends.value(1) == "*" ? std::numeric_limits<qint64>::max() : ends.value(1).toLongLong()) : low;
                 intervals.append({low, high});
             }
-            if (line.contains("HEADER")) maximumHeaderWindow = qMax(maximumHeaderWindow, int(qMin<qint64>(100000, last - first + 1)));
             int sequence = 0;
-            int returnedFlags = 0;
+            int returnedFlags = 0, returnedHeaders = 0, returnedBodies = 0;
             const auto &data = selectedMessages();
             auto begin = uidBased && !requested.contains(',') && range.size() == 1 ? data.constFind(first) : data.cbegin();
             for (auto item = begin; item != data.cend(); ++item) {
@@ -408,15 +413,31 @@ private:
                     continue;
                 }
                 const bool headersOnly = line.contains("HEADER");
-                if (headersOnly) ++headerFetchCount;
+                if (headersOnly) { ++headerFetchCount; ++returnedHeaders; }
                 if (!headersOnly) ++fullFetchCount;
                 const auto raw = headersOnly ? item.value().left(item.value().indexOf("\r\n\r\n") + 4) : item.value();
                 write("* " + QByteArray::number(sequence) + " FETCH (UID " + QByteArray::number(item.key())
                       + " RFC822.SIZE " + QByteArray::number(advertisedMessageSize < 0 ? item.value().size() : advertisedMessageSize) + " FLAGS (" + selectedFlags().value(item.key()).join(' ') + ") "
                       + (headersOnly ? "BODY[HEADER] {" : "BODY[] {") + QByteArray::number(raw.size()) + '}');
+                if (!headersOnly && item.key() == truncateBodyUid) {
+                    m_socket->write(raw.left(raw.size() / 2));
+                    QTimer::singleShot(50, this, [socket = QPointer<QSslSocket>(m_socket)] {
+                        if (socket) socket->disconnectFromHost();
+                    });
+                    return;
+                }
                 m_socket->write(raw);
                 write(")");
+                if (!headersOnly && disconnectAfterBodies > 0 && ++returnedBodies >= disconnectAfterBodies) {
+                    // Let the session parser receive both complete responses,
+                    // but disconnect before FetchJob's 100ms emission timer.
+                    QTimer::singleShot(50, this, [socket = QPointer<QSslSocket>(m_socket)] {
+                        if (socket) socket->disconnectFromHost();
+                    });
+                    return;
+                }
             }
+            maximumHeaderWindow = qMax(maximumHeaderWindow, returnedHeaders);
             maximumFlagsWindow = qMax(maximumFlagsWindow, returnedFlags);
             if (bodyCompletionDelayMs && !flagsOnly && !line.contains("HEADER")) {
                 QTimer::singleShot(bodyCompletionDelayMs, this, [socket = m_socket, tag = m_tag] {

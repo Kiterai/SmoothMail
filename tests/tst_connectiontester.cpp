@@ -21,6 +21,126 @@ class ConnectionTesterTest final : public QObject
 {
     Q_OBJECT
 private slots:
+    void interruptedFetchPublishesAndResumes_data()
+    {
+        QTest::addColumn<bool>("recent");
+        QTest::newRow("full") << false;
+        QTest::newRow("recent-cutoff-stays-fixed") << true;
+    }
+    void interruptedFetchPublishesAndResumes()
+    {
+        QFETCH(bool, recent);
+        MailTestServer server(MailTestServer::Protocol::Imap, {"PLAIN"}); server.provideMailbox = true;
+        const auto raw = [](int uid) {
+            return "Subject: resume " + QByteArray::number(uid) + "\r\nDate: Wed, 18 Nov 2026 10:"
+                + QByteArray::number(uid).rightJustified(2, '0') + ":00 +0000\r\n\r\nbody";
+        };
+        server.messages[1] = raw(1); QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), "resume@example.test",
+            {"127.0.0.1", 465, "test"}, {"127.0.0.1", server.port(), "test", AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(":memory:"); QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        if (recent) {
+            service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+            QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.takeFirst().at(4).toString().isEmpty());
+        }
+        for (int uid = 2; uid <= 10; ++uid) server.messages[uid] = raw(uid);
+        server.disconnectAfterBodies = 2; server.bodyFetchAttempts = 0; server.fullFetchCount = 0;
+        service.synchronize(account, "dummy", {}, &cache, recent ? MailService::SyncMode::Recent : MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000);
+        const auto error = result.takeFirst().at(4).toString(); QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(server.bodyFetchAttempts >= 5); // Progress resets the consecutive-zero counter.
+        QCOMPARE(server.fullFetchCount, recent ? 9 : 10); // Never download completed bodies again.
+        MailQuery query; query.accountId = account.id; query.folder = "INBOX";
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 10);
+    }
+    void threeEmptyAttemptsStopWithoutDeletingCachedMail()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {"PLAIN"}); server.provideMailbox = true;
+        server.messages[1] = "Subject: cached\r\n\r\nbody"; QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), "stalled@example.test",
+            {"127.0.0.1", 465, "test"}, {"127.0.0.1", server.port(), "test", AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(":memory:"); QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.takeFirst().at(4).toString().isEmpty());
+        server.messages.remove(1); server.messages[2] = "Subject: unavailable\r\n\r\nbody";
+        server.disconnectOnBodyFetch = true; server.bodyFetchAttempts = 0;
+        service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(!result.takeFirst().at(4).toString().isEmpty());
+        QCOMPARE(server.bodyFetchAttempts, 3);
+        MailQuery query; query.accountId = account.id; query.folder = "INBOX";
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().uid, 1);
+        // A subsequent user request starts an ordinary full sync, including deletion reconciliation.
+        server.disconnectOnBodyFetch = false;
+        service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.takeFirst().at(4).toString().isEmpty());
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
+        page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().uid, 2);
+    }
+    void incompleteLiteralIsNeverPublished()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {"PLAIN"}); server.provideMailbox = true;
+        server.messages[1] = "Subject: complete\r\n\r\nbody"; server.messages[2] = "Subject: truncated\r\n\r\nbody";
+        server.truncateBodyUid = 2; QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), "truncated@example.test",
+            {"127.0.0.1", 465, "test"}, {"127.0.0.1", server.port(), "test", AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(":memory:"); QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(!result.first().at(4).toString().isEmpty());
+        cache.loadPage({account.id, "INBOX"}); QTRY_COMPARE(pages.size(), 1);
+        const auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 1); QCOMPARE(page.messages.first().uid, 1);
+    }
+    void arrivalDoesNotInvalidateCapturedUids()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {"PLAIN"}); server.provideMailbox = true;
+        server.messages[1] = "Subject: original\r\nDate: Wed, 18 Nov 2026 10:00:00 +0000\r\n\r\nbody";
+        bool arrived = false;
+        server.commandReceived = [&](const QByteArray &line) {
+            if (!arrived && line.contains(" UID FETCH ") && line.contains("BODY.PEEK[]")) {
+                arrived = true;
+                server.messages[2] = "Subject: arrival\r\nDate: Wed, 18 Nov 2026 10:01:00 +0000\r\n\r\nbody";
+            }
+        };
+        QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), "arrival@example.test",
+            {"127.0.0.1", 465, "test"}, {"127.0.0.1", server.port(), "test", AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(":memory:"); QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized);
+        service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
+        QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString())); QVERIFY(arrived);
+        MailQuery query; query.accountId = account.id; query.folder = "INBOX";
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1);
+        result.clear(); service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::Recent);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
+        cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 2);
+    }
+    void cancellationKeepsCompleteReceivedMessages()
+    {
+        MailTestServer server(MailTestServer::Protocol::Imap, {"PLAIN"}); server.provideMailbox = true;
+        server.messages[1] = "Subject: complete before stop\r\n\r\nbody"; server.bodyCompletionDelayMs = 10000;
+        QVERIFY(server.listen());
+        Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), "cancel@example.test",
+            {"127.0.0.1", 465, "test"}, {"127.0.0.1", server.port(), "test", AuthenticationMode::Plain, EncryptionMode::None}};
+        AccountRepository cache(":memory:"); QSignalSpy inserted(&cache, &AccountRepository::inserted), pages(&cache, &AccountRepository::pageLoaded);
+        cache.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH")); QSignalSpy result(&service, &MailService::synchronized), progress(&service, &MailService::syncProgress);
+        service.synchronize(account, "dummy", {}, &cache, MailService::SyncMode::All);
+        QTRY_VERIFY_WITH_TIMEOUT(!progress.isEmpty() && progress.last().at(2).toLongLong() == 1, 5000);
+        service.cancelSynchronization(account.id);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 5000); QVERIFY(!result.first().at(4).toString().isEmpty());
+        QCOMPARE(server.bodyFetchAttempts, 1);
+        cache.loadPage({account.id, "INBOX"}); QTRY_COMPARE(pages.size(), 1);
+        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1);
+    }
     void gmailHierarchyRootIsNeverFetched_data()
     {
         QTest::addColumn<bool>("extended"); QTest::addColumn<QString>("root"); QTest::addColumn<int>("parallel");
@@ -164,7 +284,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 10000);
         QVERIFY(result.first().at(4).toString().isEmpty());
     }
-    void pipelinedMimeFailureDoesNotPublishEarlierBatches()
+    void pipelinedMimeFailureKeepsEarlierBatches()
     {
         MailTestServer server(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
         server.provideMailbox = true;
@@ -186,9 +306,10 @@ private slots:
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000);
         QVERIFY(result.takeFirst().at(4).toString().contains(QStringLiteral("MIME")));
+        QVERIFY(server.maximumConnections <= 1);
         MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX");
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1);
-        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 0);
+        QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1000);
         server.messages[1001] = raw;
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::All);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000);
@@ -296,10 +417,10 @@ private slots:
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, count + 3);
         cache.loadMessage({account.id, QStringLiteral("INBOX"), 10, 2}); QTRY_COMPARE(results.size(), 1);
         const auto changed = qvariant_cast<MailRecord>(results.takeFirst().first());
-        QVERIFY(changed.seen); QCOMPARE(changed.document.rawSource, originalRaw);
+        QVERIFY(!changed.seen); QCOMPARE(changed.document.rawSource, originalRaw);
         cache.loadMessage({account.id, QStringLiteral("INBOX"), 10, 4}); QTRY_COMPARE(results.size(), 1);
         const auto important = qvariant_cast<MailRecord>(results.takeFirst().first());
-        QVERIFY(important.important); QVERIFY(!important.seen);
+        QVERIFY(!important.important); QVERIFY(!important.seen);
         server.headerFetchCount = server.fullFetchCount = 0;
         service.synchronize(account, QStringLiteral("dummy"), {}, &cache, MailService::SyncMode::Recent);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 30000); QVERIFY(result.takeFirst().at(4).toString().isEmpty());
@@ -364,6 +485,7 @@ private slots:
         if (renamed) { cache.queueFolder(account.id, QStringLiteral("rename"), QStringLiteral("INBOX"), target); QTRY_COMPARE(queued.size(), 2); }
         const MailRecord other{account.id, QStringLiteral("Other"), 10, 10}; cache.queueFlag(other, true, true); QTRY_COMPARE(flags.size(), 1);
         server.messages.remove(1); server.messages.insert(3, raw("new", "Fri, 13 Nov 2026 10:30:00 +0000")); server.folderMessages["Other"].insert(11, raw("unfetched", "Fri, 13 Nov 2026 11:00:00 +0000"));
+        server.extraFolders.insert("INBOX/Child"); server.folderMessages["INBOX/Child"][1] = raw("unfetched child", "Fri, 13 Nov 2026 11:00:00 +0000");
         const auto mode = kind == 1 || kind == 4 ? MailService::SyncMode::SelectedFolder : MailService::SyncMode::SelectedRecent;
         server.commands.clear(); result.clear(); service.synchronize(account, QStringLiteral("dummy"), kind == 2 ? QStringLiteral("Pending") : target, &cache, mode);
         QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
@@ -378,6 +500,10 @@ private slots:
         QCOMPARE(page.total, 1); QVERIFY(page.messages.first().important); QVERIFY(!server.folderFlags["Other"][10].contains("\\Flagged"));
         cache.loadCache(account.id, true); QTRY_COMPARE(cached.size(), 1); bool otherFound = false;
         for (const auto &folder : qvariant_cast<QList<MailFolder>>(cached.first().at(2))) if (folder.name == QStringLiteral("Other")) { otherFound = true; QCOMPARE(folder.unread, 1); } QVERIFY(otherFound);
+        bool childFound = false;
+        for (const auto &folder : qvariant_cast<QList<MailFolder>>(cached.first().at(2))) if (folder.name == target + QStringLiteral("/Child")) childFound = true;
+        QVERIFY(childFound);
+        for (const auto &command : server.commands) QVERIFY(!command.contains("STATUS \"INBOX/Child\"") && !command.contains("EXAMINE \"INBOX/Child\""));
         qint64 through = 0; QList<PendingFolder> pending; QVERIFY(cache.folderRevision(account.id, through).isEmpty()); QVERIFY(cache.pendingFolders(account.id, 0, through, pending).isEmpty()); QCOMPARE(pending.size(), renamed ? 2 : 1);
         cache.setMoveIntent(QStringLiteral("deferred-move"), other, target); QTRY_COMPARE(local.size(), 1); QVERIFY(local.first().at(1).toString().isEmpty());
         server.commands.clear(); result.clear(); service.synchronize(account, QStringLiteral("dummy"), target, &cache, mode); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
@@ -607,11 +733,11 @@ private slots:
             if (total >= 0) QCOMPARE(total, event.at(1).toString() == QStringLiteral("INBOX") ? qint64(3) : qint64(1));
         }
         server.messageFlags[1] = {"\\Seen"}; server.messageFlags[2] = {"\\Seen"};
-        server.messages.insert(4, raw("Fri, 13 Nov 2026 08:59:59 +0000"));
-        server.messages.insert(5, raw("Thu, 12 Nov 2026 23:30:00 -1000")); // UTC 09:30; SENTSINCE ignores timezone.
+        server.messages.insert(4, raw("Fri, 13 Nov 2026 10:00:00 +0000")); // Equal is not newer.
+        server.messages.insert(5, raw("Fri, 13 Nov 2026 00:00:01 -1000")); // UTC 10:00:01; compare instants.
         server.folderMessages["Archive"].insert(11, raw("Thu, 05 Nov 2026 09:30:00 +0000"));
         server.extraFolders.insert("New"); server.folderMessages["New"].insert(70, raw("Sun, 01 Nov 2026 00:00:00 +0000"));
-        sync(MailService::SyncMode::Recent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString())); QCOMPARE(server.fullFetchCount, 7);
+        sync(MailService::SyncMode::Recent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY2(result.first().at(4).toString().isEmpty(), qPrintable(result.first().at(4).toString())); QCOMPARE(server.fullFetchCount, 6);
         QMap<QString, QPair<qint64, qint64>> finalProgress;
         QSet<QString> unknown;
         for (const auto &event : progress) {
@@ -622,7 +748,7 @@ private slots:
             finalProgress[folder] = {done, total};
         }
         QCOMPARE(finalProgress.value(QStringLiteral("INBOX")), qMakePair(qint64(1), qint64(1)));
-        QCOMPARE(finalProgress.value(QStringLiteral("Archive")), qMakePair(qint64(1), qint64(1)));
+        QCOMPARE(finalProgress.value(QStringLiteral("Archive")), qMakePair(qint64(0), qint64(0)));
         QCOMPARE(finalProgress.value(QStringLiteral("New")), qMakePair(qint64(1), qint64(1)));
         sync(MailService::SyncMode::SelectedRecent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000);
         QVERIFY(result.first().at(4).toString().isEmpty());
@@ -630,16 +756,16 @@ private slots:
         QCOMPARE(progress.last().at(1).toString(), QStringLiteral("INBOX"));
         QCOMPARE(progress.last().at(2).toLongLong(), qint64(0));
         QCOMPARE(progress.last().at(3).toLongLong(), qint64(0));
-        QCOMPARE(server.fullFetchCount, 7);
+        QCOMPARE(server.fullFetchCount, 6);
         MailQuery query; query.accountId = account.id; query.folder = QStringLiteral("INBOX"); query.sortColumn = 3;
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); auto page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 4);
         bool oldSeen = true, boundarySeen = false; for (const auto &message : page.messages) { QVERIFY(message.uid != 4); if (message.uid == 1) oldSeen = message.seen; if (message.uid == 2) boundarySeen = message.seen; }
-        QVERIFY(!oldSeen); QVERIFY(boundarySeen);
-        query.folder = QStringLiteral("Archive"); cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 2);
+        QVERIFY(!oldSeen); QVERIFY(!boundarySeen);
+        query.folder = QStringLiteral("Archive"); cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1);
         query.folder = QStringLiteral("New"); cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); QCOMPARE(qvariant_cast<MailPage>(pages.takeFirst().first()).total, 1);
         server.messages.remove(1); server.messages.remove(2);
         sync(MailService::SyncMode::Recent); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
-        query.folder = QStringLiteral("INBOX"); cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 3); // Retain old UID 1, remove window UID 2.
+        query.folder = QStringLiteral("INBOX"); cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 4); // Both deleted dates are outside the new refresh window.
         sync(MailService::SyncMode::All); QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 15000); QVERIFY(result.first().at(4).toString().isEmpty());
         cache.loadPage(query); QTRY_COMPARE(pages.size(), 1); page = qvariant_cast<MailPage>(pages.takeFirst().first()); QCOMPARE(page.total, 3);
         for (const auto &message : page.messages) QVERIFY(message.uid != 1 && message.uid != 2);
@@ -795,7 +921,7 @@ private slots:
         MailService service(qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
         QSignalSpy result(&service, &MailService::synchronized);
         service.synchronize(account, QStringLiteral("dummy"));
-        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 20000);
+        QTRY_COMPARE_WITH_TIMEOUT(result.size(), 1, 35000);
         QVERIFY(!result.first().at(4).toString().isEmpty());
         QVERIFY(qvariant_cast<QList<MailRecord>>(result.first().at(3)).isEmpty());
         QVERIFY(!service.busy());

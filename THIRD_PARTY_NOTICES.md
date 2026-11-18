@@ -39,7 +39,7 @@ WindowsのDrKonqi探索で、元のビルドprefixだけを除きます。環境
 製品配布には、対応する完全な変更済みライブラリソース・必要な構築スクリプトの提供、通知、
 適用される改変/再リンク等の条件への対応が引き続き必要です。
 
-## KIMAP 26.08.3：SASL継続応答とエラー通知の修正
+## KIMAP 26.08.3：SASL継続応答・エラー通知と分割受信の修正
 
 - 上流: https://invent.kde.org/pim/kimap
 - 固定コミット: `fe0df283d6745c5ad1e0478db0a74ea0a2205d5a`（v26.08.3、ライブラリ版6.8.3）。
@@ -47,6 +47,8 @@ WindowsのDrKonqi探索で、元のビルドprefixだけを除きます。環境
 - 差分と説明: `patches/kimap/26.08.3-fix-sasl-continuation.patch`、`patches/kimap/README.md`。
 
 `src/loginjob.cpp`を変更し、PLAIN以外でも正当な空のSASLチャレンジを処理します。また、不正応答時にはエラーコードを設定して認証中のSASL接続を解放します。認証方式の自動切替やTLS検証の緩和は追加しません。
+
+2026-11-18、SmoothMail contributorsによる追記: `src/fetchjob.cpp`・`src/fetchjob.h`を変更し、完全に解析済みのメッセージを通信エラー時にも通知します。`flushPendingMessages()`を追加し、中止・タイムアウト時もバッファ済みの完全なメッセージを回収できるようにします。不完全なリテラルを成功扱いにはしません。
 
 対象ファイルのLGPL-2.0-or-laterおよび元の著作権表示を保持します。この修正は上流の標準実装ではありません。ビルド時に`share/licenses/kimap`へ上流ライセンス・パッチ・変更通知を配置します。配布時の対応ソース提供等の義務は引き続き残ります。
 

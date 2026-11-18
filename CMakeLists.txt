@@ -249,7 +249,7 @@ if(BUILD_TESTING)
         target_link_libraries(tst_connectiontester PRIVATE smoothmail_transport Qt6::Test Qt6::Network)
         smoothmail_target_defaults(tst_connectiontester)
         add_test(NAME connectiontester COMMAND tst_connectiontester)
-        set_tests_properties(connectiontester PROPERTIES TIMEOUT 120
+        set_tests_properties(connectiontester PROPERTIES TIMEOUT 240
             ENVIRONMENT "SMOOTHMAIL_TEST_SASL_PATH=${SMOOTHMAIL_SASL_PLUGIN_DIR}")
         find_package(ECM 6.31 CONFIG REQUIRED)
         list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})

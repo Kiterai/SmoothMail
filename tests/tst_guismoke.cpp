@@ -106,7 +106,7 @@ class GuiSmokeTest final : public QObject
         return matches.value(0);
     }
 private slots:
-    void controllerSharesSpareFolderSlotsAndPrioritizesNewAccounts()
+    void controllerSharesSpareFolderSlotsWithinOneUpdate()
     {
         QSettings().clear(); QSettings().setValue(QStringLiteral("refresh/parallelUpdates"), 4);
         QTemporaryDir directory; QVERIFY(directory.isValid());
@@ -155,9 +155,8 @@ private slots:
                 int count = 0; for (const auto &server : servers) count += server->liveConnections;
                 maximum = qMax(maximum, count);
             }); monitor.start();
-            window.targetRefreshRequested(accounts[0].id, {}, true);
-            window.targetRefreshRequested(accounts[1].id, {}, true);
-            QTRY_VERIFY_WITH_TIMEOUT(servers[0]->maximumConnections >= 3, 15000);
+            window.fullRefreshRequested();
+            QTRY_VERIFY_WITH_TIMEOUT(servers[0]->maximumConnections >= 2, 15000);
             QCOMPARE(servers[1]->maximumConnections, 1); // Base for every account, surplus to the top one.
             window.targetRefreshRequested(accounts[2].id, {}, true);
             QTRY_VERIFY_WITH_TIMEOUT(servers[2]->receivedAuthentication(), 15000);
@@ -266,7 +265,43 @@ private slots:
         }
         QSettings().clear();
     }
-    void scopedControllerRequestsKeepDistinctQueuedTargets()
+    void cancelledInitialFetchDoesNotRestartWhenPartialCacheLoads()
+    {
+        QSettings().clear(); QTemporaryDir directory; QVERIFY(directory.isValid());
+        MailTestServer server(MailTestServer::Protocol::Imap, {"PLAIN"});
+        server.provideMailbox = true; server.bodyCompletionDelayMs = 5000;
+        server.messages[1] = "Subject: retained after stop\r\n\r\nbody"; QVERIFY(server.listen());
+        const Account account{QUuid::createUuid().toString(QUuid::WithoutBraces), "cancel-initial@example.test",
+            {"127.0.0.1", 465, "test"}, {"127.0.0.1", server.port(), "test", AuthenticationMode::Plain, EncryptionMode::None}};
+        const auto path = directory.filePath("cancel-initial.sqlite");
+        {
+            AccountRepository repository(path); QSignalSpy inserted(&repository, &AccountRepository::inserted);
+            repository.insert(account); QTRY_COMPARE(inserted.size(), 1);
+        }
+        CredentialStore credentials; bool done = false;
+        const auto key = AccountRegistrar::secretKey(account.id, "imap", AuthenticationMode::Plain);
+        credentials.write(key, "dummy", [&](const QString &, const QString &error) { QVERIFY(error.isEmpty()); done = true; }); QTRY_VERIFY(done);
+        {
+            MainWindow window(false); ApplicationController controller(&window, path, qEnvironmentVariable("SMOOTHMAIL_TEST_SASL_PATH"));
+            window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+            QTRY_COMPARE(window.findChild<QTreeView *>("folderTree")->model()->rowCount(), 1);
+            window.fullRefreshRequested();
+            QTRY_COMPARE_WITH_TIMEOUT(server.fullFetchCount, 1, 15000);
+            QTest::qWait(150); // Complete response is buffered; tagged completion is still delayed.
+            action(window, "cancelRefreshAction")->trigger();
+            QTRY_VERIFY_WITH_TIMEOUT(!action(window, "cancelRefreshAction")->isEnabled(), 10000);
+            auto *repository = controller.findChild<AccountRepository *>(); QVERIFY(repository);
+            QSignalSpy pages(repository, &AccountRepository::pageLoaded);
+            repository->loadPage({account.id, "INBOX"}); QTRY_COMPARE(pages.size(), 1);
+            QCOMPARE(qvariant_cast<MailPage>(pages.first().first()).total, 1);
+            QTest::qWait(500); // Allow the partial cache reload/initial-fetch callback chain to run.
+            QCOMPARE(server.authenticationResponses.size(), 1);
+            QVERIFY(!action(window, "cancelRefreshAction")->isEnabled());
+        }
+        done = false; credentials.remove(key, [&](const QString &, const QString &) { done = true; }); QTRY_VERIFY(done);
+        QSettings().clear();
+    }
+    void scopedControllerRejectsOverlapAndCancelsTheUpdate()
     {
         QSettings().clear(); QTemporaryDir directory; QVERIFY(directory.isValid());
         MailTestServer first(MailTestServer::Protocol::Imap, {QStringLiteral("PLAIN")});
@@ -311,8 +346,7 @@ private slots:
                 [&](const QString &, const QString &, const QList<MailFolder> &, const QList<MailRecord> &, const QString &error) {
                     errors.append(error); ++completed;
                 });
-            // Emit before returning to the event loop: one active request and
-            // distinct folder/account requests must survive queue coalescing.
+            // Neither a different scope nor a full refresh may stack onto an update.
             window.targetRefreshRequested(accounts[0].id, QStringLiteral("INBOX"), false);
             window.targetRefreshRequested(accounts[0].id, QStringLiteral("Other"), false);
             window.targetRefreshRequested(accounts[0].id, QStringLiteral("Other"), true);
@@ -320,12 +354,27 @@ private slots:
             const auto count = [](const MailTestServer &server, const QByteArray &needle) {
                 int n = 0; for (const auto &command : server.commands) if (command.contains(needle)) ++n; return n;
             };
-            QTRY_COMPARE_WITH_TIMEOUT(completed, 3, 30000);
+            QTRY_COMPARE_WITH_TIMEOUT(completed, 1, 30000);
             for (const auto &error : errors) QVERIFY2(error.isEmpty(), qPrintable(error));
-            QCOMPARE(count(first, "STATUS \"INBOX\""), 1); QCOMPARE(count(first, "STATUS \"Other\""), 1);
+            QCOMPARE(count(first, "STATUS \"INBOX\""), 1); QCOMPARE(count(first, "STATUS \"Other\""), 0);
+            QVERIFY(second.commands.isEmpty());
+            QVERIFY(action(window, "refreshAction")->isEnabled());
+            QVERIFY(!action(window, "cancelRefreshAction")->isEnabled());
+            // Once idle, another explicit request is a normal new update.
+            window.targetRefreshRequested(accounts[1].id, {}, true);
+            QTRY_COMPARE_WITH_TIMEOUT(completed, 2, 30000);
             QCOMPARE(count(second, "STATUS \"INBOX\""), 1); QCOMPARE(count(second, "STATUS \"Other\""), 1);
-            QCOMPARE(count(first, " SEARCH "), 1); // recent INBOX only; queued Other was upgraded to full
-            QCOMPARE(count(second, " SEARCH "), 0);
+            first.pauseMetadata = true; second.pauseMetadata = true;
+            window.fullRefreshRequested();
+            QTRY_VERIFY_WITH_TIMEOUT(first.pausedMetadataCount() > 0 && second.pausedMetadataCount() > 0, 15000);
+            QVERIFY(!action(window, "refreshAction")->isEnabled()); QVERIFY(!action(window, "fullRefreshAction")->isEnabled());
+            QVERIFY(action(window, "cancelRefreshAction")->isEnabled());
+            const int authentications = first.authenticationResponses.size() + second.authenticationResponses.size();
+            window.fullRefreshRequested(); window.targetRefreshRequested(accounts[0].id, {}, true);
+            action(window, "cancelRefreshAction")->trigger();
+            QTRY_VERIFY_WITH_TIMEOUT(!action(window, "cancelRefreshAction")->isEnabled(), 10000);
+            QCOMPARE(completed, 4); QCOMPARE(first.authenticationResponses.size() + second.authenticationResponses.size(), authentications);
+            QVERIFY(action(window, "refreshAction")->isEnabled()); QVERIFY(action(window, "fullRefreshAction")->isEnabled());
         }
         for (const auto &account : accounts) {
             bool done = false;

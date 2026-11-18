@@ -31,6 +31,22 @@ class MainWindowTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void updateActionsBlockOverlapAndOfferCancellation()
+    {
+        smoothmail::MainWindow window(false); smoothmail::Account account; account.id = "update-actions";
+        window.setAccounts({account});
+        auto *recent = window.findChild<QAction *>("refreshAction");
+        auto *full = window.findChild<QAction *>("fullRefreshAction");
+        auto *cancel = window.findChild<QAction *>("cancelRefreshAction");
+        QSignalSpy cancelled(&window, &smoothmail::MainWindow::cancelRefreshRequested);
+        QVERIFY(recent->isEnabled()); QVERIFY(full->isEnabled()); QVERIFY(!cancel->isEnabled());
+        window.setUpdateRunning(true);
+        QVERIFY(!recent->isEnabled()); QVERIFY(!full->isEnabled()); QVERIFY(cancel->isEnabled());
+        window.setAccounts({account}); QVERIFY(!recent->isEnabled()); QVERIFY(!full->isEnabled());
+        cancel->trigger(); QCOMPARE(cancelled.size(), 1);
+        window.setUpdateRunning(false);
+        QVERIFY(recent->isEnabled()); QVERIFY(full->isEnabled()); QVERIFY(!cancel->isEnabled());
+    }
     void nonexistentFoldersAreNonselectableButKeepTheirChildren()
     {
         using namespace smoothmail;

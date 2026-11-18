@@ -1,3 +1,42 @@
+diff --git a/src/fetchjob.h b/src/fetchjob.h
+--- a/src/fetchjob.h
++++ b/src/fetchjob.h
+@@ -183,6 +183,12 @@ public:
+      */
+     ~FetchJob() override;
+
++    /*!
++     * SmoothMail downstream addition (2026-11-18): deliver complete parsed
++     * messages still buffered by the batch timer, including after interruption.
++     */
++    void flushPendingMessages();
++
+     /*!
+      * Set which messages to fetch data for.
+      *
+diff --git a/src/fetchjob.cpp b/src/fetchjob.cpp
+--- a/src/fetchjob.cpp
++++ b/src/fetchjob.cpp
+@@ -65,9 +65,19 @@ FetchJob::FetchJob(Session *session)
+     connect(&d->emitPendingsTimer, &QTimer::timeout, this, [d]() {
+         d->emitPendings();
+     });
++    // SmoothMail downstream change (2026-11-18): a dropped connection must
++    // not discard complete messages waiting for the 100 ms emission timer.
++    connect(this, &KJob::result, this, &FetchJob::flushPendingMessages);
+ }
+
+ FetchJob::~FetchJob() = default;
+
++void FetchJob::flushPendingMessages()
++{
++    Q_D(FetchJob);
++    d->emitPendingsTimer.stop();
++    d->emitPendings();
++}
++
+ void FetchJob::setSequenceSet(const ImapSet &set)
+ {
 diff --git a/src/loginjob.cpp b/src/loginjob.cpp
 --- a/src/loginjob.cpp
 +++ b/src/loginjob.cpp

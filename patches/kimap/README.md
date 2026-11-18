@@ -1,16 +1,18 @@
-# KIMAP 26.08.3のSASL認証修正
+# KIMAP 26.08.3のSASL認証・分割受信修正
 
 - 上流: https://invent.kde.org/pim/kimap
 - 固定コミット: `fe0df283d6745c5ad1e0478db0a74ea0a2205d5a`（v26.08.3、ライブラリ版6.8.3）
 - パッチ: `26.08.3-fix-sasl-continuation.patch`
 - 変更日・変更者: 2026-11-13、SmoothMail contributors
+- 分割受信追記: 2026-11-18、SmoothMail contributors
 
-上流の`src/loginjob.cpp`（LGPL-2.0-or-later）の著作権・SPDX表示は保持します。SmoothMail独自コードのMITとは別の条件です。上流未採用のローカル修正です。
+上流の`src/loginjob.cpp`・`src/fetchjob.cpp`・`src/fetchjob.h`（LGPL-2.0-or-later）の著作権・SPDX表示は保持します。SmoothMail独自コードのMITとは別の条件です。上流未採用のローカル修正です。
 
 ## 修正範囲
 
 1. PLAIN以外でも空のSASLチャレンジをSASL実装へ渡す。SASL-IRがないサーバーからの空の継続応答は、XOAUTH2の初期応答を促す正当な応答です。認証方式やTLS設定は変更しません。
 2. 不正な応答では`errorText`だけでなく`UserDefinedError`を設定し、認証中のSASL接続を解放する。ログイン成功と誤判定されることを防ぎます。
+3. FETCHで完全に解析できたメッセージを、通信エラー時にも100msバッファから通知する。`flushPendingMessages()`を追加し、アプリが中止・タイムアウトした場合も完全なメッセージだけを回収できるようにする。不完全なIMAPリテラルを成功扱いにはしない。
 
 ## 適用と配布
 
@@ -21,3 +23,5 @@ prefixの`share/licenses/kimap`へ、上流の`LICENSES`、パッチ、変更通
 ## 検証
 
 指定Qt 6.12.0／MSVCでDebug構築し、外部通信を無効にしたWindows Sandboxで`mailtransport`を実行しました。未修正DLLは12 passed／3 failed、修正DLLは15 passed／0 failed（init／cleanup含む）。XOAUTH2の空チャレンジ、通常の認証拒否、不正応答の非0エラーを確認しています。PLAIN／LOGIN、SMTPの3機構、STARTTLS非対応時の認証禁止も成功しています。実サービスのOAuth認可、TLSハンドシェイク、SASL-IR経路はこの検証の対象外です。
+
+2026-11-18追記: 分割受信修正を含むRelease DLLで、合成IMAPの切断直前の完全なメッセージ回収、段階的な再試行、取消、不完全リテラルの非公開を検証しました。最終Sandboxでtransport67、mailtransport15、GUI11を含む全312件が成功しました。詳細は`agent/update-recovery-20261118.md`を参照してください。

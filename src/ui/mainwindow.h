@@ -36,6 +36,7 @@ public:
     void applySnapshot(const QString &accountId, const QString &folder, const QList<MailFolder> &folders,
                        const QList<MailRecord> &messages, const QString &error, bool remoteUpdate = true);
     void setRefreshing(const QString &accountId, bool refreshing);
+    void setUpdateRunning(bool running);
     void clearAccountCache(const QString &id);
     void cancelPendingFolderEdit() { m_pendingCreateId.clear(); m_pendingCreateName.clear(); }
     QString selectedFolderFor(const QString &accountId) const { return m_accountId == accountId ? m_folder : QString{}; }
@@ -65,6 +66,7 @@ signals:
     void addAccountRequested();
     void refreshAllRequested();
     void fullRefreshRequested();
+    void cancelRefreshRequested();
     void refreshRequested(const QString &accountId, const QString &folder);
     void targetRefreshRequested(const QString &accountId, const QString &folder, bool full);
     void composeRequested(bool reply);
@@ -89,6 +91,7 @@ protected:
 private:
     void updatePageButtons();
     bool m_pageLoading = false;
+    bool m_updateRunning = false;
     int m_requestedPage = 1;
     QPushButton *m_previousPage = nullptr, *m_nextPage = nullptr;
     void editFolder(const QModelIndex &index, bool create);

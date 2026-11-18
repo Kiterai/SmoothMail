@@ -70,7 +70,10 @@ public:
     struct SyncFlags { qint64 uid; bool seen = false, important = false; };
     QString reuseMessages(const QList<SyncFlags> &messages, QSet<qint64> &found, const QString &accountId = {});
     QString reuseMessage(qint64 uid, bool seen, bool important, bool &found, const QString &accountId = {});
-    QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly = false, const QString &accountId = {});
+    QString commitSync(const QList<MailFolder> &folders, qint64 expectedCount, bool folderOnly = false, const QString &accountId = {},
+                       bool mergeOnly = false);
+    QString syncDownloadedCount(const QString &stageKey, qint64 &count);
+    QString retainSyncUids(const QString &stageKey, const QList<qint64> &uids);
     QString resolveSyncFolder(const QString &id, const QString &local, QString &remote, bool &exists);
     void abortSync(const QString &accountId = {});
 

@@ -28,8 +28,10 @@ string(JSON commit GET "${manifest}" kimap commit)
 get_filename_component(kimap_patch "${CMAKE_CURRENT_LIST_DIR}/../patches/kimap/26.08.3-fix-sasl-continuation.patch" ABSOLUTE)
 smoothmail_prepare_patched_source(kimap "${pristine}" "${commit}" "${kimap_patch}"
     "${DEPENDENCY_ROOT}/patched-src" source)
+file(SHA256 "${kimap_patch}" kimap_patch_hash)
+string(SUBSTRING "${kimap_patch_hash}" 0 16 kimap_patch_key)
 smoothmail_build_dependency_source(kimap "${source}"
-    "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/kimap-sasl-continuation"
+    "${DEPENDENCY_ROOT}/build/${CMAKE_BUILD_TYPE}/kimap-${kimap_patch_key}"
     "-DGETTEXT_MSGFMT_EXECUTABLE=${gettext_tools}/msgfmt.exe"
     "-DGETTEXT_MSGMERGE_EXECUTABLE=${gettext_tools}/msgmerge.exe")
 set(notices "${prefix}/share/licenses/kimap")

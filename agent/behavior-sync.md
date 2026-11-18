@@ -1,5 +1,7 @@
 # 803f145追従：同期とローカル編集
 
+以下は当時の記録です。`3f116c0`追従による1時間ルール撤廃・部分確定・再試行・更新重ね掛け禁止は[現行の変更記録](update-recovery-20261118.md)を参照してください。
+
 ## 実装の不変条件
 
 - `MailService::SyncMode::SelectedFolder`は既存のテスト/互換呼出し用。通常コントローラーはRecent、Ctrl+F5はAllを使用する。どちらもLISTし、全selectableフォルダを巡回する。

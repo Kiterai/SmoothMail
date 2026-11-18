@@ -38,6 +38,8 @@ private:
     bool m_accountMutation = false;
     QString m_editedId;
     void refresh(const QString &accountId, const QString &folder, bool full = false, bool folderOnly = false);
+    void refreshAll(bool full);
+    void cancelRefresh();
     void processNext();
     void connectSyncWorker(MailService *mail);
     void compose(bool reply);
