@@ -50,3 +50,31 @@
   正式な配布用Release workflowと通常配置`build/rel/run`の差替えは実施していない。
 - 実アカウント・実メール・ホストの資格情報を使わず、外部ネットワーク無効の
   Sandbox `2bd0e3bb-9530-48e7-bc92-57cdd9c7dbec`で検証した。ログ回収後に終了成功。
+
+## 通常配置への反映（利用者指示後）
+
+- 標準Release workflowを`build/update-spec/release`へ実行し、終了コード0。
+  `SMOOTHMAIL_DISTRIBUTION=ON`、対応ソースmanifestの本体commitは
+  `543a394539ce9d008b7b99ce1afd80c3f5f0132f`。ZIP・通知・対応ソースを生成した。
+- ビルド中のGit所有者制約はビルド専用の一時設定だけで解消した。
+  Git global設定・ACL・SDKを変更せず、失敗した初回ログも保存した。
+- 新規・外部ネットワーク無効Sandbox `5703f23b-9202-4c44-8f88-83055ccf39ad`で、
+  配布用Releaseの空状態起動・ウィンドウ・SQLite読み込み・本体hashを確認。
+  ロード元はゲスト配置先とWindows配下のみ。証跡は`build/update-spec/deploy-output`。
+- 再構築された配布用DLLは開発時の試験DLLとバイト一致しなかったため、
+  配布用一式へ試験EXE等を追加した別セットで全17 EXEを再検証した。
+  初回GUI試験は、GUI自身の自動ページ要求を含むsignal件数が2件となり失敗。
+  製品コードは変更せず、試験の明示要求をquery generationで識別するよう修正した。
+  そのGUI全11件を再実行して成功。最終結果は他16 EXEと合わせ
+  **312 passed / 0 failed / 0 skipped**。
+  初回失敗は`deploy-output/release`、修正後GUIは`deploy-output/release-ui`へ分離した。
+- 本体SHA256:
+  `ab0a5136f21d7fe2dca2e7e764f64ed65b47963532f92ee7625cfecad5643b93`。
+  app EXE・配布物・ゲストで起動したEXE・通常配置が一致する。
+- 反映直前にSmoothmailプロセスが存在しないことを再確認。
+  manifest360ファイルと全361ファイルのinventoryをコピー前・一時配置・通常配置で照合した。
+  現在の通常起動先は **`build/rel/run/launch.cmd`**。
+- 旧版は`build/rel/run-previous-update-spec-20261118-133233-5b539aa1`へ退避。
+  配置証跡は`build/update-spec/normal-deployment.json`。
+- ログ回収後にSandboxを終了成功。ホストでアプリを起動せず、
+  実メール・ホストDB・設定・資格情報にはアクセスしていない。

@@ -292,8 +292,19 @@ private slots:
             QTRY_VERIFY_WITH_TIMEOUT(!action(window, "cancelRefreshAction")->isEnabled(), 10000);
             auto *repository = controller.findChild<AccountRepository *>(); QVERIFY(repository);
             QSignalSpy pages(repository, &AccountRepository::pageLoaded);
-            repository->loadPage({account.id, "INBOX"}); QTRY_COMPARE(pages.size(), 1);
-            QCOMPARE(qvariant_cast<MailPage>(pages.first().first()).total, 1);
+            MailQuery query{account.id, "INBOX"}; query.generation = 1000000000;
+            repository->loadPage(query);
+            const auto requestedPage = [&] {
+                for (const auto &event : pages) {
+                    const auto page = qvariant_cast<MailPage>(event.first());
+                    if (page.query.generation == query.generation) return page;
+                }
+                return MailPage{};
+            };
+            // The controller may concurrently reload the visible page. Inspect
+            // our own query rather than asserting a global signal count.
+            QTRY_COMPARE(requestedPage().query.generation, query.generation);
+            QCOMPARE(requestedPage().total, 1);
             QTest::qWait(500); // Allow the partial cache reload/initial-fetch callback chain to run.
             QCOMPARE(server.authenticationResponses.size(), 1);
             QVERIFY(!action(window, "cancelRefreshAction")->isEnabled());
