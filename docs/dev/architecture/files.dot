@@ -45,6 +45,8 @@ digraph dependencies {
 			label="src/core/pendingmove.h"];
 		"src/core/singleinstance.h"	[fillcolor="#dbeafe",
 			label="src/core/singleinstance.h"];
+		"src/core/syncprogress.h"	[fillcolor="#dbeafe",
+			label="src/core/syncprogress.h"];
 		"src/core/systemsettings.h"	[fillcolor="#dbeafe",
 			label="src/core/systemsettings.h"];
 		"src/core/threading"	[fillcolor="#dbeafe",
@@ -58,6 +60,8 @@ digraph dependencies {
 			label="src/mail/connectionpolicy"];
 		"src/mail/mailservice"	[fillcolor="#dbeafe",
 			label="src/mail/mailservice"];
+		"src/mail/syncbudget.h"	[fillcolor="#dbeafe",
+			label="src/mail/syncbudget.h"];
 	}
 	subgraph cluster_4 {
 		graph [label="src/mime"];
@@ -124,6 +128,7 @@ digraph dependencies {
 	"src/mail/authenticationbroker" -> "src/storage/accountregistrar";
 	"src/mail/connectionpolicy" -> "src/core/connectionsettings.h";
 	"src/mail/mailservice" -> "src/mail/connectionpolicy"	[minlen=1];
+	"src/mail/mailservice" -> "src/mail/syncbudget.h"	[minlen=2];
 	"src/mail/mailservice" -> "src/mime/messagecomposer";
 	"src/mail/mailservice" -> "src/storage/accountrepository";
 	"src/mime/messagecomposer" -> "src/core/threading";
@@ -149,10 +154,11 @@ digraph dependencies {
 	"src/ui/mainwindow" -> "src/core/account";
 	"src/ui/mainwindow" -> "src/core/diagnostics";
 	"src/ui/mainwindow" -> "src/core/mailpage.h";
+	"src/ui/mainwindow" -> "src/core/syncprogress.h"	[minlen=1];
 	"src/ui/mainwindow" -> "src/core/systemsettings.h";
 	"src/ui/mainwindow" -> "src/core/threading";
-	"src/ui/mainwindow" -> "src/ui/aboutdialog"	[minlen=1];
-	"src/ui/mainwindow" -> "src/ui/foldermodel"	[minlen=2];
+	"src/ui/mainwindow" -> "src/ui/aboutdialog"	[minlen=2];
+	"src/ui/mainwindow" -> "src/ui/foldermodel"	[minlen=3];
 	"src/ui/mainwindow" -> "src/ui/messageviewer";
 	"src/ui/messageviewer" -> "src/core/displaytime.h";
 	"src/ui/messageviewer" -> "src/core/messagedocument.h";

@@ -73,6 +73,8 @@ digraph dependencies {
 			label=MailService];
 		"smoothmail::RejectCertificateErrors"	[fillcolor="#dbeafe",
 			label=RejectCertificateErrors];
+		"smoothmail::SyncBudget"	[fillcolor="#dbeafe",
+			label=SyncBudget];
 		"smoothmail::TransportSecurity"	[fillcolor="#dbeafe",
 			label=TransportSecurity];
 	}
@@ -106,6 +108,8 @@ digraph dependencies {
 			label=State];
 		"smoothmail::AccountRepository::State::Sync"	[fillcolor="#dbeafe",
 			label=Sync];
+		"smoothmail::AccountRepository::SyncFlags"	[fillcolor="#dbeafe",
+			label=SyncFlags];
 		"smoothmail::CredentialStore"	[fillcolor="#dbeafe",
 			label=CredentialStore];
 		"smoothmail::DownloadFileResult"	[fillcolor="#dbeafe",
@@ -133,12 +137,16 @@ digraph dependencies {
 			label=LicenseBrowser];
 		"smoothmail::MainWindow"	[fillcolor="#dbeafe",
 			label=MainWindow];
+		"smoothmail::MainWindow::SyncEstimate"	[fillcolor="#dbeafe",
+			label=SyncEstimate];
 		"smoothmail::MessageListModel"	[fillcolor="#dbeafe",
 			label=MessageListModel];
 		"smoothmail::MessageTreeView"	[fillcolor="#dbeafe",
 			label=MessageTreeView];
 		"smoothmail::MessageViewer"	[fillcolor="#dbeafe",
 			label=MessageViewer];
+		"smoothmail::PageArrowButton"	[fillcolor="#dbeafe",
+			label=PageArrowButton];
 		"smoothmail::PageNumberBox"	[fillcolor="#dbeafe",
 			label=PageNumberBox];
 		"smoothmail::SafeBodyView"	[fillcolor="#dbeafe",
@@ -175,9 +183,10 @@ digraph dependencies {
 	"smoothmail::MailService" -> "smoothmail::CancellationScope"	[minlen=2];
 	"smoothmail::MailService" -> "smoothmail::ListedFolder"	[minlen=3];
 	"smoothmail::MailService" -> "smoothmail::RejectCertificateErrors"	[minlen=1];
-	"smoothmail::MailService" -> "smoothmail::TransportSecurity"	[minlen=2];
+	"smoothmail::MailService" -> "smoothmail::SyncBudget"	[minlen=2];
+	"smoothmail::MailService" -> "smoothmail::TransportSecurity"	[minlen=3];
 	"smoothmail::MailService" -> "smoothmail::ComposeData";
-	"smoothmail::MailService" -> "smoothmail::ComposedMessage"	[minlen=3];
+	"smoothmail::MailService" -> "smoothmail::ComposedMessage"	[minlen=1];
 	"smoothmail::MailService" -> "smoothmail::AccountRepository";
 	"smoothmail::ComposeData" -> "smoothmail::ReplyHeaders"	[minlen=1];
 	"smoothmail::MessageParseResult" -> "smoothmail::MessageDocument";
@@ -198,7 +207,8 @@ digraph dependencies {
 	"smoothmail::AccountRepository" -> "smoothmail::diagnostics::OperationScope"	[minlen=2];
 	"smoothmail::AccountRepository" -> "smoothmail::MimeParser";
 	"smoothmail::AccountRepository" -> "smoothmail::AccountRepository::State";
-	"smoothmail::AccountRepository" -> "smoothmail::DownloadFileResult"	[minlen=3];
+	"smoothmail::AccountRepository" -> "smoothmail::AccountRepository::SyncFlags"	[minlen=3];
+	"smoothmail::AccountRepository" -> "smoothmail::DownloadFileResult"	[minlen=1];
 	"smoothmail::AccountRepository::State" -> "smoothmail::AccountRepository::State::Sync"	[minlen=1];
 	"smoothmail::AboutDialog" -> "smoothmail::LicenseBrowser"	[minlen=1];
 	"smoothmail::AccountDialog" -> "smoothmail::Account";
@@ -216,10 +226,12 @@ digraph dependencies {
 	"smoothmail::MainWindow" -> "smoothmail::AboutDialog"	[minlen=2];
 	"smoothmail::MainWindow" -> "smoothmail::BadgeDelegate"	[minlen=3];
 	"smoothmail::MainWindow" -> "smoothmail::FolderModel"	[minlen=1];
-	"smoothmail::MainWindow" -> "smoothmail::MessageListModel"	[minlen=2];
-	"smoothmail::MainWindow" -> "smoothmail::MessageTreeView"	[minlen=3];
+	"smoothmail::MainWindow" -> "smoothmail::MainWindow::SyncEstimate"	[minlen=2];
+	"smoothmail::MainWindow" -> "smoothmail::MessageListModel"	[minlen=3];
+	"smoothmail::MainWindow" -> "smoothmail::MessageTreeView"	[minlen=1];
 	"smoothmail::MainWindow" -> "smoothmail::MessageViewer";
-	"smoothmail::MainWindow" -> "smoothmail::PageNumberBox"	[minlen=1];
+	"smoothmail::MainWindow" -> "smoothmail::PageArrowButton"	[minlen=2];
+	"smoothmail::MainWindow" -> "smoothmail::PageNumberBox"	[minlen=3];
 	"smoothmail::MessageListModel" -> "smoothmail::MailRecord";
 	"smoothmail::MessageViewer" -> "smoothmail::MessageDocument";
 	"smoothmail::MessageViewer" -> "smoothmail::SafeBodyView"	[minlen=1];
